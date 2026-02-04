@@ -1,0 +1,631 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRoleType {
+  OWNER
+  ADMIN
+  TUTOR
+}
+
+enum ImageType {
+  BUSINESS_LOGO
+  BUSINESS_ICON
+  PRODUCT
+  PROFILE
+  GENERAL
+  BANNER
+  PHOTO
+  VIDEO
+}
+
+enum ProductType {
+  CLASS
+  WORKSHOP
+  CAMP
+}
+
+enum LeadStage {
+  NEW
+  CONTACT_ATTEMPTED
+  CONTACTED
+  FOLLOW_UP_ATTEMPTED
+  FOLLOWED_UP
+  COMMITTED
+  SCHEDULED
+  ASSESSED
+  ACTIVE
+  COLD
+}
+
+enum LeadSource {
+  WEB
+  WALK_IN
+  PHONE
+  EMAIL
+  SOCIAL
+}
+
+enum LeadTemperature {
+  HOT
+  WARM
+  COLD
+}
+
+enum ContactMethod {
+  PHONE
+  EMAIL
+  DM
+}
+
+enum RecurrenceType {
+  AD_HOC
+  WEEKLY
+  DAILY
+}
+
+model Organization {
+  id                     String   @id @default(uuid()) @db.Uuid
+  business_name          String
+  business_phone         String?
+  business_email         String?
+  timezone               String
+  default_buffer_minutes Int
+
+  owner_user_id          String?  @unique @db.Uuid
+  ownerUser              User?    @relation("OrgOwner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+
+  business_address_1     String?
+  business_address_2     String?
+  business_city          String?
+  business_state         String?
+  business_zip           String?
+
+  palette_color_1        String?
+  palette_color_2        String?
+  palette_color_3        String?
+  palette_color_4        String?
+  palette_color_5        String?
+  layout_key             String?
+  website_slug           String?
+  headline_text          String?
+  about_text             String?
+  mission_text           String?
+  tutoring_style_text    String?
+  testimonials_text      String?
+  privacy_policy_text    String?
+  cta_text               String?
+
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+  archived_at            DateTime?
+
+  created_by_user_id     String?  @db.Uuid
+  updated_by_user_id     String?  @db.Uuid
+  createdBy              User?    @relation("OrgCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy              User?    @relation("OrgUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  locations              Location[]
+  images                 Image[]
+  users                  User[]
+  tutors                 Tutor[]
+  products               Product[]
+  leads                  Lead[]
+  parents                Parent[]
+  students               Student[]
+  scheduleEntries        ScheduleEntry[]
+
+  @@index([archived_at])
+}
+
+model Location {
+  id                         String   @id @default(uuid()) @db.Uuid
+  organization_id            String   @db.Uuid
+  organization               Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  location_name              String
+  is_virtual                 Boolean  @default(false)
+
+  location_address_1         String?
+  location_address_2         String?
+  location_city              String?
+  location_state             String?
+  location_zip               String?
+  location_phone             String?
+  location_email             String?
+
+  location_manager_first_name String?
+  location_manager_last_name  String?
+
+  created_at                 DateTime @default(now())
+  updated_at                 DateTime @updatedAt
+  archived_at                DateTime?
+
+  hours                      LocationHours[]
+  rooms                      Room[]
+  servicesOffered            ServiceOffered[]
+  userLocations              UserLocation[]
+  tutorLocations             TutorLocation[]
+  leads                       Lead[]
+  students                   Student[]
+  scheduleEntries            ScheduleEntry[]
+
+  @@index([organization_id])
+  @@index([archived_at])
+}
+
+model LocationHours {
+  id          String   @id @default(uuid()) @db.Uuid
+  location_id String   @db.Uuid
+  location    Location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  day_of_week Int
+  is_closed   Boolean  @default(false)
+  open_time   String?
+  close_time  String?
+
+  @@index([location_id])
+  @@unique([location_id, day_of_week])
+}
+
+model Room {
+  id          String   @id @default(uuid()) @db.Uuid
+  location_id String   @db.Uuid
+  location    Location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  room_name   String
+  room_number String?
+  floor_number String?
+
+  scheduleEntryRooms ScheduleEntryRoom[]
+
+  @@index([location_id])
+  @@index([room_name])
+}
+
+model Image {
+  id                String      @id @default(uuid()) @db.Uuid
+  organization_id   String      @db.Uuid
+  organization      Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  image_url         String
+  image_description String?
+  image_type        ImageType
+  image_alt_text    String?
+  image_caption     String?
+
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  archived_at       DateTime?
+
+  @@index([organization_id])
+  @@index([image_type])
+  @@index([archived_at])
+}
+
+model User {
+  // matches Supabase Auth user id
+  id              String   @id @db.Uuid
+  organization_id String   @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  first_name      String?
+  last_name       String?
+  address_1       String?
+  address_2       String?
+  city            String?
+  state           String?
+  zip             String?
+  email           String   @unique
+  phone           String?
+  is_active       Boolean  @default(true)
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  archived_at     DateTime?
+
+  roles           UserRole[]
+  locations       UserLocation[]
+  tutorProfile    Tutor?
+
+  ownedOrg        Organization? @relation("OrgOwner")
+  orgCreated      Organization[] @relation("OrgCreatedBy")
+  orgUpdated      Organization[] @relation("OrgUpdatedBy")
+
+  leadsOwned      Lead[]    @relation("LeadOwner")
+  leadsCreated    Lead[]    @relation("LeadCreatedBy")
+  leadsUpdated    Lead[]    @relation("LeadUpdatedBy")
+
+  parentsCreated  Parent[]  @relation("ParentCreatedBy")
+  parentsUpdated  Parent[]  @relation("ParentUpdatedBy")
+  studentsCreated Student[] @relation("StudentCreatedBy")
+  studentsUpdated Student[] @relation("StudentUpdatedBy")
+  scheduleCreated ScheduleEntry[] @relation("ScheduleCreatedBy")
+  scheduleUpdated ScheduleEntry[] @relation("ScheduleUpdatedBy")
+
+  @@index([organization_id])
+  @@index([archived_at])
+}
+
+model UserRole {
+  user_id String      @db.Uuid
+  user    User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role    UserRoleType
+
+  @@id([user_id, role]) // UNIQUE[user_id, role]
+}
+
+model UserLocation {
+  user_id     String   @db.Uuid
+  location_id String   @db.Uuid
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  location    Location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, location_id]) // UNIQUE[user_id, location_id]
+  @@index([location_id])
+}
+
+model Tutor {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String   @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  user_id         String   @unique @db.Uuid
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  bio_text        String?
+  
+  is_active Boolean @default(true)
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  archived_at     DateTime?
+
+  tutorLocations  TutorLocation[]
+  scheduleEntries ScheduleEntry[]
+
+  @@index([organization_id])
+  @@index([archived_at])
+}
+
+model TutorLocation {
+  tutor_id    String   @db.Uuid
+  location_id String   @db.Uuid
+  tutor       Tutor    @relation(fields: [tutor_id], references: [id], onDelete: Cascade)
+  location    Location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@id([tutor_id, location_id]) // UNIQUE[tutor_id, location_id]
+  @@index([location_id])
+}
+
+model Subject {
+  id              String   @id @default(uuid()) @db.Uuid
+  subject_name    String
+  sort_order      Int?
+  organization_id String?  @db.Uuid // nullable for custom entries
+
+  topics          Topic[]
+  leads           Lead[]
+  products        Product[]
+  studentSubjects StudentSubject[]
+  scheduleEntries ScheduleEntry[]
+
+  @@index([organization_id])
+  @@index([subject_name])
+}
+
+model Topic {
+  id              String   @id @default(uuid()) @db.Uuid
+  subject_id      String   @db.Uuid
+  subject         Subject  @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+
+  topic_name      String
+  sort_order      Int?
+  organization_id String?  @db.Uuid // nullable for custom entries
+
+  leads           Lead[]
+  products        Product[]
+  studentSubjects StudentSubject[]
+  scheduleEntries ScheduleEntry[]
+
+  @@index([subject_id])
+  @@index([organization_id])
+  @@index([topic_name])
+}
+
+model ServiceOffered {
+  id               String   @id @default(uuid()) @db.Uuid
+  location_id      String   @db.Uuid
+  location         Location @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  service_code     String
+  hourly_rate_cents Int
+  display_name     String?
+  description_text String?
+  is_active        Boolean  @default(true)
+
+  scheduleEntries  ScheduleEntry[]
+
+  @@index([location_id])
+  @@index([service_code])
+}
+
+model Product {
+  id                      String      @id @default(uuid()) @db.Uuid
+  organization_id         String      @db.Uuid
+  organization            Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  product_type            ProductType
+  product_name            String
+
+  subject_id              String? @db.Uuid
+  topic_id                String? @db.Uuid
+  subject                 Subject? @relation(fields: [subject_id], references: [id], onDelete: SetNull)
+  topic                   Topic?   @relation(fields: [topic_id], references: [id], onDelete: SetNull)
+
+  service_code            String?
+  product_description_text String?
+  product_syllabus_text   String?
+  languages_offered       String?
+
+  scheduleEntries         ScheduleEntry[]
+
+  @@index([organization_id])
+  @@index([product_type])
+  @@index([product_name])
+}
+
+model Lead {
+  id                 String      @id @default(uuid()) @db.Uuid
+  organization_id    String      @db.Uuid
+  organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  stage              LeadStage   @default(NEW)
+
+  lead_location_id   String?     @db.Uuid
+  leadLocation       Location?   @relation(fields: [lead_location_id], references: [id], onDelete: SetNull)
+
+  source             LeadSource?
+  owner_user_id      String?     @db.Uuid
+  ownerUser          User?       @relation("LeadOwner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+
+  temperature        LeadTemperature?
+  last_contact_method ContactMethod?
+  last_contact_at    DateTime?
+  reason_lost        String?
+
+  parent_first_name  String?
+  parent_last_name   String?
+  parent_address_1   String?
+  parent_address_2   String?
+  parent_city        String?
+  parent_state       String?
+  parent_zip         String?
+  parent_email       String?
+  parent_phone       String?
+  notes              String?
+
+  subject_id         String?     @db.Uuid
+  topic_id           String?     @db.Uuid
+  subject            Subject?    @relation(fields: [subject_id], references: [id], onDelete: SetNull)
+  topic              Topic?      @relation(fields: [topic_id], references: [id], onDelete: SetNull)
+
+  converted_parent_id String?    @db.Uuid
+  convertedParent     Parent?    @relation(fields: [converted_parent_id], references: [id], onDelete: SetNull)
+
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+  archived_at         DateTime?
+
+  created_by_user_id  String?    @db.Uuid
+  updated_by_user_id  String?    @db.Uuid
+  createdBy           User?      @relation("LeadCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy           User?      @relation("LeadUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([stage])
+  @@index([lead_location_id])
+  @@index([owner_user_id])
+  @@index([archived_at])
+}
+
+model Parent {
+  id                String      @id @default(uuid()) @db.Uuid
+  organization_id   String      @db.Uuid
+  organization      Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  parent1_first_name String?
+  parent1_last_name  String?
+  parent1_address_1  String?
+  parent1_address_2  String?
+  parent1_city       String?
+  parent1_state      String?
+  parent1_zip        String?
+  parent1_email      String?
+  parent1_phone      String?
+
+  parent2_first_name String?
+  parent2_last_name  String?
+  parent2_address_1  String?
+  parent2_address_2  String?
+  parent2_city       String?
+  parent2_state      String?
+  parent2_zip        String?
+  parent2_email      String?
+  parent2_phone      String?
+
+  notes              String?
+
+  students           Student[]
+  leadsConverted     Lead[]
+
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+  archived_at        DateTime?
+
+  created_by_user_id String?    @db.Uuid
+  updated_by_user_id String?    @db.Uuid
+  createdBy          User?      @relation("ParentCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy          User?      @relation("ParentUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([archived_at])
+}
+
+model Student {
+  id                  String      @id @default(uuid()) @db.Uuid
+  organization_id     String      @db.Uuid
+  organization        Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  parent_id           String      @db.Uuid
+  parent              Parent      @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  location_id         String      @db.Uuid
+  location            Location    @relation(fields: [location_id], references: [id], onDelete: Restrict)
+
+  first_name          String
+  last_name           String
+  phone               String?
+  email               String?
+  dob                 DateTime?
+  school              String?
+
+  iep                 Boolean? @default(false)
+  allergies           Boolean? @default(false)
+  medical_condition   Boolean? @default(false)
+  behaviorial_issue   Boolean? @default(false)
+  vision_ok           Boolean? @default(true)
+  hearing_ok          Boolean? @default(true)
+  in_person           Boolean? @default(true)
+
+  notes               String?
+
+  subjects            StudentSubject[]
+  scheduleAttendances ScheduleEntryAttendee[]
+
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+  archived_at         DateTime?
+
+  created_by_user_id  String?    @db.Uuid
+  updated_by_user_id  String?    @db.Uuid
+  createdBy           User?      @relation("StudentCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy           User?      @relation("StudentUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([parent_id])
+  @@index([location_id])
+  @@index([archived_at])
+}
+
+model StudentSubject {
+  student_id String @db.Uuid
+  student    Student @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  rank       Int
+  subject_id String @db.Uuid
+  topic_id   String? @db.Uuid
+
+  subject    Subject @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic      Topic?  @relation(fields: [topic_id], references: [id], onDelete: SetNull)
+
+  @@id([student_id, rank]) // UNIQUE[student_id, rank]
+  @@index([subject_id])
+  @@index([topic_id])
+}
+
+model ScheduleEntry {
+  id                    String      @id @default(uuid()) @db.Uuid
+  organization_id       String      @db.Uuid
+  organization          Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  location_id           String      @db.Uuid
+  location              Location    @relation(fields: [location_id], references: [id], onDelete: Restrict)
+
+  service_offered_id    String      @db.Uuid
+  serviceOffered        ServiceOffered @relation(fields: [service_offered_id], references: [id], onDelete: Restrict)
+
+  tutor_id              String      @db.Uuid
+  tutor                 Tutor        @relation(fields: [tutor_id], references: [id], onDelete: Restrict)
+
+  start_at              DateTime
+  product_id            String?     @db.Uuid
+  subject_id            String?     @db.Uuid
+  topic_id              String?     @db.Uuid
+  product               Product?    @relation(fields: [product_id], references: [id], onDelete: SetNull)
+  subject               Subject?    @relation(fields: [subject_id], references: [id], onDelete: SetNull)
+  topic                 Topic?      @relation(fields: [topic_id], references: [id], onDelete: SetNull)
+
+  series_id             String?
+  recurrence_interval   Int?
+  recurrence_days_of_week String?
+  series_end_date       DateTime?
+  occurrence_count      Int?
+
+  duration_minutes      Int
+  include_buffer        Boolean @default(false)
+  end_at                DateTime
+  blocked_end_at         DateTime
+
+  capacity              Int     @default(1)
+  recurrence_type        RecurrenceType @default(AD_HOC)
+
+  hourly_rate_cents_snapshot Int
+
+  resources_text        String?
+
+  rooms                 ScheduleEntryRoom[]
+  attendees             ScheduleEntryAttendee[]
+
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+  archived_at           DateTime?
+
+  created_by_user_id    String?  @db.Uuid
+  updated_by_user_id    String?  @db.Uuid
+  createdBy             User?    @relation("ScheduleCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy             User?    @relation("ScheduleUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([location_id])
+  @@index([tutor_id])
+  @@index([service_offered_id])
+  @@index([start_at])
+  @@index([archived_at])
+  @@index([series_id])
+}
+
+model ScheduleEntryRoom {
+  schedule_entry_id String @db.Uuid
+  room_id           String @db.Uuid
+
+  scheduleEntry     ScheduleEntry @relation(fields: [schedule_entry_id], references: [id], onDelete: Cascade)
+  room              Room          @relation(fields: [room_id], references: [id], onDelete: Restrict)
+
+  @@id([schedule_entry_id, room_id]) // UNIQUE[schedule_entry_id, room_id]
+  @@index([room_id])
+}
+
+model ScheduleEntryAttendee {
+  schedule_entry_id String @db.Uuid
+  student_id        String @db.Uuid
+
+  scheduleEntry     ScheduleEntry @relation(fields: [schedule_entry_id], references: [id], onDelete: Cascade)
+  student           Student       @relation(fields: [student_id], references: [id], onDelete: Restrict)
+
+  @@id([schedule_entry_id, student_id]) // UNIQUE[schedule_entry_id, student_id]
+  @@index([student_id])
+}
+
