@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute } from "@/lib/api";
+import { requireAuth, requireLocationInOrg, requireNotTutor } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
+    requireNotTutor(auth);
+
     let body: any;
     try {
       body = await req.json();
@@ -21,8 +25,7 @@ export async function POST(req: Request) {
     if (!service_code) badRequest("service_code required");
     if (hourly_rate_cents == null) badRequest("hourly_rate_cents required");
 
-    const loc = await prisma.location.findUnique({ where: { id: location_id }, select: { id: true } });
-    if (!loc) badRequest("location not found");
+    await requireLocationInOrg(location_id, auth.organization_id);
 
     const svc = await prisma.serviceOffered.create({
       data: {
@@ -41,8 +44,11 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
     const locationId = new URL(req.url).searchParams.get("location_id");
     if (!locationId) badRequest("location_id required");
+
+    await requireLocationInOrg(locationId, auth.organization_id);
 
     const rows = await prisma.serviceOffered.findMany({
       where: { location_id: locationId },
@@ -52,4 +58,3 @@ export async function GET(req: Request) {
     return NextResponse.json(rows);
   });
 }
-

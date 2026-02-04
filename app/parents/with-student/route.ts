@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute } from "@/lib/api";
+import { requireAuth, requireLocationInOrg } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
+
     let body: any;
     try {
       body = await req.json();
@@ -13,11 +16,11 @@ export async function POST(req: Request) {
       badRequest("Invalid JSON body");
     }
 
-    const organization_id = typeof body.organization_id === "string" ? body.organization_id : null;
-    if (!organization_id) badRequest("organization_id required");
+    const organization_id = auth.organization_id;
 
     const student = body.student ?? null;
     if (!student?.location_id) badRequest("student.location_id is required");
+    await requireLocationInOrg(student.location_id, organization_id);
     if (!student?.first_name || !student?.last_name) {
       badRequest("student.first_name and student.last_name are required");
     }
@@ -68,4 +71,3 @@ export async function POST(req: Request) {
     return NextResponse.json(result, { status: 201 });
   });
 }
-

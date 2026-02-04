@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute } from "@/lib/api";
+import { requireAuth, requireNotTutor, requireOrgMatch } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
+    requireNotTutor(auth);
+
     let body: any;
     try {
       body = await req.json();
@@ -13,10 +17,9 @@ export async function POST(req: Request) {
       badRequest("Invalid JSON body");
     }
 
-    const organization_id = typeof body.organization_id === "string" ? body.organization_id : null;
+    const organization_id = auth.organization_id;
     const location_name = typeof body.location_name === "string" ? body.location_name : null;
 
-    if (!organization_id) badRequest("organization_id is required");
     if (!location_name) badRequest("location_name is required");
 
     const location = await prisma.$transaction(async (tx) => {
@@ -54,8 +57,10 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   return handleRoute(async () => {
-    const organizationId = new URL(req.url).searchParams.get("organization_id");
-    if (!organizationId) badRequest("organization_id is required");
+    const auth = await requireAuth(req);
+    const organizationIdParam = new URL(req.url).searchParams.get("organization_id");
+    requireOrgMatch(organizationIdParam, auth.organization_id);
+    const organizationId = auth.organization_id;
 
     const locations = await prisma.location.findMany({
       where: { organization_id: organizationId },
@@ -65,4 +70,3 @@ export async function GET(req: Request) {
     return NextResponse.json(locations);
   });
 }
-

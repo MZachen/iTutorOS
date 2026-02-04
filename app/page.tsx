@@ -7,7 +7,11 @@ export default function HomePage() {
         <code>/organizations</code>, <code>/leads</code>, and{" "}
         <code>/schedule-entries</code>.
       </p>
+      <div style={{ marginTop: 16, display: "flex", gap: 12 }}>
+        <a href="/signup">Sign up</a>
+        <a href="/login">Log in</a>
+        <a href="/dashboard">Dashboard</a>
+      </div>
     </main>
   );
 }
-

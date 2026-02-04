@@ -1,17 +1,23 @@
 import { NextResponse } from "next/server";
 import { badRequest, handleRoute } from "@/lib/api";
+import { requireAuth, requireLocationInOrg, requireNotTutor } from "@/lib/auth";
 import { scheduleEntryService } from "@/lib/schedule-entry";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
+    requireNotTutor(auth);
+
     let body: any;
     try {
       body = await req.json();
     } catch {
       badRequest("Invalid JSON body");
     }
+
+    body.organization_id = auth.organization_id;
 
     const created = await scheduleEntryService.create(body);
     return NextResponse.json(created, { status: 201 });
@@ -20,9 +26,11 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
     const sp = new URL(req.url).searchParams;
     const location_id = sp.get("location_id");
     if (!location_id) badRequest("location_id is required");
+    await requireLocationInOrg(location_id, auth.organization_id);
 
     const series_id = sp.get("series_id");
     const archivedParam = sp.get("archived");

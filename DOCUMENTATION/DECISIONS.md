@@ -18,7 +18,8 @@ Short, permanent choices so new chat windows can pick up instantly.
 - ScheduleEntry recurrence (V1): support `AD_HOC` + `DAILY` + `WEEKLY`.
 - ScheduleEntry series edits (V1): PATCH endpoints support `scope=THIS|FUTURE|ALL` for "edit this", "this and following", or "all".
 - API architecture: Next.js route handlers in `app/**/route.ts` (no separate NestJS API service).
+- Auth (V1): Supabase Auth via Bearer JWT; server validates with Supabase `/auth/v1/user` and enforces org + role rules.
 
 ## Pending Decisions
-- Auth implementation details (Supabase JWT verification/guards).
+- Production hardening of onboarding/auth (invites, remove public bootstrap endpoints, optional DB RLS).
 - Billing provider/plan gating (Stripe recommended).

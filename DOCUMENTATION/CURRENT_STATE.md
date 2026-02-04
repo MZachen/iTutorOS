@@ -6,12 +6,17 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
 ## Tech Stack (current)
 - Fullstack: Next.js (TypeScript) at repo root (UI + API route handlers)
 - DB: Postgres (Supabase) + Prisma ORM (schema in `prisma/schema.prisma`)
-- Auth: planned (Supabase Auth)
+- Auth: Supabase Auth (email/password + email confirmation) + API guards
 - Legacy: prior NestJS API still exists in `itutoros-api/` (pending deletion; currently locked by another process)
 
 ## What's Done
 - Next.js app runs locally; API endpoints migrated from Nest to Next route handlers.
 - Prisma schema + migrations consolidated in `prisma/`.
+- Supabase Auth guards added to API routes (Bearer JWT required), with org + role enforcement (bootstrap + org create remain public for now).
+- Basic auth UX pages:
+  - `/signup`, `/login`, `/auth/callback`
+  - `/onboarding` (creates org + bootstraps owner)
+  - `/dashboard` (proves calling protected API with Bearer token)
 - ScheduleEntry logic:
   - Tutor + room conflicts use buffer/blocked windows (`blocked_end_at`)
   - Student conflicts use real overlap only (`start_at/end_at`)
@@ -23,7 +28,7 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
 - V1 object completion checklist created: `DOCUMENTATION/OBJECT_CHECKLIST.md`.
 
 ## What's Not Done (blocking "real SaaS")
-- Authentication + authorization (tenant isolation + roles)
+- Production auth hardening (invites, remove public bootstrap, stronger org/role management UI, optional DB RLS)
 - Calendar/dashboard UI for series edits + exceptions (API supports it; UX not built yet)
 - Remaining object routes (e.g., LocationHours, Subject/Topic, Product, Image, fuller CRUD for others)
 - Automated tests (critical flows)
@@ -38,3 +43,4 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
 ## Environment
 - `DATABASE_URL` required
 - `PORT` optional
+- `SUPABASE_URL` and `SUPABASE_ANON_KEY` required for auth

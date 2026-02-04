@@ -16,10 +16,14 @@ export async function POST(req: Request) {
     const organization_id = typeof body.organization_id === "string" ? body.organization_id : null;
     const user_id = typeof body.user_id === "string" ? body.user_id : null;
     const email = typeof body.email === "string" ? body.email : null;
+    const first_name = typeof body.first_name === "string" ? body.first_name.trim() : null;
+    const last_name = typeof body.last_name === "string" ? body.last_name.trim() : null;
 
     if (!organization_id) badRequest("organization_id is required");
     if (!user_id) badRequest("user_id is required");
     if (!email) badRequest("email is required");
+    if (!first_name) badRequest("first_name is required");
+    if (!last_name) badRequest("last_name is required");
 
     const org = await prisma.organization.findUnique({
       where: { id: organization_id },
@@ -34,8 +38,8 @@ export async function POST(req: Request) {
         id: user_id,
         organization_id,
         email,
-        first_name: typeof body.first_name === "string" ? body.first_name : null,
-        last_name: typeof body.last_name === "string" ? body.last_name : null,
+        first_name,
+        last_name,
       },
     });
 
@@ -63,4 +67,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ user, locations_added: locations.length }, { status: 201 });
   });
 }
-

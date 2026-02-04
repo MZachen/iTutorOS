@@ -6,6 +6,8 @@ Definition of "complete" (Option 2):
 - Key validations + business rules enforced in API
 - Tenant scoping + role permissions enforced (once Supabase auth is added)
 
+Note: Auth guards + org scoping are now enforced on all implemented routes.
+
 Status key:
 - DONE
 - PARTIAL
@@ -15,13 +17,13 @@ Status key:
 
 ### Organization
 - DB: DONE
-- API: PARTIAL (`POST /organizations`, `GET /organizations`)
-- Missing: `GET /organizations/:id`, update, archive, auth-scoped access, audit fields
+- API: PARTIAL (`POST /organizations` (public for now), `GET /organizations` (auth-scoped))
+- Missing: `GET /organizations/:id`, update, archive, tighten `POST /organizations`, audit fields
 
 ### Location
 - DB: DONE
-- API: PARTIAL (`POST /locations`, `GET /locations?organization_id=...`)
-- Missing: update, archive, LocationHours management, auth-scoped access, audit fields
+- API: PARTIAL (`POST /locations` (auth), `GET /locations?organization_id=...` (auth))
+- Missing: update, archive, LocationHours management, audit fields
 
 ### LocationHours
 - DB: DONE
@@ -30,43 +32,43 @@ Status key:
 
 ### Room
 - DB: DONE
-- API: PARTIAL (`POST /rooms`, `GET /rooms?location_id=...`)
-- Missing: update, archive (if desired), auth-scoped access
+- API: PARTIAL (`POST /rooms` (auth), `GET /rooms?location_id=...` (auth))
+- Missing: update, archive (if desired)
 
 ### ServiceOffered
 - DB: DONE
-- API: PARTIAL (`POST /services-offered`, `GET /services-offered?location_id=...`)
-- Missing: update, deactivate/activate, auth-scoped access
+- API: PARTIAL (`POST /services-offered` (auth), `GET /services-offered?location_id=...` (auth))
+- Missing: update, deactivate/activate
 
 ### User
 - DB: DONE
-- API: PARTIAL (`POST /users`), no auth yet
-- Missing: auth integration (Supabase), "me" endpoint, safe role assignment rules, org scoping enforcement
+- API: PARTIAL (`POST /users` (auth + role-gated))
+- Missing: "me" endpoint, safe role assignment rules, admin management UX
 
 ### UserRole / UserLocation
 - DB: DONE
-- API: PARTIAL (`GET /user-locations?organization_id=...`)
-- Missing: admin management endpoints (optional for V1), auth-scoped access
+- API: PARTIAL (`GET /user-locations?organization_id=...` (auth))
+- Missing: admin management endpoints (optional for V1)
 
 ### Tutor / TutorLocation
 - DB: DONE
-- API: PARTIAL (`POST /tutors` creates TutorLocation joins)
-- Missing: list/get/update/archive, auth-scoped access, role rules
+- API: PARTIAL (`POST /tutors` (auth) creates TutorLocation joins)
+- Missing: list/get/update/archive, role rules
 
 ### Lead
 - DB: DONE
-- API: PARTIAL (`POST /leads`, `GET /leads?organization_id=...`, `PATCH /leads/:id`)
-- Missing: archive, strict enum validation, auth-scoped access, audit fields
+- API: PARTIAL (`POST /leads`, `GET /leads?organization_id=...`, `PATCH /leads/:id`) (auth)
+- Missing: archive, strict enum validation, audit fields
 
 ### Parent
 - DB: DONE
 - API: PARTIAL (`POST /parents/with-student`)
-- Missing: CRUD endpoints, archive, auth-scoped access, audit fields
+- Missing: CRUD endpoints, archive, audit fields
 
 ### Student
 - DB: DONE
-- API: PARTIAL (`GET /students?location_id=...`)
-- Missing: create/update/archive, subjects join endpoints, auth-scoped access, audit fields
+- API: PARTIAL (`GET /students?location_id=...`) (auth)
+- Missing: create/update/archive, subjects join endpoints, audit fields
 
 ### Subject / Topic
 - DB: DONE
@@ -85,7 +87,7 @@ Status key:
 
 ### ScheduleEntry (+ rooms/attendees)
 - DB: DONE
-- API: DONE (pre-auth)
+- API: DONE (auth enforced)
   - `POST /schedule-entries` (AD_HOC + WEEKLY + DAILY)
   - `GET /schedule-entries?location_id=...` (optional `series_id=...`)
   - `GET /schedule-entries/:id`
@@ -100,6 +102,5 @@ Status key:
   - `PATCH /schedule-entries/:id/service-offered` (supports `scope=THIS|FUTURE|ALL`)
   - `PATCH /schedule-entries/:id/capacity` (supports `scope=THIS|FUTURE|ALL`)
 - Missing:
-  - auth + role rules (tutors cannot create/edit schedule entries)
   - audit fields population
   - calendar/dashboard UI for series edits + exceptions

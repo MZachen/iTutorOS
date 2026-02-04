@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute } from "@/lib/api";
+import { requireAuth, requireLocationInOrg, requireOrgMatch } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
+
     let body: any;
     try {
       body = await req.json();
@@ -13,8 +16,11 @@ export async function POST(req: Request) {
       badRequest("Invalid JSON body");
     }
 
-    const organization_id = typeof body.organization_id === "string" ? body.organization_id : null;
-    if (!organization_id) badRequest("organization_id required");
+    const organization_id = auth.organization_id;
+
+    if (typeof body.lead_location_id === "string") {
+      await requireLocationInOrg(body.lead_location_id, organization_id);
+    }
 
     const lead = await prisma.lead.create({
       data: {
@@ -51,8 +57,10 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   return handleRoute(async () => {
-    const organizationId = new URL(req.url).searchParams.get("organization_id");
-    if (!organizationId) badRequest("organization_id required");
+    const auth = await requireAuth(req);
+    const organizationIdParam = new URL(req.url).searchParams.get("organization_id");
+    requireOrgMatch(organizationIdParam, auth.organization_id);
+    const organizationId = auth.organization_id;
 
     const leads = await prisma.lead.findMany({
       where: { organization_id: organizationId, archived_at: null },
@@ -62,4 +70,3 @@ export async function GET(req: Request) {
     return NextResponse.json(leads);
   });
 }
-

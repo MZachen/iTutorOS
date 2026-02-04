@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute } from "@/lib/api";
+import { requireAuth, requireLocationInOrg } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   return handleRoute(async () => {
+    const auth = await requireAuth(req);
     const { id } = await params;
     if (!id) badRequest("lead id required");
 
@@ -44,6 +46,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     for (const k of allowed) {
       if (Object.prototype.hasOwnProperty.call(body, k)) data[k] = body[k];
+    }
+
+    const existing = await prisma.lead.findUnique({
+      where: { id },
+      select: { organization_id: true },
+    });
+    if (!existing) badRequest("lead not found");
+    if (existing.organization_id !== auth.organization_id) {
+      badRequest("lead does not belong to your organization");
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "lead_location_id") && typeof body.lead_location_id === "string") {
+      await requireLocationInOrg(body.lead_location_id, auth.organization_id);
     }
 
     const updated = await prisma.lead.update({

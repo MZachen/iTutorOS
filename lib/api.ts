@@ -25,6 +25,18 @@ export function conflict(body: Record<string, unknown>): never {
   throw new ApiError(409, body);
 }
 
+export function unauthorized(message: string): never {
+  throw new ApiError(401, { message });
+}
+
+export function forbidden(message: string): never {
+  throw new ApiError(403, { message });
+}
+
+export function internalError(message: string): never {
+  throw new ApiError(500, { message });
+}
+
 export async function handleRoute(handler: () => Promise<Response>) {
   try {
     return await handler();
