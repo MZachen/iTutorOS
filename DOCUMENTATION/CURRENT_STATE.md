@@ -17,6 +17,8 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
   - `/signup`, `/login`, `/auth/callback`
   - `/onboarding` (creates org + bootstraps owner)
   - `/dashboard` (proves calling protected API with Bearer token)
+- Organization Settings UX page:
+  - `/settings/organization` (edit organization profile fields after onboarding)
 - ScheduleEntry logic:
   - Tutor + room conflicts use buffer/blocked windows (`blocked_end_at`)
   - Student conflicts use real overlap only (`start_at/end_at`)
@@ -35,10 +37,16 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
 - Dashboard UI + public website UI
 - Billing + deployment pipeline
 
+## Roadmap (near-term)
+- A) Organization Settings page: DONE
+- B) Setup wizard after onboarding (create first Location, Room, Service Offered, Tutor)
+- C) Cleanup: remove legacy NestJS artifacts in `itutoros-api/` and any references
+
 ## What's Next (recommended order)
-1) Add Supabase Auth + org/role guards to every API route
-2) Implement the next missing object routes per `DOCUMENTATION/OBJECT_CHECKLIST.md`
-3) Start the dashboard UX (onboarding -> locations/services/rooms/tutors -> CRM -> calendar)
+1) Do roadmap B (setup wizard)
+2) Do roadmap C (remove `itutoros-api/`)
+3) Continue implementing remaining objects per `DOCUMENTATION/OBJECT_CHECKLIST.md`
+4) Build the real dashboard UX (locations/services/rooms/tutors -> CRM -> calendar)
 
 ## Environment
 - `DATABASE_URL` required

@@ -17,13 +17,14 @@ Status key:
 
 ### Organization
 - DB: DONE
-- API: PARTIAL (`POST /organizations` (public for now), `GET /organizations` (auth-scoped))
-- Missing: `GET /organizations/:id`, update, archive, tighten `POST /organizations`, audit fields
+- API: PARTIAL (`POST /organizations` (public for now), `GET /organizations` (auth-scoped), `PATCH /organizations` (auth))
+- UX: PARTIAL (`/onboarding`, `/settings/organization`)
+- Missing: `GET /organizations/:id`, archive, tighten `POST /organizations`, audit fields
 
 ### Location
 - DB: DONE
 - API: PARTIAL (`POST /locations` (auth), `GET /locations?organization_id=...` (auth))
-- Missing: update, archive, LocationHours management, audit fields
+- Missing: update, archive, LocationHours management, audit fields, setup wizard UX
 
 ### LocationHours
 - DB: DONE
@@ -33,12 +34,12 @@ Status key:
 ### Room
 - DB: DONE
 - API: PARTIAL (`POST /rooms` (auth), `GET /rooms?location_id=...` (auth))
-- Missing: update, archive (if desired)
+- Missing: update, archive (if desired), setup wizard UX
 
 ### ServiceOffered
 - DB: DONE
 - API: PARTIAL (`POST /services-offered` (auth), `GET /services-offered?location_id=...` (auth))
-- Missing: update, deactivate/activate
+- Missing: update, deactivate/activate, setup wizard UX
 
 ### User
 - DB: DONE
@@ -53,7 +54,7 @@ Status key:
 ### Tutor / TutorLocation
 - DB: DONE
 - API: PARTIAL (`POST /tutors` (auth) creates TutorLocation joins)
-- Missing: list/get/update/archive, role rules
+- Missing: list/get/update/archive, role rules, setup wizard UX
 
 ### Lead
 - DB: DONE

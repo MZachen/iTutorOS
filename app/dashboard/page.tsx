@@ -53,6 +53,7 @@ export default function DashboardPage() {
       <p style={{ marginTop: 8 }}>{status}</p>
       <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
         <a href="/">Home</a>
+        <a href="/settings/organization">Organization settings</a>
         <button onClick={onLogout} style={{ padding: "6px 10px" }}>
           Log out
         </button>
@@ -65,4 +66,3 @@ export default function DashboardPage() {
     </main>
   );
 }
-
