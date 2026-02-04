@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import BrandLogo from "@/app/_components/BrandLogo";
 
 async function userIsRegistered(accessToken: string): Promise<boolean> {
   const res = await fetch("/organizations", {
@@ -68,22 +69,9 @@ export default function LoginPage() {
         backgroundSize: "auto",
       }}
     >
-      <a
-        href="/"
-        style={{
-          position: "absolute",
-          top: 16,
-          left: 16,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 10,
-          textDecoration: "none",
-          color: "#111",
-        }}
-      >
-        <img src="/logo1.png" alt="iTutorOS" width={32} height={32} style={{ display: "block" }} />
-        <span style={{ fontWeight: 600 }}>iTutorOS</span>
-      </a>
+      <div style={{ position: "absolute", top: 16, left: 16 }}>
+        <BrandLogo />
+      </div>
 
       <div
         style={{

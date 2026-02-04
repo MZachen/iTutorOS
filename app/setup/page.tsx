@@ -3,22 +3,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import BrandLogo from "@/app/_components/BrandLogo";
 
 type CreatedLocation = { id: string; location_name: string; is_virtual: boolean };
 type CreatedRoom = { id: string; room_name: string; location_id: string };
 type CreatedService = { id: string; service_code: string; hourly_rate_cents: number; location_id: string };
 type CreatedTutor = { id: string; user_id: string; organization_id: string };
+type CreatedSubject = { id: string; subject_name: string };
+type CreatedTopic = { id: string; topic_name: string; subject_id: string };
 
-type Step = "LOCATION" | "ROOMS" | "SERVICES" | "DONE";
+type Step = "LOCATION" | "ROOMS" | "SERVICES" | "SUBJECTS_TOPICS" | "DONE";
 
 type DraftRoom = { room_name: string; room_number: string };
-type ServiceOption = { key: string; label: string };
-type DraftService = { key: string; display_name: string; service_code: string; hourly_rate_dollars: number };
+type DraftService = {
+  id: string;
+  service_name: string;
+  hourly_rate_dollars: number;
+  checked: boolean;
+  is_custom: boolean;
+};
+
+type DraftTopic = { id: string; topic_name: string; checked: boolean };
+type DraftSubject = { id: string; subject_name: string; checked: boolean; topics: DraftTopic[] };
 
 type SetupResult = {
   location: CreatedLocation;
   rooms: CreatedRoom[];
   services: CreatedService[];
+  subjects: CreatedSubject[];
+  topics: CreatedTopic[];
   tutor: CreatedTutor | null;
 };
 
@@ -75,20 +88,152 @@ const US_STATES = [
   "WY",
 ];
 
-const SERVICE_OPTIONS: ServiceOption[] = [
-  { key: "GENERAL_TUTORING", label: "General Tutoring" },
-  { key: "HOMEWORK_HELP", label: "Homework Help" },
-  { key: "MATH", label: "Math" },
-  { key: "READING", label: "Reading / ELA" },
-  { key: "WRITING", label: "Writing" },
-  { key: "SCIENCE", label: "Science" },
-  { key: "SAT_PREP", label: "SAT Prep" },
-  { key: "ACT_PREP", label: "ACT Prep" },
-  { key: "TEST_PREP", label: "Other Test Prep" },
-  { key: "COLLEGE_ESSAY", label: "College Essay" },
-  { key: "STUDY_SKILLS", label: "Study Skills" },
-  { key: "COLLEGE_COUNSELING", label: "College Counseling" },
+const DEFAULT_SERVICE_NAMES = [
+  "Private Elementary School Tutoring",
+  "Private Middle School Tutoring",
+  "Private High School Tutoring",
+  "Private Test Prep Tutoring",
+  "Semi-private Elementary School Tutoring",
+  "Semi-private Middle School Tutoring",
+  "Semi-private High School Tutoring",
+  "Semi-private Test Prep Tutoring",
+  "Group Elementary School Classes",
+  "Group Middle School Classes",
+  "Group High School Classes",
+  "Group Test Prep Classes",
+  "Elementary School Workshops",
+  "Middle School Workshops",
+  "High School Workshops",
+  "Test Prep Workshops",
+  "Elementary School Camps",
+  "Middle School Camps",
+  "High School Camps",
+  "Test Prep Camps",
+  "Free Workshops",
+  "Assessments",
+  "Free/Comped Private Tutoring Sessions",
 ];
+
+const DEFAULT_SUBJECTS: { subject_name: string; topics: string[] }[] = [
+  {
+    subject_name: "Math",
+    topics: [
+      "Arithmetic (add, subtract, multiply, divide)",
+      "Pre-Algebra",
+      "Algebra I",
+      "Algebra II",
+      "Geometry",
+      "Trigonometry",
+      "Pre-Calculus",
+      "Calculus (limits, derivatives, integrals)",
+      "Statistics",
+      "Probability",
+      "SAT / ACT Math",
+      "Common Core Math",
+    ],
+  },
+  {
+    subject_name: "Reading & Language Arts",
+    topics: [
+      "Reading (phonics, comprehension, fluency)",
+      "Writing (grammar, sentence structure, essays)",
+      "Spelling",
+      "Vocabulary",
+      "Literature",
+      "ESL Reading/Writing",
+    ],
+  },
+  {
+    subject_name: "Science",
+    topics: [
+      "General Science",
+      "Biology",
+      "Chemistry",
+      "Physics",
+      "Earth Science",
+      "Environmental Science",
+      "Anatomy & Physiology",
+      "AP Science",
+    ],
+  },
+  {
+    subject_name: "Social Studies",
+    topics: ["U.S. History", "World History", "Geography", "Civics / Government", "Economics", "AP History"],
+  },
+  {
+    subject_name: "Test Prep",
+    topics: ["SAT", "ACT", "PSAT", "ISEE", "SSAT", "SHSAT", "Regents Exams", "State Assessments", "AP Exams"],
+  },
+  {
+    subject_name: "College & Career Prep",
+    topics: [
+      "College Essays",
+      "College Applications",
+      "Study Skills",
+      "Note-Taking",
+      "Test Anxiety",
+      "Career Readiness",
+    ],
+  },
+  {
+    subject_name: "Foreign Languages",
+    topics: [
+      "Spanish",
+      "French",
+      "Italian",
+      "German",
+      "Mandarin",
+      "Cantonese",
+      "Japanese",
+      "Korean",
+      "Arabic",
+      "Hebrew",
+      "Portuguese",
+    ],
+  },
+  { subject_name: "ESL / ELL", topics: ["Speaking", "Reading", "Writing", "Grammar", "Conversation"] },
+  {
+    subject_name: "Special Education & Academic Support",
+    topics: [
+      "Special Education",
+      "IEP Support",
+      "504 Support",
+      "Learning Differences",
+      "ADHD Support",
+      "Executive Functioning",
+      "Organization & Time Management",
+    ],
+  },
+  {
+    subject_name: "Computer & Technology",
+    topics: [
+      "Computer Basics",
+      "Microsoft Word / Excel / PowerPoint",
+      "Google Workspace",
+      "Coding (Python, JavaScript, Java, Scratch)",
+      "Web Development",
+      "Data Analysis",
+      "Computer Science (K–12)",
+    ],
+  },
+  {
+    subject_name: "Business & Finance",
+    topics: ["Accounting", "Economics", "Personal Finance", "Entrepreneurship", "Excel for Business"],
+  },
+  {
+    subject_name: "Arts & Music",
+    topics: ["Art (drawing, painting)", "Music (piano, guitar, violin, voice)", "Music Theory", "Drama / Theater"],
+  },
+  {
+    subject_name: "Early Childhood / Elementary",
+    topics: ["Kindergarten Readiness", "Early Literacy", "Early Math", "General Homework Help"],
+  },
+];
+
+function makeId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2);
+}
 
 function toServiceCode(value: string) {
   const raw = value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_");
@@ -128,10 +273,30 @@ export default function SetupPage() {
   // Rooms (physical only)
   const [rooms, setRooms] = useState<DraftRoom[]>([{ room_name: "Room 1", room_number: "" }]);
 
-  // Services
-  const [services, setServices] = useState<DraftService[]>([
-    { key: "GENERAL_TUTORING", display_name: "General Tutoring", service_code: "GENERAL_TUTORING", hourly_rate_dollars: 100 },
-  ]);
+  // Services (pricing lives at the service level)
+  const [services, setServices] = useState<DraftService[]>(() =>
+    DEFAULT_SERVICE_NAMES.map((name) => ({
+      id: makeId(),
+      service_name: name,
+      hourly_rate_dollars: 100,
+      checked: false,
+      is_custom: false,
+    })),
+  );
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServicePrice, setNewServicePrice] = useState<number>(100);
+
+  // Subjects & topics
+  const [subjects, setSubjects] = useState<DraftSubject[]>(() =>
+    DEFAULT_SUBJECTS.map((s) => ({
+      id: makeId(),
+      subject_name: s.subject_name,
+      checked: false,
+      topics: s.topics.map((t) => ({ id: makeId(), topic_name: t, checked: false })),
+    })),
+  );
+  const [newSubjectName, setNewSubjectName] = useState("");
+  const [newTopicDrafts, setNewTopicDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -151,19 +316,68 @@ export default function SetupPage() {
     });
   }, [router, supabase]);
 
-  function toggleService(option: ServiceOption) {
-    const exists = services.some((s) => s.key === option.key);
-    if (exists) {
-      setServices((prev) => prev.filter((s) => s.key !== option.key));
+  function addCustomService() {
+    setStatus(null);
+    const trimmed = newServiceName.trim();
+    if (!trimmed) {
+      setStatus("Custom service name is required.");
       return;
     }
 
-    const existingCodes = new Set(services.map((s) => toServiceCode(s.service_code)));
-    const code = makeUniqueCode(toServiceCode(option.label), existingCodes);
     setServices((prev) => [
       ...prev,
-      { key: option.key, display_name: option.label, service_code: code, hourly_rate_dollars: 100 },
+      {
+        id: makeId(),
+        service_name: trimmed,
+        hourly_rate_dollars: Number(newServicePrice) || 0,
+        checked: true,
+        is_custom: true,
+      },
     ]);
+
+    setNewServiceName("");
+    setNewServicePrice(100);
+  }
+
+  function addSubject() {
+    setStatus(null);
+    const trimmed = newSubjectName.trim();
+    if (!trimmed) {
+      setStatus("Subject name is required.");
+      return;
+    }
+
+    setSubjects((prev) => [
+      ...prev,
+      {
+        id: makeId(),
+        subject_name: trimmed,
+        checked: true,
+        topics: [],
+      },
+    ]);
+    setNewSubjectName("");
+  }
+
+  function addTopic(subjectId: string) {
+    setStatus(null);
+    const draft = (newTopicDrafts[subjectId] ?? "").trim();
+    if (!draft) {
+      setStatus("Topic name is required.");
+      return;
+    }
+
+    setSubjects((prev) =>
+      prev.map((s) => {
+        if (s.id !== subjectId) return s;
+        return {
+          ...s,
+          checked: true,
+          topics: [...s.topics, { id: makeId(), topic_name: draft, checked: true }],
+        };
+      }),
+    );
+    setNewTopicDrafts((prev) => ({ ...prev, [subjectId]: "" }));
   }
 
   function goNext() {
@@ -188,6 +402,21 @@ export default function SetupPage() {
         return;
       }
       setStep("SERVICES");
+      return;
+    }
+
+    if (step === "SERVICES") {
+      const selected = services.filter((s) => s.checked);
+      if (selected.length === 0) {
+        setStatus("Please select at least one service and enter a price.");
+        return;
+      }
+      const invalid = selected.find((s) => !Number.isFinite(s.hourly_rate_dollars) || Number(s.hourly_rate_dollars) < 0);
+      if (invalid) {
+        setStatus("Please enter a valid hourly rate (0 or more) for each selected service.");
+        return;
+      }
+      setStep("SUBJECTS_TOPICS");
     }
   }
 
@@ -195,6 +424,7 @@ export default function SetupPage() {
     setStatus(null);
     if (step === "ROOMS") setStep("LOCATION");
     else if (step === "SERVICES") setStep(isVirtual ? "LOCATION" : "ROOMS");
+    else if (step === "SUBJECTS_TOPICS") setStep("SERVICES");
   }
 
   function startAnotherLocation() {
@@ -207,7 +437,27 @@ export default function SetupPage() {
     setLocationState("");
     setLocationZip("");
     setRooms([{ room_name: "Room 1", room_number: "" }]);
-    setServices([{ key: "GENERAL_TUTORING", display_name: "General Tutoring", service_code: "GENERAL_TUTORING", hourly_rate_dollars: 100 }]);
+    setServices(
+      DEFAULT_SERVICE_NAMES.map((name) => ({
+        id: makeId(),
+        service_name: name,
+        hourly_rate_dollars: 100,
+        checked: false,
+        is_custom: false,
+      })),
+    );
+    setNewServiceName("");
+    setNewServicePrice(100);
+    setSubjects(
+      DEFAULT_SUBJECTS.map((s) => ({
+        id: makeId(),
+        subject_name: s.subject_name,
+        checked: false,
+        topics: s.topics.map((t) => ({ id: makeId(), topic_name: t, checked: false })),
+      })),
+    );
+    setNewSubjectName("");
+    setNewTopicDrafts({});
     setLastResult(null);
     setStatus(null);
     setStep("LOCATION");
@@ -233,8 +483,27 @@ export default function SetupPage() {
       }
     }
 
-    if (services.length === 0) {
-      setStatus("Please select at least one service offered.");
+    const selectedServices = services.filter((s) => s.checked);
+    if (selectedServices.length === 0) {
+      setStatus("Please select at least one service and enter a price.");
+      return;
+    }
+    const invalidService = selectedServices.find(
+      (s) => !Number.isFinite(s.hourly_rate_dollars) || Number(s.hourly_rate_dollars) < 0,
+    );
+    if (invalidService) {
+      setStatus("Please enter a valid hourly rate (0 or more) for each selected service.");
+      return;
+    }
+
+    const selectedSubjects = subjects.filter((s) => s.checked);
+    if (selectedSubjects.length === 0) {
+      setStatus("Please select at least one subject.");
+      return;
+    }
+    const missingTopics = selectedSubjects.find((s) => s.topics.some((t) => t.checked) === false);
+    if (missingTopics) {
+      setStatus(`Please select at least one topic for "${missingTopics.subject_name}", or uncheck that subject.`);
       return;
     }
 
@@ -298,8 +567,8 @@ export default function SetupPage() {
       setStatus("Creating services offered...");
       const createdServices: CreatedService[] = [];
       const usedCodes = new Set<string>();
-      for (const s of services) {
-        const code = makeUniqueCode(s.service_code, usedCodes);
+      for (const s of selectedServices) {
+        const code = makeUniqueCode(s.service_name, usedCodes);
         usedCodes.add(code);
         const cents = Math.round(Number(s.hourly_rate_dollars) * 100);
 
@@ -309,7 +578,7 @@ export default function SetupPage() {
           body: JSON.stringify({
             location_id: location.id,
             service_code: code,
-            display_name: s.display_name.trim(),
+            display_name: s.service_name.trim(),
             hourly_rate_cents: cents,
             is_active: true,
           }),
@@ -339,10 +608,47 @@ export default function SetupPage() {
       }
       const createdTutor = ((await tutorRes.json()) as { tutor: CreatedTutor }).tutor;
 
+      setStatus("Saving subjects and topics...");
+      const createdSubjects: CreatedSubject[] = [];
+      const createdTopics: CreatedTopic[] = [];
+      for (const subject of selectedSubjects) {
+        const subjRes = await fetch("/subjects", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ subject_name: subject.subject_name.trim() }),
+        });
+        if (!subjRes.ok) {
+          const msg = await subjRes.text();
+          setStatus(`Subject create failed (${subjRes.status}): ${msg}`);
+          return;
+        }
+        const createdSubject = (await subjRes.json()) as CreatedSubject;
+        createdSubjects.push(createdSubject);
+
+        for (const topic of subject.topics.filter((t) => t.checked)) {
+          const topicRes = await fetch("/topics", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              subject_id: createdSubject.id,
+              topic_name: topic.topic_name.trim(),
+            }),
+          });
+          if (!topicRes.ok) {
+            const msg = await topicRes.text();
+            setStatus(`Topic create failed (${topicRes.status}): ${msg}`);
+            return;
+          }
+          createdTopics.push((await topicRes.json()) as CreatedTopic);
+        }
+      }
+
       const result: SetupResult = {
         location,
         rooms: createdRooms,
         services: createdServices,
+        subjects: createdSubjects,
+        topics: createdTopics,
         tutor: createdTutor,
       };
       setResults((prev) => [...prev, result]);
@@ -356,8 +662,19 @@ export default function SetupPage() {
     }
   }
 
-  const steps: Step[] = isVirtual ? ["LOCATION", "SERVICES", "DONE"] : ["LOCATION", "ROOMS", "SERVICES", "DONE"];
-  const stepLabel = step === "LOCATION" ? "Location" : step === "ROOMS" ? "Rooms" : step === "SERVICES" ? "Services Offered" : "Done";
+  const steps: Step[] = isVirtual
+    ? ["LOCATION", "SERVICES", "SUBJECTS_TOPICS", "DONE"]
+    : ["LOCATION", "ROOMS", "SERVICES", "SUBJECTS_TOPICS", "DONE"];
+  const stepLabel =
+    step === "LOCATION"
+      ? "Location"
+      : step === "ROOMS"
+        ? "Rooms"
+        : step === "SERVICES"
+          ? "Services Offered"
+          : step === "SUBJECTS_TOPICS"
+            ? "Subjects & Topics"
+            : "Done";
   const stepNumber = Math.max(1, steps.indexOf(step) + 1);
   const stepTotal = steps.length;
 
@@ -365,20 +682,24 @@ export default function SetupPage() {
     <main
       style={{
         minHeight: "100vh",
+        position: "relative",
         padding: 24,
         display: "grid",
         placeItems: "center",
-        background: "#f6f7fb",
+        background: "#ffff99",
         fontFamily: "system-ui, sans-serif",
       }}
     >
+      <div style={{ position: "absolute", top: 16, left: 16 }}>
+        <BrandLogo href="/" />
+      </div>
       <div
         style={{
           width: "100%",
-          maxWidth: 900,
-          background: "white",
+          maxWidth: 1000,
+          background: "rgba(255,255,255,0.96)",
           border: "1px solid #e6e6e6",
-          boxShadow: "0 16px 40px rgba(0,0,0,0.08)",
+          boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
           padding: 24,
         }}
       >
@@ -456,8 +777,8 @@ export default function SetupPage() {
                     />
                   </label>
 
-                  <div style={{ display: "flex", gap: 12, alignItems: "end" }}>
-                    <label style={{ display: "grid", gap: 6, flex: 1 }}>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                    <label style={{ display: "grid", gap: 6, flex: "2 1 240px" }}>
                       <div>City</div>
                       <input
                         value={locationCity}
@@ -477,7 +798,7 @@ export default function SetupPage() {
                         ))}
                       </select>
                     </label>
-                    <label style={{ display: "grid", gap: 6, width: 140 }}>
+                    <label style={{ display: "grid", gap: 6, width: 160 }}>
                       <div>ZIP</div>
                       <input
                         value={locationZip}
@@ -565,99 +886,196 @@ export default function SetupPage() {
             <div style={{ display: "grid", gap: 12 }}>
               <h2 style={{ margin: 0, fontSize: 18 }}>Services Offered</h2>
               <p style={{ margin: 0, color: "#333" }}>
-                Select everything you offer (services/topics). Then set a default hourly rate for each.
-                You can change pricing later, and you can offer different services at different locations.
+                Check every service you offer, and set a price for each. (You can change these later.)
               </p>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-                {SERVICE_OPTIONS.map((opt) => {
-                  const checked = services.some((s) => s.key === opt.key);
-                  return (
-                    <label
-                      key={opt.key}
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "center",
-                        padding: 10,
-                        border: "1px solid #e6e6e6",
-                        background: checked ? "#f2f6ff" : "white",
-                        cursor: "pointer",
-                        userSelect: "none",
+              <div style={{ display: "grid", gap: 8 }}>
+                {services.map((s) => (
+                  <div
+                    key={s.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "32px 1fr 180px 90px",
+                      gap: 12,
+                      alignItems: "center",
+                      padding: 10,
+                      border: "1px solid #e6e6e6",
+                      background: s.checked ? "#f2f6ff" : "#fafafa",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={s.checked}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setServices((prev) => prev.map((x) => (x.id === s.id ? { ...x, checked } : x)));
                       }}
-                    >
-                      <input type="checkbox" checked={checked} onChange={() => toggleService(opt)} />
-                      <span>{opt.label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-
-              {services.length ? (
-                <div style={{ marginTop: 8, display: "grid", gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: 16 }}>Pricing</h3>
-                  {services.map((s, idx) => (
-                    <div
-                      key={s.key}
-                      style={{
-                        display: "flex",
-                        gap: 12,
-                        alignItems: "end",
-                        padding: 12,
-                        border: "1px solid #e6e6e6",
-                        background: "#fafafa",
+                    />
+                    <div style={{ fontWeight: 500 }}>{s.service_name}</div>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={s.hourly_rate_dollars}
+                      disabled={!s.checked}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        setServices((prev) =>
+                          prev.map((x) => (x.id === s.id ? { ...x, hourly_rate_dollars: value } : x)),
+                        );
                       }}
-                    >
-                      <label style={{ display: "grid", gap: 6, flex: 2 }}>
-                        <div>Service name</div>
-                        <input
-                          required
-                          value={s.display_name}
-                          onChange={(e) =>
-                            setServices((prev) => prev.map((x, i) => (i === idx ? { ...x, display_name: e.target.value } : x)))
-                          }
-                          style={{ padding: 10 }}
-                        />
-                      </label>
-
-                      <label style={{ display: "grid", gap: 6, flex: 1 }}>
-                        <div>Service code</div>
-                        <input
-                          required
-                          value={s.service_code}
-                          onChange={(e) =>
-                            setServices((prev) => prev.map((x, i) => (i === idx ? { ...x, service_code: e.target.value } : x)))
-                          }
-                          style={{ padding: 10 }}
-                        />
-                      </label>
-
-                      <label style={{ display: "grid", gap: 6, width: 180 }}>
-                        <div>Hourly rate (USD)</div>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          required
-                          value={s.hourly_rate_dollars}
-                          onChange={(e) =>
-                            setServices((prev) =>
-                              prev.map((x, i) => (i === idx ? { ...x, hourly_rate_dollars: Number(e.target.value) } : x)),
-                            )
-                          }
-                          style={{ padding: 10 }}
-                        />
-                      </label>
-
-                      <button type="button" onClick={() => setServices((prev) => prev.filter((x) => x.key !== s.key))} style={{ padding: "10px 12px" }}>
+                      style={{ padding: 10 }}
+                      placeholder="Price (USD)"
+                    />
+                    {s.is_custom ? (
+                      <button
+                        type="button"
+                        onClick={() => setServices((prev) => prev.filter((x) => x.id !== s.id))}
+                        style={{ padding: "8px 10px" }}
+                      >
                         Remove
                       </button>
-                    </div>
-                  ))}
+                    ) : (
+                      <div />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 12,
+                  border: "1px solid #e6e6e6",
+                  background: "white",
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: 16 }}>Add a custom service</h3>
+                <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                  <label style={{ display: "grid", gap: 6, flex: "2 1 260px" }}>
+                    <div>Service name</div>
+                    <input value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} style={{ padding: 10 }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 6, width: 180 }}>
+                    <div>Price (USD)</div>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={newServicePrice}
+                      onChange={(e) => setNewServicePrice(Number(e.target.value))}
+                      style={{ padding: 10 }}
+                    />
+                  </label>
+                  <button type="button" onClick={addCustomService} style={{ padding: 10 }}>
+                    Add service
+                  </button>
                 </div>
-              ) : (
-                <p style={{ margin: 0, color: "#333" }}>Select at least one service to continue.</p>
-              )}
+              </div>
+            </div>
+          ) : null}
+
+          {step === "SUBJECTS_TOPICS" ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 18 }}>Subjects &amp; Topics Offered</h2>
+              <p style={{ margin: 0, color: "#333" }}>
+                Select the subjects you teach. Then choose the topics you want to offer under each subject.
+              </p>
+
+              <div style={{ display: "grid", gap: 12 }}>
+                {subjects.map((s) => (
+                  <div
+                    key={s.id}
+                    style={{
+                      border: "1px solid #e6e6e6",
+                      background: "#fafafa",
+                      padding: 12,
+                    }}
+                  >
+                    <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={s.checked}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setSubjects((prev) =>
+                            prev.map((x) =>
+                              x.id === s.id
+                                ? {
+                                    ...x,
+                                    checked,
+                                    topics: checked ? x.topics : x.topics.map((t) => ({ ...t, checked: false })),
+                                  }
+                                : x,
+                            ),
+                          );
+                        }}
+                      />
+                      <strong>{s.subject_name}</strong>
+                    </label>
+
+                    <div style={{ marginTop: 8, display: "grid", gap: 6, opacity: s.checked ? 1 : 0.5 }}>
+                      {s.topics.map((t) => (
+                        <label key={t.id} style={{ display: "flex", gap: 10, alignItems: "center", marginLeft: 22 }}>
+                          <input
+                            type="checkbox"
+                            checked={t.checked}
+                            disabled={!s.checked}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setSubjects((prev) =>
+                                prev.map((x) =>
+                                  x.id === s.id
+                                    ? {
+                                        ...x,
+                                        topics: x.topics.map((y) => (y.id === t.id ? { ...y, checked } : y)),
+                                      }
+                                    : x,
+                                ),
+                              );
+                            }}
+                          />
+                          <span>{t.topic_name}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                      <label style={{ display: "grid", gap: 6, flex: "1 1 260px" }}>
+                        <div>Add a topic</div>
+                        <input
+                          value={newTopicDrafts[s.id] ?? ""}
+                          onChange={(e) => setNewTopicDrafts((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                          style={{ padding: 10 }}
+                        />
+                      </label>
+                      <button type="button" onClick={() => addTopic(s.id)} style={{ padding: 10 }}>
+                        Add topic
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 12,
+                  border: "1px solid #e6e6e6",
+                  background: "white",
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: 16 }}>Add a subject</h3>
+                <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                  <label style={{ display: "grid", gap: 6, flex: "1 1 260px" }}>
+                    <div>Subject name</div>
+                    <input value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} style={{ padding: 10 }} />
+                  </label>
+                  <button type="button" onClick={addSubject} style={{ padding: 10 }}>
+                    Add subject
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -681,6 +1099,12 @@ export default function SetupPage() {
                     ) : null}
                     <div>
                       <strong>Services:</strong> {lastResult.services.length}
+                    </div>
+                    <div>
+                      <strong>Subjects:</strong> {lastResult.subjects.length}
+                    </div>
+                    <div>
+                      <strong>Topics:</strong> {lastResult.topics.length}
                     </div>
                   </div>
 
@@ -716,11 +1140,13 @@ export default function SetupPage() {
             </>
           ) : (
             <>
-              <button type="button" disabled={busy || step === "LOCATION"} onClick={goPrev} style={{ padding: 10 }}>
-                Previous
-              </button>
+              {step === "LOCATION" ? <div /> : (
+                <button type="button" disabled={busy} onClick={goPrev} style={{ padding: 10 }}>
+                  Previous
+                </button>
+              )}
 
-              {step === "SERVICES" ? (
+              {step === "SUBJECTS_TOPICS" ? (
                 <button type="button" disabled={busy} onClick={finishLocation} style={{ padding: 10 }}>
                   {busy ? "Creating..." : "Finish this location"}
                 </button>

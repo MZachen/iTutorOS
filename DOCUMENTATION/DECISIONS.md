@@ -22,6 +22,7 @@ Short, permanent choices so new chat windows can pick up instantly.
 - ScheduleEntry series edits (V1): PATCH endpoints support `scope=THIS|FUTURE|ALL` for "edit this", "this and following", or "all".
 - API architecture: Next.js route handlers in `app/**/route.ts` (no separate NestJS API service).
 - Auth (V1): Supabase Auth via Bearer JWT; server validates with Supabase `/auth/v1/user` and enforces org + role rules.
+- Landing UX (V1): `/` redirects to `/dashboard` if logged in; otherwise `/signup` for first-time visitors and `/login` for returning visitors (cookie-based).
 - Organization profile (V1): require business phone + address line 1/city/state/zip; address line 2 is optional.
 
 ## Pending Decisions

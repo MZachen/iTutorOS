@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import BrandLogo from "@/app/_components/BrandLogo";
 
 export default function OnboardingPage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -10,7 +11,6 @@ export default function OnboardingPage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const [businessName, setBusinessName] = useState("My Tutoring Business");
   const timezones = useMemo(() => {
     const supported =
       typeof Intl !== "undefined" && typeof (Intl as any).supportedValuesOf === "function"
@@ -28,16 +28,19 @@ export default function OnboardingPage() {
     return Array.from(new Set(supported)).sort((a, b) => a.localeCompare(b));
   }, []);
 
-  const [timezone, setTimezone] = useState("America/New_York");
-  const [defaultBufferMinutes, setDefaultBufferMinutes] = useState(15);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+
+  const [businessName, setBusinessName] = useState("My Tutoring Business");
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessAddress1, setBusinessAddress1] = useState("");
   const [businessAddress2, setBusinessAddress2] = useState("");
   const [businessCity, setBusinessCity] = useState("");
   const [businessState, setBusinessState] = useState("");
   const [businessZip, setBusinessZip] = useState("");
+
+  const [timezone, setTimezone] = useState("America/New_York");
+  const [defaultBufferMinutes, setDefaultBufferMinutes] = useState(15);
 
   useEffect(() => {
     // Prefer the browser's timezone when available.
@@ -56,7 +59,6 @@ export default function OnboardingPage() {
       });
       if (res.ok) {
         router.replace("/dashboard");
-        return;
       }
     });
   }, [router, supabase, timezones]);
@@ -121,163 +123,207 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui, sans-serif", maxWidth: 640 }}>
-      <h1 style={{ margin: 0 }}>Onboarding</h1>
-      <p style={{ marginTop: 8 }}>
-        Create your organization so your account can access the iTutorOS dashboard.
-      </p>
+    <main
+      style={{
+        minHeight: "100vh",
+        position: "relative",
+        padding: 24,
+        fontFamily: "system-ui, sans-serif",
+        background: "#ffff99",
+      }}
+    >
+      <div style={{ position: "absolute", top: 16, left: 16 }}>
+        <BrandLogo href="/" />
+      </div>
 
-      <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          <div>Business name</div>
-          <input
-            required
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
-            style={{ padding: 10 }}
-          />
-        </label>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 1200,
+          margin: "0 auto",
+          paddingTop: 72,
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 45%) minmax(24px, 10%) minmax(320px, 45%)",
+          alignItems: "start",
+        }}
+      >
+        <div
+          style={{
+            background: "rgba(255,255,255,0.96)",
+            border: "1px solid #e6e6e6",
+            boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
+            padding: 24,
+          }}
+        >
+          <h2 style={{ margin: 0 }}>Let&apos;s Get Started</h2>
+          <h3 style={{ marginTop: 10, marginBottom: 0, fontWeight: 500 }}>
+            This is the onboarding wizard for your organization. I just need to gather a little bit of information about your
+            amazing tutoring business!
+          </h3>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <div>Timezone</div>
-          <select value={timezone} onChange={(e) => setTimezone(e.target.value)} style={{ padding: 10 }}>
-            {timezones.map((tz) => (
-              <option key={tz} value={tz}>
-                {tz}
-              </option>
-            ))}
-          </select>
-        </label>
+          <form onSubmit={onSubmit} style={{ marginTop: 18, display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <label style={{ display: "grid", gap: 6, flex: "1 1 240px" }}>
+                <div>Your First Name</div>
+                <input
+                  required
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  style={{ padding: 10 }}
+                  autoComplete="given-name"
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, flex: "1 1 240px" }}>
+                <div>Your Last Name</div>
+                <input
+                  required
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  style={{ padding: 10 }}
+                  autoComplete="family-name"
+                />
+              </label>
+            </div>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span>Default schedule buffer</span>
-            <span
-              title="This is a block of time that is optionally added after tutoring sessions to allow for time between students for clean up, prep, bathroom breaks, etc."
-              style={{
-                display: "inline-flex",
-                width: 18,
-                height: 18,
-                borderRadius: 999,
-                border: "1px solid #999",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 12,
-                cursor: "help",
-                userSelect: "none",
-              }}
-            >
-              i
-            </span>
-          </div>
-          <input
-            type="number"
-            min={0}
-            required
-            value={defaultBufferMinutes}
-            onChange={(e) => setDefaultBufferMinutes(Number(e.target.value))}
-            placeholder="Minutes"
-            style={{ padding: 10 }}
-          />
-        </label>
+            <label style={{ display: "grid", gap: 6 }}>
+              <div>Name of Your Business</div>
+              <input required value={businessName} onChange={(e) => setBusinessName(e.target.value)} style={{ padding: 10 }} />
+            </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <div>Business phone number</div>
-          <input
-            required
-            type="tel"
-            value={businessPhone}
-            onChange={(e) => setBusinessPhone(e.target.value)}
-            style={{ padding: 10 }}
-            autoComplete="tel"
-          />
-        </label>
+            <label style={{ display: "grid", gap: 6 }}>
+              <div>Business phone number</div>
+              <input
+                required
+                type="tel"
+                value={businessPhone}
+                onChange={(e) => setBusinessPhone(e.target.value)}
+                style={{ padding: 10 }}
+                autoComplete="tel"
+              />
+            </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <div>Business address line 1</div>
-          <input
-            required
-            value={businessAddress1}
-            onChange={(e) => setBusinessAddress1(e.target.value)}
-            style={{ padding: 10 }}
-            autoComplete="address-line1"
-          />
-        </label>
+            <label style={{ display: "grid", gap: 6 }}>
+              <div>Business address line 1</div>
+              <input
+                required
+                value={businessAddress1}
+                onChange={(e) => setBusinessAddress1(e.target.value)}
+                style={{ padding: 10 }}
+                autoComplete="address-line1"
+              />
+            </label>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <div>Business address line 2 (optional)</div>
-          <input
-            value={businessAddress2}
-            onChange={(e) => setBusinessAddress2(e.target.value)}
-            style={{ padding: 10 }}
-            autoComplete="address-line2"
-          />
-        </label>
+            <label style={{ display: "grid", gap: 6 }}>
+              <div>Business address line 2 (optional)</div>
+              <input
+                value={businessAddress2}
+                onChange={(e) => setBusinessAddress2(e.target.value)}
+                style={{ padding: 10 }}
+                autoComplete="address-line2"
+              />
+            </label>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6, flex: 1 }}>
-            <div>City</div>
-            <input
-              required
-              value={businessCity}
-              onChange={(e) => setBusinessCity(e.target.value)}
-              style={{ padding: 10 }}
-              autoComplete="address-level2"
-            />
-          </label>
-          <label style={{ display: "grid", gap: 6, flex: 1 }}>
-            <div>State</div>
-            <input
-              required
-              value={businessState}
-              onChange={(e) => setBusinessState(e.target.value)}
-              style={{ padding: 10 }}
-              autoComplete="address-level1"
-            />
-          </label>
-          <label style={{ display: "grid", gap: 6, width: 160 }}>
-            <div>ZIP</div>
-            <input
-              required
-              value={businessZip}
-              onChange={(e) => setBusinessZip(e.target.value)}
-              style={{ padding: 10 }}
-              autoComplete="postal-code"
-            />
-          </label>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <label style={{ display: "grid", gap: 6, flex: "2 1 240px" }}>
+                <div>City</div>
+                <input
+                  required
+                  value={businessCity}
+                  onChange={(e) => setBusinessCity(e.target.value)}
+                  style={{ padding: 10 }}
+                  autoComplete="address-level2"
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, width: 110 }}>
+                <div>State</div>
+                <input
+                  required
+                  value={businessState}
+                  onChange={(e) => setBusinessState(e.target.value)}
+                  style={{ padding: 10 }}
+                  autoComplete="address-level1"
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, width: 160 }}>
+                <div>ZIP</div>
+                <input
+                  required
+                  value={businessZip}
+                  onChange={(e) => setBusinessZip(e.target.value)}
+                  style={{ padding: 10 }}
+                  autoComplete="postal-code"
+                />
+              </label>
+            </div>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <div>Time Zone</div>
+              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} style={{ padding: 10 }}>
+                {timezones.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span>Default schedule buffer</span>
+                <span
+                  title="This is a block of time that is optionally added after tutoring sessions to allow for time between students for clean up, prep, bathroom breaks, etc."
+                  style={{
+                    display: "inline-flex",
+                    width: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    border: "1px solid #999",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    cursor: "help",
+                    userSelect: "none",
+                  }}
+                >
+                  i
+                </span>
+              </div>
+              <input
+                type="number"
+                min={0}
+                required
+                value={defaultBufferMinutes}
+                onChange={(e) => setDefaultBufferMinutes(Number(e.target.value))}
+                placeholder="Minutes"
+                style={{ padding: 10 }}
+              />
+            </label>
+
+            <button disabled={busy} type="submit" style={{ padding: 10 }}>
+              {busy ? "Creating..." : "Create organization"}
+            </button>
+          </form>
+
+          {status ? <p style={{ marginTop: 16, padding: 12, background: "#f5f5f5" }}>{status}</p> : null}
         </div>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6, flex: 1 }}>
-            <div>First name</div>
-            <input
-              required
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              style={{ padding: 10 }}
-              autoComplete="given-name"
-            />
-          </label>
-          <label style={{ display: "grid", gap: 6, flex: 1 }}>
-            <div>Last name</div>
-            <input
-              required
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              style={{ padding: 10 }}
-              autoComplete="family-name"
-            />
-          </label>
+        <div />
+
+        <div>
+          <img
+            src="/tutorPic1.jpg"
+            alt="Tutor"
+            style={{
+              width: "100%",
+              height: "auto",
+              maxHeight: "calc(100vh - 140px)",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
         </div>
-
-        <button disabled={busy} type="submit" style={{ padding: 10 }}>
-          {busy ? "Creating..." : "Create organization"}
-        </button>
-      </form>
-
-      {status ? (
-        <p style={{ marginTop: 16, padding: 12, background: "#f5f5f5" }}>{status}</p>
-      ) : null}
+      </div>
     </main>
   );
 }
+

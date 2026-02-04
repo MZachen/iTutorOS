@@ -4,6 +4,16 @@ import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
+function hasCookie(name: string): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie.split(";").some((c) => c.trim().startsWith(`${name}=`));
+}
+
+function setCookie(name: string, value: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+}
+
 export default function HomePage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
@@ -14,7 +24,14 @@ export default function HomePage() {
     async function run() {
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
-      router.replace(data.session?.access_token ? "/dashboard" : "/login");
+      if (data.session?.access_token) {
+        router.replace("/dashboard");
+        return;
+      }
+
+      const returning = hasCookie("itutoros_seen");
+      if (!returning) setCookie("itutoros_seen", "1");
+      router.replace(returning ? "/login" : "/signup");
     }
 
     run();
@@ -30,4 +47,3 @@ export default function HomePage() {
     </main>
   );
 }
-

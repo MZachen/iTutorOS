@@ -77,8 +77,8 @@ Status key:
 
 ### Subject / Topic
 - DB: DONE
-- API: TODO
-- Missing: list + create custom entries, seed "global" list, org-scoped custom overrides
+- API: PARTIAL (`POST /subjects`, `GET /subjects`, `POST /topics`, `GET /topics?subject_id=...`) (auth)
+- Missing: archive (if desired), seed "global" list, org-scoped custom overrides, validations/audit fields
 
 ### Product (class/workshop/camp definitions)
 - DB: DONE

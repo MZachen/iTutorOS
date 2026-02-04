@@ -17,11 +17,13 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
   - `/signup`, `/login`, `/auth/callback`
   - `/onboarding` (creates org + bootstraps owner)
   - `/dashboard` (proves calling protected API with Bearer token)
-- Root `/` route gates auth: redirects to `/dashboard` when logged in, otherwise `/login`.
+- Root `/` route gates auth:
+  - logged in -> `/dashboard`
+  - logged out -> `/signup` for first-time visitors, otherwise `/login` (cookie-based)
 - Organization Settings UX page:
   - `/settings/organization` (edit organization profile fields after onboarding)
 - Setup wizard UX page:
-  - `/setup` (multi-step wizard: Location -> Rooms (physical only) -> Services -> Done; can add multiple locations)
+  - `/setup` (multi-step wizard: Location -> Rooms (physical only) -> Services -> Subjects/Topics -> Done; can add multiple locations)
 - Owner bootstrap defaults:
   - new OWNER also gets a Tutor profile + `TUTOR` role (assume independent tutors)
 - ScheduleEntry logic:
@@ -37,7 +39,7 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
 ## What's Not Done (blocking "real SaaS")
 - Production auth hardening (invites, remove public bootstrap, stronger org/role management UI, optional DB RLS)
 - Calendar/dashboard UI for series edits + exceptions (API supports it; UX not built yet)
-- Remaining object routes (e.g., LocationHours, Subject/Topic, Product, Image, fuller CRUD for others)
+- Remaining object routes (e.g., LocationHours, Product, Image, fuller CRUD for others)
 - Automated tests (critical flows)
 - Dashboard UI + public website UI
 - Billing + deployment pipeline
