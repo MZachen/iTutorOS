@@ -35,18 +35,34 @@ export async function POST(req: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          id: user_id,
-          organization_id,
-          email,
-          first_name: typeof body.first_name === "string" ? body.first_name : null,
-          last_name: typeof body.last_name === "string" ? body.last_name : null,
-        },
+      const existingUser = await tx.user.findUnique({
+        where: { id: user_id },
+        select: { id: true, organization_id: true, email: true },
       });
 
-      await tx.userRole.create({
-        data: { user_id: user.id, role: "TUTOR" },
+      if (existingUser && existingUser.organization_id !== organization_id) {
+        badRequest("user_id belongs to a different organization");
+      }
+
+      if (existingUser && existingUser.email !== email) {
+        badRequest("email does not match existing user_id");
+      }
+
+      const user = existingUser
+        ? await tx.user.findUniqueOrThrow({ where: { id: user_id } })
+        : await tx.user.create({
+            data: {
+              id: user_id,
+              organization_id,
+              email,
+              first_name: typeof body.first_name === "string" ? body.first_name : null,
+              last_name: typeof body.last_name === "string" ? body.last_name : null,
+            },
+          });
+
+      await tx.userRole.createMany({
+        data: [{ user_id: user.id, role: "TUTOR" }],
+        skipDuplicates: true,
       });
 
       await tx.userLocation.createMany({
@@ -54,13 +70,15 @@ export async function POST(req: Request) {
         skipDuplicates: true,
       });
 
-      const tutor = await tx.tutor.create({
-        data: {
-          user_id: user.id,
-          organization_id,
-          is_active: true,
-        },
-      });
+      const tutor =
+        (await tx.tutor.findUnique({ where: { user_id: user.id } })) ??
+        (await tx.tutor.create({
+          data: {
+            user_id: user.id,
+            organization_id,
+            is_active: true,
+          },
+        }));
 
       // Also create TutorLocation rows (needed for scheduling)
       await tx.tutorLocation.createMany({

@@ -29,6 +29,7 @@ export async function POST(req: Request) {
           location_name,
           is_virtual: Boolean(body.is_virtual ?? false),
           location_address_1: typeof body.location_address_1 === "string" ? body.location_address_1 : null,
+          location_address_2: typeof body.location_address_2 === "string" ? body.location_address_2 : null,
           location_city: typeof body.location_city === "string" ? body.location_city : null,
           location_state: typeof body.location_state === "string" ? body.location_state : null,
           location_zip: typeof body.location_zip === "string" ? body.location_zip : null,

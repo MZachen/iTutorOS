@@ -7,7 +7,7 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
 - Fullstack: Next.js (TypeScript) at repo root (UI + API route handlers)
 - DB: Postgres (Supabase) + Prisma ORM (schema in `prisma/schema.prisma`)
 - Auth: Supabase Auth (email/password + email confirmation) + API guards
-- Legacy: prior NestJS API still exists in `itutoros-api/` (pending deletion; currently locked by another process)
+- Legacy: NestJS is no longer used. Any leftover `itutoros-api/` folder is untracked and can be deleted/ignored.
 
 ## What's Done
 - Next.js app runs locally; API endpoints migrated from Nest to Next route handlers.
@@ -17,8 +17,13 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
   - `/signup`, `/login`, `/auth/callback`
   - `/onboarding` (creates org + bootstraps owner)
   - `/dashboard` (proves calling protected API with Bearer token)
+- Root `/` route gates auth: redirects to `/dashboard` when logged in, otherwise `/login`.
 - Organization Settings UX page:
   - `/settings/organization` (edit organization profile fields after onboarding)
+- Setup wizard UX page:
+  - `/setup` (multi-step wizard: Location -> Rooms (physical only) -> Services -> Done; can add multiple locations)
+- Owner bootstrap defaults:
+  - new OWNER also gets a Tutor profile + `TUTOR` role (assume independent tutors)
 - ScheduleEntry logic:
   - Tutor + room conflicts use buffer/blocked windows (`blocked_end_at`)
   - Student conflicts use real overlap only (`start_at/end_at`)
@@ -38,15 +43,14 @@ Build a deployment-ready V1 SaaS for tutoring businesses: onboarding -> simple m
 - Billing + deployment pipeline
 
 ## Roadmap (near-term)
-- A) Organization Settings page: DONE
-- B) Setup wizard after onboarding (create first Location, Room, Service Offered, Tutor)
-- C) Cleanup: remove legacy NestJS artifacts in `itutoros-api/` and any references
+- A) Setup wizard UX polish (Location -> Rooms -> Services + clearer explanations): DONE
+- B) Auth UX polish (friendly login screen): DONE
+- C) Organization settings expansion (manage locations/rooms/services) + cleanup any legacy artifacts: TODO
 
 ## What's Next (recommended order)
-1) Do roadmap B (setup wizard)
-2) Do roadmap C (remove `itutoros-api/`)
-3) Continue implementing remaining objects per `DOCUMENTATION/OBJECT_CHECKLIST.md`
-4) Build the real dashboard UX (locations/services/rooms/tutors -> CRM -> calendar)
+1) Do roadmap C (settings expansion + cleanup)
+2) Continue implementing remaining objects per `DOCUMENTATION/OBJECT_CHECKLIST.md`
+3) Build the real dashboard UX (locations/services/rooms/tutors -> CRM -> calendar)
 
 ## Environment
 - `DATABASE_URL` required

@@ -112,7 +112,7 @@ export default function OnboardingPage() {
         return;
       }
 
-      router.replace("/dashboard");
+      router.replace("/setup");
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Onboarding failed");
     } finally {

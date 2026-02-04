@@ -33,37 +33,59 @@ export async function POST(req: Request) {
     if (!org) badRequest("organization not found");
     if (org.owner_user_id) badRequest("organization already has an owner");
 
-    const user = await prisma.user.create({
-      data: {
-        id: user_id,
-        organization_id,
-        email,
-        first_name,
-        last_name,
-      },
-    });
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          id: user_id,
+          organization_id,
+          email,
+          first_name,
+          last_name,
+        },
+      });
 
-    await prisma.userRole.create({
-      data: { user_id: user.id, role: "OWNER" },
-    });
-
-    await prisma.organization.update({
-      where: { id: organization_id },
-      data: { owner_user_id: user.id },
-    });
-
-    const locations = await prisma.location.findMany({
-      where: { organization_id, archived_at: null },
-      select: { id: true },
-    });
-
-    if (locations.length > 0) {
-      await prisma.userLocation.createMany({
-        data: locations.map((l) => ({ user_id: user.id, location_id: l.id })),
+      // Assume most subscribers are independent tutors: OWNER also gets a tutor profile by default.
+      await tx.userRole.createMany({
+        data: [
+          { user_id: user.id, role: "OWNER" },
+          { user_id: user.id, role: "TUTOR" },
+        ],
         skipDuplicates: true,
       });
-    }
 
-    return NextResponse.json({ user, locations_added: locations.length }, { status: 201 });
+      const tutor = await tx.tutor.create({
+        data: {
+          user_id: user.id,
+          organization_id,
+          is_active: true,
+        },
+      });
+
+      await tx.organization.update({
+        where: { id: organization_id },
+        data: { owner_user_id: user.id },
+      });
+
+      const locations = await tx.location.findMany({
+        where: { organization_id, archived_at: null },
+        select: { id: true },
+      });
+
+      if (locations.length > 0) {
+        await tx.userLocation.createMany({
+          data: locations.map((l) => ({ user_id: user.id, location_id: l.id })),
+          skipDuplicates: true,
+        });
+
+        await tx.tutorLocation.createMany({
+          data: locations.map((l) => ({ tutor_id: tutor.id, location_id: l.id })),
+          skipDuplicates: true,
+        });
+      }
+
+      return { user, tutor, locations_added: locations.length };
+    });
+
+    return NextResponse.json(result, { status: 201 });
   });
 }

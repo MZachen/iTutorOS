@@ -11,7 +11,9 @@ Short, permanent choices so new chat windows can pick up instantly.
 - Time rules: store schedule times in UTC; organization has a `timezone` string for display/rules.
 - Definition of "complete" for V1 objects (Option 2): DB model + API CRUD + key business rules; auth/tenant/roles enforced once Supabase Auth is added.
 - Roles (V1): `OWNER`, `ADMIN`, `TUTOR`.
-- Near-term roadmap: A) Org Settings page, B) Setup wizard, C) remove legacy Nest artifacts.
+- Role precedence (V1): users can have multiple roles; `OWNER`/`ADMIN` permissions override tutor-only restrictions.
+- Owner defaults (V1): bootstrapped `OWNER` also gets `TUTOR` role + a Tutor profile (assume independent tutors).
+- Near-term roadmap: A) setup wizard UX polish, B) auth UX polish, C) expand settings + cleanup legacy artifacts.
 - Scheduling conflict rules (V1):
   - Tutor and room conflicts consider buffer/blocked time (`blocked_end_at`)
   - Student conflicts consider real session overlap only (`start_at/end_at`)

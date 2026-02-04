@@ -24,7 +24,8 @@ Status key:
 ### Location
 - DB: DONE
 - API: PARTIAL (`POST /locations` (auth), `GET /locations?organization_id=...` (auth))
-- Missing: update, archive, LocationHours management, audit fields, setup wizard UX
+- UX: PARTIAL (`/setup`)
+- Missing: update, archive, LocationHours management, audit fields
 
 ### LocationHours
 - DB: DONE
@@ -34,12 +35,14 @@ Status key:
 ### Room
 - DB: DONE
 - API: PARTIAL (`POST /rooms` (auth), `GET /rooms?location_id=...` (auth))
-- Missing: update, archive (if desired), setup wizard UX
+- UX: PARTIAL (`/setup`)
+- Missing: update, archive (if desired)
 
 ### ServiceOffered
 - DB: DONE
 - API: PARTIAL (`POST /services-offered` (auth), `GET /services-offered?location_id=...` (auth))
-- Missing: update, deactivate/activate, setup wizard UX
+- UX: PARTIAL (`/setup`)
+- Missing: update, deactivate/activate
 
 ### User
 - DB: DONE
@@ -53,8 +56,9 @@ Status key:
 
 ### Tutor / TutorLocation
 - DB: DONE
-- API: PARTIAL (`POST /tutors` (auth) creates TutorLocation joins)
-- Missing: list/get/update/archive, role rules, setup wizard UX
+- API: PARTIAL (`POST /tutors` (auth) creates/links tutor + TutorLocation joins; owner bootstrap also creates the initial owner tutor profile)
+- UX: PARTIAL (`/setup`)
+- Missing: list/get/update/archive, role rules
 
 ### Lead
 - DB: DONE

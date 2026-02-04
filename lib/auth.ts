@@ -75,7 +75,10 @@ export function requireAnyRole(auth: AuthContext, allowed: UserRoleType[]) {
 }
 
 export function requireNotTutor(auth: AuthContext) {
-  if (auth.isTutor) forbidden("TUTOR role cannot perform this action");
+  // Tutors should not perform admin actions, but users can have multiple roles (e.g. OWNER+TUTOR).
+  if (auth.isTutor && !auth.isOwner && !auth.isAdmin) {
+    forbidden("TUTOR role cannot perform this action");
+  }
 }
 
 export async function requireLocationInOrg(location_id: string, organization_id: string) {

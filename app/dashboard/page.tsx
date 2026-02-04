@@ -54,6 +54,7 @@ export default function DashboardPage() {
       <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
         <a href="/">Home</a>
         <a href="/settings/organization">Organization settings</a>
+        <a href="/setup">Setup wizard</a>
         <button onClick={onLogout} style={{ padding: "6px 10px" }}>
           Log out
         </button>

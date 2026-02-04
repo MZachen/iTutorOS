@@ -6,3 +6,10 @@ node_modules
 .next
 out
 .vercel
+
+# Local design assets (source copies live in /public)
+IMAGES/
+
+# Legacy NestJS API leftovers (no longer used)
+itutoros-api/
+itutoros-api__old/
