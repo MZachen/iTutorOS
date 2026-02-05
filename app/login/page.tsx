@@ -1,9 +1,13 @@
 "use client";
 
-import { useMemo, useState, type FormEvent, type CSSProperties } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import BrandLogo from "@/app/_components/BrandLogo";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 async function userIsRegistered(accessToken: string): Promise<boolean> {
   const res = await fetch("/organizations", {
@@ -21,14 +25,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const inputStyle: CSSProperties = {
-    padding: 10,
-    borderRadius: 6,
-    border: "1px solid #cbd5e1",
-    background: "#eef2ff",
-    outline: "none",
-  };
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -57,80 +53,57 @@ export default function LoginPage() {
 
   return (
     <main
-      style={{
-        minHeight: "100vh",
-        position: "relative",
-        padding: 24,
-        display: "grid",
-        placeItems: "center",
-        fontFamily: "system-ui, sans-serif",
-        backgroundImage: "url(/pencilBG.png)",
-        backgroundRepeat: "repeat",
-        backgroundSize: "auto",
-      }}
+      className="relative grid min-h-screen place-items-center p-6 font-sans"
+      style={{ backgroundImage: "url(/pencilBG.png)", backgroundRepeat: "repeat", backgroundSize: "auto" }}
     >
-      <div style={{ position: "absolute", top: 16, left: 16 }}>
+      <div className="absolute left-4 top-4">
         <BrandLogo />
       </div>
 
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          background: "rgba(255,255,255,0.96)",
-          border: "1px solid #e6e6e6",
-          boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
-          padding: 24,
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Log in</h1>
-        <p style={{ marginTop: 8 }}>Log in with your email and password.</p>
+      <Card className="w-full max-w-[520px] bg-white/95">
+        <CardContent className="p-6">
+          <h1 className="m-0 text-5xl font-extrabold">Log in</h1>
+          <p className="mt-2">Log in with your email and password.</p>
 
-        <form onSubmit={onSubmit} style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <div>Email</div>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={inputStyle}
-              autoComplete="email"
-            />
-          </label>
+          <form onSubmit={onSubmit} className="mt-4 grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="bg-indigo-50"
+                autoComplete="email"
+              />
+            </div>
 
-          <label style={{ display: "grid", gap: 6 }}>
-            <div>Password</div>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
-              autoComplete="current-password"
-            />
-          </label>
+            <div className="grid gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-indigo-50"
+                autoComplete="current-password"
+              />
+            </div>
 
-          <button
-            disabled={busy}
-            type="submit"
-            style={{
-              padding: 10,
-              border: "1px solid #cbd5e1",
-              background: "#f3f4f6",
-              cursor: busy ? "not-allowed" : "pointer",
-            }}
-          >
-            {busy ? "Logging in..." : "Log in"}
-          </button>
-        </form>
+            <Button disabled={busy} type="submit" className="mt-2 w-full">
+              {busy ? "Logging in..." : "Log in"}
+            </Button>
+          </form>
 
-        {status ? <p style={{ marginTop: 16, padding: 12, background: "#f5f5f5" }}>{status}</p> : null}
+          {status ? <p className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">{status}</p> : null}
 
-        <p style={{ marginTop: 16 }}>
-          Need an account? <a href="/signup">Sign up</a>
-        </p>
-      </div>
+          <p className="mt-4 text-sm">
+            Need an account? <a href="/signup">Sign up</a>
+          </p>
+        </CardContent>
+      </Card>
     </main>
   );
 }

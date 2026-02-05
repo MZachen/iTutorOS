@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { Button } from "@/components/ui/button";
 
 type Org = {
   id: string;
@@ -298,13 +299,12 @@ export default function OrganizationSettingsPage() {
           </label>
         </div>
 
-        <button disabled={busy} type="submit" style={{ padding: 10 }}>
+        <Button disabled={busy} type="submit" className="w-full" size="sm">
           {busy ? "Saving..." : "Save"}
-        </button>
+        </Button>
       </form>
 
       {status ? <p style={{ marginTop: 16, padding: 12, background: "#f5f5f5" }}>{status}</p> : null}
     </main>
   );
 }
-

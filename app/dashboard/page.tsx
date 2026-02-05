@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -55,9 +56,9 @@ export default function DashboardPage() {
         <a href="/">Home</a>
         <a href="/settings/organization">Organization settings</a>
         <a href="/setup">Setup wizard</a>
-        <button onClick={onLogout} style={{ padding: "6px 10px" }}>
+        <Button type="button" onClick={onLogout} size="sm">
           Log out
-        </button>
+        </Button>
       </div>
       {orgsJson ? (
         <pre style={{ marginTop: 16, padding: 12, background: "#0b1020", color: "#e6e6e6", overflow: "auto" }}>

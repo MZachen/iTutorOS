@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import BrandLogo from "@/app/_components/BrandLogo";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 type CreatedLocation = { id: string; location_name: string; is_virtual: boolean };
 type CreatedRoom = { id: string; room_name: string; location_id: string };
@@ -679,30 +681,12 @@ export default function SetupPage() {
   const stepTotal = steps.length;
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        position: "relative",
-        padding: 24,
-        display: "grid",
-        placeItems: "center",
-        background: "#ffff99",
-        fontFamily: "system-ui, sans-serif",
-      }}
-    >
-      <div style={{ position: "absolute", top: 16, left: 16 }}>
+    <main className="relative grid min-h-screen place-items-center bg-[#ffff99] p-6 font-sans">
+      <div className="absolute left-4 top-4">
         <BrandLogo href="/" />
       </div>
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 1000,
-          background: "rgba(255,255,255,0.96)",
-          border: "1px solid #e6e6e6",
-          boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
-          padding: 24,
-        }}
-      >
+      <Card className="w-full max-w-[1000px] bg-white/95">
+        <CardContent className="p-6">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <div>
             <h1 style={{ margin: 0 }}>Setup</h1>
@@ -836,13 +820,13 @@ export default function SetupPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <strong>Room {idx + 1}</strong>
                       {rooms.length > 1 ? (
-                        <button
+                        <Button
                           type="button"
                           onClick={() => setRooms((prev) => prev.filter((_, i) => i !== idx))}
-                          style={{ padding: "6px 10px" }}
+                          size="sm"
                         >
                           Remove
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                     <div style={{ display: "flex", gap: 12 }}>
@@ -871,13 +855,13 @@ export default function SetupPage() {
                   </div>
                 ))}
 
-                <button
+                <Button
                   type="button"
                   onClick={() => setRooms((prev) => [...prev, { room_name: `Room ${prev.length + 1}`, room_number: "" }])}
-                  style={{ padding: 10, width: "fit-content" }}
+                  size="sm"
                 >
                   Add another room
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}
@@ -928,13 +912,13 @@ export default function SetupPage() {
                       placeholder="Price (USD)"
                     />
                     {s.is_custom ? (
-                      <button
+                      <Button
                         type="button"
                         onClick={() => setServices((prev) => prev.filter((x) => x.id !== s.id))}
-                        style={{ padding: "8px 10px" }}
+                        size="sm"
                       >
                         Remove
-                      </button>
+                      </Button>
                     ) : (
                       <div />
                     )}
@@ -967,9 +951,9 @@ export default function SetupPage() {
                       style={{ padding: 10 }}
                     />
                   </label>
-                  <button type="button" onClick={addCustomService} style={{ padding: 10 }}>
+                  <Button type="button" onClick={addCustomService} size="sm">
                     Add service
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1049,9 +1033,9 @@ export default function SetupPage() {
                           style={{ padding: 10 }}
                         />
                       </label>
-                      <button type="button" onClick={() => addTopic(s.id)} style={{ padding: 10 }}>
+                      <Button type="button" onClick={() => addTopic(s.id)} size="sm">
                         Add topic
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1071,9 +1055,9 @@ export default function SetupPage() {
                     <div>Subject name</div>
                     <input value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} style={{ padding: 10 }} />
                   </label>
-                  <button type="button" onClick={addSubject} style={{ padding: 10 }}>
+                  <Button type="button" onClick={addSubject} size="sm">
                     Add subject
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1131,34 +1115,37 @@ export default function SetupPage() {
         <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", gap: 12 }}>
           {step === "DONE" ? (
             <>
-              <button type="button" onClick={startAnotherLocation} style={{ padding: 10 }}>
+              <Button type="button" onClick={startAnotherLocation} size="sm">
                 Add another location
-              </button>
-              <button type="button" onClick={() => router.replace("/dashboard")} style={{ padding: 10 }}>
+              </Button>
+              <Button type="button" onClick={() => router.replace("/dashboard")} size="sm">
                 Done
-              </button>
+              </Button>
             </>
           ) : (
             <>
-              {step === "LOCATION" ? <div /> : (
-                <button type="button" disabled={busy} onClick={goPrev} style={{ padding: 10 }}>
+              {step === "LOCATION" ? (
+                <div />
+              ) : (
+                <Button type="button" disabled={busy} onClick={goPrev} size="sm">
                   Previous
-                </button>
+                </Button>
               )}
 
               {step === "SUBJECTS_TOPICS" ? (
-                <button type="button" disabled={busy} onClick={finishLocation} style={{ padding: 10 }}>
+                <Button type="button" disabled={busy} onClick={finishLocation} size="sm">
                   {busy ? "Creating..." : "Finish this location"}
-                </button>
+                </Button>
               ) : (
-                <button type="button" disabled={busy} onClick={goNext} style={{ padding: 10 }}>
+                <Button type="button" disabled={busy} onClick={goNext} size="sm">
                   Next
-                </button>
+                </Button>
               )}
             </>
           )}
         </div>
-      </div>
+        </CardContent>
+      </Card>
     </main>
   );
 }
