@@ -27,6 +27,7 @@ export default function SignupPage() {
   const slides = useMemo(() => [...SIGNUP_SLIDES, SIGNUP_SLIDES[0]], []);
   const [slideIndex, setSlideIndex] = useState(0);
   const [slideAnimate, setSlideAnimate] = useState(true);
+  const [laserPulse, setLaserPulse] = useState(0);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -40,6 +41,12 @@ export default function SignupPage() {
     setSlideAnimate(false);
     setSlideIndex(0);
     requestAnimationFrame(() => requestAnimationFrame(() => setSlideAnimate(true)));
+  }, [slideIndex]);
+
+  useEffect(() => {
+    if (slideIndex === 0) return;
+    if (slideIndex > SIGNUP_SLIDES.length) return;
+    setLaserPulse((prev) => prev + 1);
   }, [slideIndex]);
 
   function onSlideTransitionEnd() {
@@ -107,6 +114,13 @@ export default function SignupPage() {
                     </div>
                   ))}
                 </div>
+
+                {laserPulse ? (
+                  <div key={laserPulse} className="itutoros-laser z-10">
+                    <div className="itutoros-laser__flash" />
+                    <div className="itutoros-laser__beam" />
+                  </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>
