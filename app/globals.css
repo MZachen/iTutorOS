@@ -137,67 +137,46 @@ body {
   }
 }
 
-@keyframes itutoros-laser-sweep {
-  0% {
-    transform: translateX(-140%) skewX(-12deg);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  90% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(140%) skewX(-12deg);
-    opacity: 0;
-  }
-}
-
 @layer utilities {
-  .itutoros-laser {
-    pointer-events: none;
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
+  .itutoros-marketing-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 2.5rem;
   }
 
-  .itutoros-laser__beam {
-    position: absolute;
-    top: -20%;
-    left: -35%;
-    width: 35%;
-    height: 140%;
-    opacity: 0;
-    background: linear-gradient(
-      90deg,
-      rgba(180, 0, 232, 0) 0%,
-      rgba(180, 0, 232, 0.35) 30%,
-      rgba(255, 255, 255, 0.95) 50%,
-      rgba(115, 0, 232, 0.35) 70%,
-      rgba(115, 0, 232, 0) 100%
-    );
-    filter: drop-shadow(0 0 10px rgba(180, 0, 232, 0.65)) drop-shadow(0 0 18px rgba(115, 0, 232, 0.5));
-    animation: itutoros-laser-sweep 700ms ease-in-out;
+  @media (min-width: 640px) {
+    .itutoros-marketing-grid {
+      grid-template-columns: 560px minmax(0, 1fr);
+    }
   }
 
-  .itutoros-laser__flash {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    background: radial-gradient(circle at 40% 50%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
-    animation: itutoros-laser-flash 700ms ease-in-out;
+  .title-font {
+    font-size: 2.25rem;
+    line-height: 2.5rem;
+    font-weight: 800;
   }
-}
 
-@keyframes itutoros-laser-flash {
-  0% {
-    opacity: 0;
+  .itutoros-card-2 {
+    background: #ffffff;
+    border-radius: 1.5rem;
+    border: 2px solid #e5e5e5;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
   }
-  35% {
-    opacity: 1;
+
+  .itutoros-soft-gradient {
+    background: linear-gradient(135deg, #fffbe9 0%, #e9ffff 100%);
   }
-  100% {
-    opacity: 0;
+
+  .itutoros-social-widget a {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .itutoros-social-widget img {
+    border: none;
+    background: transparent;
+    box-shadow: none;
   }
 }

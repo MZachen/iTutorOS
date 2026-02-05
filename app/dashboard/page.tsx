@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
-import { Button } from "@/components/ui/button";
+import AppHeader from "@/app/_components/AppHeader";
 
 export default function DashboardPage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -43,28 +43,18 @@ export default function DashboardPage() {
     };
   }, [router, supabase]);
 
-  async function onLogout() {
-    await supabase.auth.signOut();
-    router.replace("/");
-  }
-
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ margin: 0 }}>Dashboard</h1>
-      <p style={{ marginTop: 8 }}>{status}</p>
-      <div style={{ marginTop: 12, display: "flex", gap: 12 }}>
-        <a href="/">Home</a>
-        <a href="/settings/organization">Organization settings</a>
-        <a href="/setup">Setup wizard</a>
-        <Button type="button" onClick={onLogout} size="sm">
-          Log out
-        </Button>
-      </div>
-      {orgsJson ? (
-        <pre style={{ marginTop: 16, padding: 12, background: "#0b1020", color: "#e6e6e6", overflow: "auto" }}>
-          {orgsJson}
-        </pre>
-      ) : null}
-    </main>
+    <div className="min-h-screen itutoros-soft-gradient">
+      <AppHeader />
+      <main className="mx-auto w-full max-w-[1200px] p-6">
+        <h1 style={{ margin: 0 }}>Dashboard</h1>
+        <p style={{ marginTop: 8 }}>{status}</p>
+        {orgsJson ? (
+          <pre style={{ marginTop: 16, padding: 12, background: "#0b1020", color: "#e6e6e6", overflow: "auto" }}>
+            {orgsJson}
+          </pre>
+        ) : null}
+      </main>
+    </div>
   );
 }

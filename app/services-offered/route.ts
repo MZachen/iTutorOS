@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { badRequest, handleRoute } from "@/lib/api";
+import { badRequest, handleRoute, notFound } from "@/lib/api";
 import { requireAuth, requireLocationInOrg, requireNotTutor } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -56,5 +56,82 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json(rows);
+  });
+}
+
+export async function PATCH(req: Request) {
+  return handleRoute(async () => {
+    const auth = await requireAuth(req);
+    requireNotTutor(auth);
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      badRequest("Invalid JSON body");
+    }
+
+    const service_offered_id = typeof body.service_offered_id === "string" ? body.service_offered_id : null;
+    if (!service_offered_id) badRequest("service_offered_id required");
+
+    const svc = await prisma.serviceOffered.findUnique({
+      where: { id: service_offered_id },
+      select: { id: true, location_id: true },
+    });
+    if (!svc) notFound("service_offered_id not found");
+
+    await requireLocationInOrg(svc.location_id, auth.organization_id);
+
+    const data: Record<string, any> = {};
+    if (typeof body.service_code === "string") data.service_code = body.service_code.trim();
+    if (typeof body.hourly_rate_cents === "number") data.hourly_rate_cents = body.hourly_rate_cents;
+    if (typeof body.is_active === "boolean") data.is_active = body.is_active;
+
+    const normalize = (val: any) => (typeof val === "string" ? val.trim() || null : val === null ? null : undefined);
+    const displayName = normalize(body.display_name);
+    if (displayName !== undefined) data.display_name = displayName;
+    const descriptionText = normalize(body.description_text);
+    if (descriptionText !== undefined) data.description_text = descriptionText;
+
+    if (Object.keys(data).length === 0) badRequest("No fields to update");
+
+    const updated = await prisma.serviceOffered.update({
+      where: { id: service_offered_id },
+      data,
+    });
+
+    return NextResponse.json(updated);
+  });
+}
+
+export async function DELETE(req: Request) {
+  return handleRoute(async () => {
+    const auth = await requireAuth(req);
+    requireNotTutor(auth);
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      badRequest("Invalid JSON body");
+    }
+
+    const service_offered_id = typeof body.service_offered_id === "string" ? body.service_offered_id : null;
+    if (!service_offered_id) badRequest("service_offered_id required");
+
+    const svc = await prisma.serviceOffered.findUnique({
+      where: { id: service_offered_id },
+      select: { id: true, location_id: true },
+    });
+    if (!svc) notFound("service_offered_id not found");
+
+    await requireLocationInOrg(svc.location_id, auth.organization_id);
+
+    const updated = await prisma.serviceOffered.update({
+      where: { id: service_offered_id },
+      data: { is_active: false },
+    });
+
+    return NextResponse.json({ id: updated.id, is_active: updated.is_active });
   });
 }

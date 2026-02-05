@@ -47,7 +47,8 @@ export async function handleRoute(handler: () => Promise<Response>) {
 
     // Prisma validation errors (often caused by invalid UUID formats, missing required fields, etc.)
     if (err instanceof Prisma.PrismaClientValidationError) {
-      return NextResponse.json({ message: "Bad Request" }, { status: 400 });
+      const message = process.env.NODE_ENV === "development" ? err.message : "Bad Request";
+      return NextResponse.json({ message }, { status: 400 });
     }
 
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
@@ -56,6 +57,9 @@ export async function handleRoute(handler: () => Promise<Response>) {
       }
       if (err.code === "P2002") {
         return NextResponse.json({ message: "Unique constraint violation" }, { status: 409 });
+      }
+      if (err.code === "P2003") {
+        return NextResponse.json({ message: "Foreign key constraint failed" }, { status: 409 });
       }
       // e.g. invalid UUID formats can show up as "Inconsistent column data"
       if (err.code === "P2023") {

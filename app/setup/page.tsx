@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
-import BrandLogo from "@/app/_components/BrandLogo";
+import AppHeader from "@/app/_components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -233,6 +233,40 @@ const DEFAULT_SUBJECTS: { subject_name: string; topics: string[] }[] = [
   },
 ];
 
+const PLAN_LABELS: Record<string, string> = {
+  basic: "Basic",
+  "basic-plus": "Basic+",
+  pro: "Pro",
+  enterprise: "Enterprise",
+};
+
+const PLAN_LOCATION_LIMITS: Record<string, number | null> = {
+  basic: 1,
+  "basic-plus": 1,
+  pro: 1,
+  enterprise: null,
+};
+
+function getLocationLimit(plan: string) {
+  return Object.prototype.hasOwnProperty.call(PLAN_LOCATION_LIMITS, plan) ? PLAN_LOCATION_LIMITS[plan] : 1;
+}
+
+function formatOrdinal(value: number) {
+  const abs = Math.abs(value);
+  const mod100 = abs % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${value}th`;
+  switch (abs % 10) {
+    case 1:
+      return `${value}st`;
+    case 2:
+      return `${value}nd`;
+    case 3:
+      return `${value}rd`;
+    default:
+      return `${value}th`;
+  }
+}
+
 function makeId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2);
@@ -262,6 +296,9 @@ export default function SetupPage() {
 
   const [results, setResults] = useState<SetupResult[]>([]);
   const [lastResult, setLastResult] = useState<SetupResult | null>(null);
+  const [locationLimit, setLocationLimit] = useState<number | null>(null);
+  const [existingLocations, setExistingLocations] = useState(0);
+  const [planKey, setPlanKey] = useState("basic");
 
   // Location
   const [locationName, setLocationName] = useState("Main Location");
@@ -316,8 +353,41 @@ export default function SetupPage() {
         router.replace("/onboarding");
         return;
       }
+      let planKeyValue = "basic";
+      if (res.ok) {
+        const orgs = await res.json();
+        const org = orgs?.[0];
+        const plan = typeof org?.subscription_plan === "string" ? org.subscription_plan : "basic";
+        planKeyValue = plan;
+        setPlanKey(plan);
+        setLocationLimit(getLocationLimit(plan));
+      }
+
+      const locRes = await fetch("/locations", {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      });
+      if (locRes.ok) {
+        const locs = await locRes.json();
+        const count = Array.isArray(locs) ? locs.length : 0;
+        setExistingLocations(count);
+        const limit = getLocationLimit(planKeyValue);
+        const canAdd = limit === null || count < limit;
+        if (!canAdd) {
+          router.replace("/settings/organization");
+          return;
+        }
+      }
     });
   }, [router, supabase]);
+
+  const planLabel = PLAN_LABELS[planKey] ?? planKey;
+  const limitReached = locationLimit !== null && existingLocations >= locationLimit;
+
+  useEffect(() => {
+    if (limitReached && step !== "DONE") {
+      setStep("DONE");
+    }
+  }, [limitReached, step]);
 
   function addCustomService() {
     setStatus(null);
@@ -431,6 +501,10 @@ export default function SetupPage() {
   }
 
   function startAnotherLocation() {
+    if (limitReached) {
+      setStatus(`Your ${planLabel} plan allows up to ${locationLimit} location${locationLimit === 1 ? "" : "s"}.`);
+      return;
+    }
     setLocationName("Main Location");
     setIsVirtual(false);
     setMeetingUrl("");
@@ -468,6 +542,11 @@ export default function SetupPage() {
 
   async function finishLocation() {
     setStatus(null);
+
+    if (limitReached) {
+      setStatus(`Your ${planLabel} plan allows up to ${locationLimit} location${locationLimit === 1 ? "" : "s"}.`);
+      return;
+    }
 
     if (!locationName.trim()) {
       setStatus("Location name is required.");
@@ -544,6 +623,7 @@ export default function SetupPage() {
         return;
       }
       const location = (await locRes.json()) as CreatedLocation;
+      setExistingLocations((prev) => prev + 1);
 
       const createdRooms: CreatedRoom[] = [];
       if (!isVirtual) {
@@ -682,32 +762,25 @@ export default function SetupPage() {
   const stepTotal = steps.length;
 
   return (
-    <main className="grid min-h-screen place-items-center bg-[#ffff99] p-6" style={{ position: "relative", fontFamily: "inherit" }}>
-      <div style={{ position: "absolute", top: 16, left: 16, zIndex: 50 }}>
-        <BrandLogo href="/" />
-      </div>
-      <Card className="w-full max-w-[1000px]">
-        <CardContent className="p-6">
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <div>
-            <h1 style={{ margin: 0 }}>Setup</h1>
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#333" }}>
-              Step {stepNumber} of {stepTotal}: <strong>{stepLabel}</strong>
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <a href="/dashboard">Dashboard</a>
-            <a href="/settings/organization">Organization settings</a>
-          </div>
-        </div>
+    <div className="min-h-screen itutoros-soft-gradient">
+      <AppHeader />
+      <main className="flex justify-center p-6">
+        <Card className="w-full max-w-[1000px]">
+          <CardContent className="p-6">
+            <div style={{ display: "grid", gap: 8 }}>
+              <h1 style={{ margin: 0 }}>Setup</h1>
+              <p style={{ margin: 0, color: "#333" }}>
+                Step {stepNumber} of {stepTotal}: <strong>{stepLabel}</strong>
+              </p>
+            </div>
 
         <div style={{ marginTop: 18, borderTop: "1px solid #eee", paddingTop: 18 }}>
           {step === "LOCATION" ? (
             <div style={{ display: "grid", gap: 12 }}>
               <h2 style={{ margin: 0, fontSize: 18 }}>Location</h2>
               <p style={{ margin: 0, color: "#333" }}>
-                Let’s set up your first location. This is where tutoring happens — either in-person (a physical space) or online (Zoom/Meet/etc.).
-                You can add, edit, or remove locations later in Organization Settings.
+                {`Let's set up your ${formatOrdinal(existingLocations + 1)} location. This is where tutoring happens either in-person (a physical space) or online (Zoom/Meet/etc.).`}
+                {" "}You can add, edit, or remove locations later in Organization Settings.
               </p>
 
               <label style={{ display: "grid", gap: 6 }}>
@@ -1072,8 +1145,18 @@ export default function SetupPage() {
             <div style={{ display: "grid", gap: 12 }}>
               <h2 style={{ margin: 0, fontSize: 18 }}>Done</h2>
               <p style={{ margin: 0, color: "#333" }}>
-                Great! You can add another location now, or finish and go to the dashboard.
+                {limitReached
+                  ? "Great! You've reached your plan's location limit. You can manage existing locations in Organization settings, or finish and go to the dashboard."
+                  : "Great! You can add another location now, or finish and go to the dashboard."}
               </p>
+              {locationLimit !== null ? (
+                <p style={{ margin: 0, color: "#333" }}>
+                  Plan limit: {locationLimit} location{locationLimit === 1 ? "" : "s"}. You currently have{" "}
+                  <strong>{existingLocations}</strong>.
+                </p>
+              ) : (
+                <p style={{ margin: 0, color: "#333" }}>Plan limit: Unlimited locations.</p>
+              )}
 
               {lastResult ? (
                 <>
@@ -1116,11 +1199,17 @@ export default function SetupPage() {
         </div>
 
         {status ? <p style={{ marginTop: 16, padding: 12, background: "#f5f5f5" }}>{status}</p> : null}
+        {limitReached ? (
+          <p style={{ marginTop: 12, padding: 12, background: "#fff4f4", color: "#7a0b0b" }}>
+            Your {planLabel} plan allows up to {locationLimit} location{locationLimit === 1 ? "" : "s"}. You can manage or
+            upgrade in Organization settings.
+          </p>
+        ) : null}
 
         <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", gap: 12 }}>
           {step === "DONE" ? (
             <>
-              <Button type="button" onClick={startAnotherLocation} size="sm">
+              <Button type="button" onClick={startAnotherLocation} size="sm" disabled={limitReached}>
                 Add another location
               </Button>
               <Button type="button" onClick={() => router.replace("/dashboard")} size="sm">
@@ -1138,19 +1227,20 @@ export default function SetupPage() {
               )}
 
               {step === "SUBJECTS_TOPICS" ? (
-                <Button type="button" disabled={busy} onClick={finishLocation} size="sm">
+                <Button type="button" disabled={busy || limitReached} onClick={finishLocation} size="sm">
                   {busy ? "Creating..." : "Finish this location"}
                 </Button>
               ) : (
-                <Button type="button" disabled={busy} onClick={goNext} size="sm">
+                <Button type="button" disabled={busy || limitReached} onClick={goNext} size="sm">
                   Next
                 </Button>
               )}
             </>
           )}
         </div>
-        </CardContent>
-      </Card>
-    </main>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
   );
 }

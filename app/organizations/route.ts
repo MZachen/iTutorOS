@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     const business_name = typeof body.business_name === "string" ? body.business_name.trim() : null;
     const timezone = typeof body.timezone === "string" ? body.timezone.trim() : null;
     const default_buffer_minutes = Number.isInteger(body.default_buffer_minutes) ? body.default_buffer_minutes : null;
+    const subscription_plan = typeof body.subscription_plan === "string" ? body.subscription_plan.trim() : "basic";
 
     const business_phone = typeof body.business_phone === "string" ? body.business_phone.trim() : null;
     const business_address_1 = typeof body.business_address_1 === "string" ? body.business_address_1.trim() : null;
@@ -30,6 +31,9 @@ export async function POST(req: Request) {
     if (!timezone) badRequest("timezone is required");
     if (default_buffer_minutes == null) badRequest("default_buffer_minutes is required");
     if (default_buffer_minutes < 0) badRequest("default_buffer_minutes must be >= 0");
+    if (!["basic", "basic-plus", "pro", "enterprise"].includes(subscription_plan)) {
+      badRequest("subscription_plan is invalid");
+    }
 
     if (!business_phone) badRequest("business_phone is required");
     if (!business_address_1) badRequest("business_address_1 is required");
@@ -42,6 +46,7 @@ export async function POST(req: Request) {
         business_name,
         timezone,
         default_buffer_minutes,
+        subscription_plan,
         business_phone,
         business_address_1,
         business_address_2,
