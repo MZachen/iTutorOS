@@ -130,6 +130,7 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    font-family: "Century Gothic", "CenturyGothic", "AppleGothic", "Futura", "Trebuchet MS", system-ui, sans-serif;
   }
 
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),

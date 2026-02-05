@@ -6,6 +6,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import BrandLogo from "@/app/_components/BrandLogo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 type CreatedLocation = { id: string; location_name: string; is_virtual: boolean };
 type CreatedRoom = { id: string; room_name: string; location_id: string };
@@ -681,11 +682,11 @@ export default function SetupPage() {
   const stepTotal = steps.length;
 
   return (
-    <main className="relative grid min-h-screen place-items-center bg-[#ffff99] p-6 font-sans">
-      <div className="absolute left-4 top-4">
+    <main className="grid min-h-screen place-items-center bg-[#ffff99] p-6" style={{ position: "relative", fontFamily: "inherit" }}>
+      <div style={{ position: "absolute", top: 16, left: 16, zIndex: 50 }}>
         <BrandLogo href="/" />
       </div>
-      <Card className="w-full max-w-[1000px] bg-white/95">
+      <Card className="w-full max-w-[1000px]">
         <CardContent className="p-6">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
           <div>
@@ -711,11 +712,11 @@ export default function SetupPage() {
 
               <label style={{ display: "grid", gap: 6 }}>
                 <div>Location name</div>
-                <input
+                <Input
                   required
                   value={locationName}
                   onChange={(e) => setLocationName(e.target.value)}
-                  style={{ padding: 10 }}
+                  className="bg-indigo-50"
                 />
               </label>
 
@@ -727,12 +728,12 @@ export default function SetupPage() {
               {isVirtual ? (
                 <label style={{ display: "grid", gap: 6 }}>
                   <div>Meeting link (optional)</div>
-                  <input
+                  <Input
                     type="url"
                     value={meetingUrl}
                     onChange={(e) => setMeetingUrl(e.target.value)}
                     placeholder="https://zoom.us/j/..."
-                    style={{ padding: 10 }}
+                    className="bg-indigo-50"
                   />
                 </label>
               ) : (
@@ -743,20 +744,20 @@ export default function SetupPage() {
 
                   <label style={{ display: "grid", gap: 6 }}>
                     <div>Address line 1</div>
-                    <input
+                    <Input
                       value={locationAddress1}
                       onChange={(e) => setLocationAddress1(e.target.value)}
-                      style={{ padding: 10 }}
+                      className="bg-indigo-50"
                       autoComplete="address-line1"
                     />
                   </label>
 
                   <label style={{ display: "grid", gap: 6 }}>
                     <div>Address line 2 (optional)</div>
-                    <input
+                    <Input
                       value={locationAddress2}
                       onChange={(e) => setLocationAddress2(e.target.value)}
-                      style={{ padding: 10 }}
+                      className="bg-indigo-50"
                       autoComplete="address-line2"
                     />
                   </label>
@@ -764,16 +765,20 @@ export default function SetupPage() {
                   <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                     <label style={{ display: "grid", gap: 6, flex: "2 1 240px" }}>
                       <div>City</div>
-                      <input
+                      <Input
                         value={locationCity}
                         onChange={(e) => setLocationCity(e.target.value)}
-                        style={{ padding: 10 }}
+                        className="bg-indigo-50"
                         autoComplete="address-level2"
                       />
                     </label>
                     <label style={{ display: "grid", gap: 6, width: 110 }}>
                       <div>State</div>
-                      <select value={locationState} onChange={(e) => setLocationState(e.target.value)} style={{ padding: 10 }}>
+                      <select
+                        value={locationState}
+                        onChange={(e) => setLocationState(e.target.value)}
+                        className="min-h-10 w-full rounded-xl border border-input bg-indigo-50 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+                      >
                         <option value="">--</option>
                         {US_STATES.map((s) => (
                           <option key={s} value={s}>
@@ -784,10 +789,10 @@ export default function SetupPage() {
                     </label>
                     <label style={{ display: "grid", gap: 6, width: 160 }}>
                       <div>ZIP</div>
-                      <input
+                      <Input
                         value={locationZip}
                         onChange={(e) => setLocationZip(e.target.value)}
-                        style={{ padding: 10 }}
+                        className="bg-indigo-50"
                         autoComplete="postal-code"
                       />
                     </label>
@@ -832,23 +837,23 @@ export default function SetupPage() {
                     <div style={{ display: "flex", gap: 12 }}>
                       <label style={{ display: "grid", gap: 6, flex: 1 }}>
                         <div>Room name</div>
-                        <input
+                        <Input
                           required
                           value={r.room_name}
                           onChange={(e) =>
                             setRooms((prev) => prev.map((x, i) => (i === idx ? { ...x, room_name: e.target.value } : x)))
                           }
-                          style={{ padding: 10 }}
+                          className="bg-indigo-50"
                         />
                       </label>
                       <label style={{ display: "grid", gap: 6, width: 220 }}>
                         <div>Room number (optional)</div>
-                        <input
+                        <Input
                           value={r.room_number}
                           onChange={(e) =>
                             setRooms((prev) => prev.map((x, i) => (i === idx ? { ...x, room_number: e.target.value } : x)))
                           }
-                          style={{ padding: 10 }}
+                          className="bg-indigo-50"
                         />
                       </label>
                     </div>
@@ -896,7 +901,7 @@ export default function SetupPage() {
                       }}
                     />
                     <div style={{ fontWeight: 500 }}>{s.service_name}</div>
-                    <input
+                    <Input
                       type="number"
                       min={0}
                       step="0.01"
@@ -908,7 +913,7 @@ export default function SetupPage() {
                           prev.map((x) => (x.id === s.id ? { ...x, hourly_rate_dollars: value } : x)),
                         );
                       }}
-                      style={{ padding: 10 }}
+                      className="bg-indigo-50"
                       placeholder="Price (USD)"
                     />
                     {s.is_custom ? (
@@ -938,17 +943,17 @@ export default function SetupPage() {
                 <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                   <label style={{ display: "grid", gap: 6, flex: "2 1 260px" }}>
                     <div>Service name</div>
-                    <input value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} style={{ padding: 10 }} />
+                    <Input value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} className="bg-indigo-50" />
                   </label>
                   <label style={{ display: "grid", gap: 6, width: 180 }}>
                     <div>Price (USD)</div>
-                    <input
+                    <Input
                       type="number"
                       min={0}
                       step="0.01"
                       value={newServicePrice}
                       onChange={(e) => setNewServicePrice(Number(e.target.value))}
-                      style={{ padding: 10 }}
+                      className="bg-indigo-50"
                     />
                   </label>
                   <Button type="button" onClick={addCustomService} size="sm">
@@ -1027,10 +1032,10 @@ export default function SetupPage() {
                     <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                       <label style={{ display: "grid", gap: 6, flex: "1 1 260px" }}>
                         <div>Add a topic</div>
-                        <input
+                        <Input
                           value={newTopicDrafts[s.id] ?? ""}
                           onChange={(e) => setNewTopicDrafts((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                          style={{ padding: 10 }}
+                          className="bg-indigo-50"
                         />
                       </label>
                       <Button type="button" onClick={() => addTopic(s.id)} size="sm">
@@ -1053,7 +1058,7 @@ export default function SetupPage() {
                 <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                   <label style={{ display: "grid", gap: 6, flex: "1 1 260px" }}>
                     <div>Subject name</div>
-                    <input value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} style={{ padding: 10 }} />
+                    <Input value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} className="bg-indigo-50" />
                   </label>
                   <Button type="button" onClick={addSubject} size="sm">
                     Add subject

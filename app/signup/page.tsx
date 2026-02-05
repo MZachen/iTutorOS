@@ -40,14 +40,20 @@ export default function SignupPage() {
 
   return (
     <main
-      className="relative grid min-h-screen place-items-center p-6 font-sans"
-      style={{ backgroundImage: "url(/pencilBG.png)", backgroundRepeat: "repeat", backgroundSize: "auto" }}
+      className="grid min-h-screen place-items-center p-6"
+      style={{
+        position: "relative",
+        fontFamily: "inherit",
+        backgroundImage: "url(/pencilBG.png)",
+        backgroundRepeat: "repeat",
+        backgroundSize: "auto",
+      }}
     >
-      <div className="absolute left-4 top-4">
+      <div style={{ position: "absolute", top: 16, left: 16, zIndex: 50 }}>
         <BrandLogo href="/" />
       </div>
 
-      <Card className="w-full max-w-[520px] bg-white/95">
+      <Card className="w-full max-w-[520px]">
         <CardContent className="p-6">
           <h1 className="m-0 text-5xl font-extrabold">Sign up</h1>
           <p className="mt-2">Create an account. You’ll receive a confirmation email.</p>

@@ -127,13 +127,13 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="relative min-h-screen bg-[#ffff99] p-6 font-sans">
-      <div className="absolute left-4 top-4">
+    <main className="min-h-screen bg-[#ffff99] p-6" style={{ position: "relative", fontFamily: "inherit" }}>
+      <div style={{ position: "absolute", top: 16, left: 16, zIndex: 50 }}>
         <BrandLogo href="/" />
       </div>
 
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 items-start gap-6 pt-18 lg:grid-cols-[minmax(320px,45%)_minmax(24px,10%)_minmax(320px,45%)] lg:gap-0">
-        <Card className="bg-white/95">
+        <Card>
           <CardContent className="p-6">
             <h2 className="m-0 text-3xl font-extrabold">Let&apos;s Get Started</h2>
             <h3 className="mt-3 text-lg font-medium">
