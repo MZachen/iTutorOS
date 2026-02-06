@@ -373,7 +373,7 @@ export default function SetupPage() {
         const limit = getLocationLimit(planKeyValue);
         const canAdd = limit === null || count < limit;
         if (!canAdd) {
-          router.replace("/settings/organization");
+          router.replace("/settings");
           return;
         }
       }
@@ -835,8 +835,8 @@ export default function SetupPage() {
                     />
                   </label>
 
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-                    <label style={{ display: "grid", gap: 6, flex: "2 1 240px" }}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                    <label className="grid w-full gap-2 sm:flex-[2_1_240px]">
                       <div>City</div>
                       <Input
                         value={locationCity}
@@ -845,7 +845,7 @@ export default function SetupPage() {
                         autoComplete="address-level2"
                       />
                     </label>
-                    <label style={{ display: "grid", gap: 6, width: 110 }}>
+                    <label className="grid w-full gap-2 sm:w-[110px]">
                       <div>State</div>
                       <select
                         value={locationState}
@@ -860,7 +860,7 @@ export default function SetupPage() {
                         ))}
                       </select>
                     </label>
-                    <label style={{ display: "grid", gap: 6, width: 160 }}>
+                    <label className="grid w-full gap-2 sm:w-[160px]">
                       <div>ZIP</div>
                       <Input
                         value={locationZip}
@@ -907,8 +907,8 @@ export default function SetupPage() {
                         </Button>
                       ) : null}
                     </div>
-                    <div style={{ display: "flex", gap: 12 }}>
-                      <label style={{ display: "grid", gap: 6, flex: 1 }}>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <label className="grid w-full gap-2 sm:flex-1">
                         <div>Room name</div>
                         <Input
                           required
@@ -919,7 +919,7 @@ export default function SetupPage() {
                           className="bg-indigo-50"
                         />
                       </label>
-                      <label style={{ display: "grid", gap: 6, width: 220 }}>
+                      <label className="grid w-full gap-2 sm:w-[220px]">
                         <div>Room number (optional)</div>
                         <Input
                           value={r.room_number}
@@ -955,15 +955,8 @@ export default function SetupPage() {
                 {services.map((s) => (
                   <div
                     key={s.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "32px 1fr 180px 90px",
-                      gap: 12,
-                      alignItems: "center",
-                      padding: 10,
-                      border: "1px solid #e6e6e6",
-                      background: s.checked ? "#f2f6ff" : "#fafafa",
-                    }}
+                    className="grid gap-3 rounded-xl border border-[#e6e6e6] p-3 sm:grid-cols-[32px_1fr_180px_90px] sm:items-center"
+                    style={{ background: s.checked ? "#f2f6ff" : "#fafafa" }}
                   >
                     <input
                       type="checkbox"
@@ -1013,12 +1006,12 @@ export default function SetupPage() {
                 }}
               >
                 <h3 style={{ margin: 0, fontSize: 16 }}>Add a custom service</h3>
-                <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-                  <label style={{ display: "grid", gap: 6, flex: "2 1 260px" }}>
+                <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                  <label className="grid w-full gap-2 sm:flex-[2_1_260px]">
                     <div>Service name</div>
                     <Input value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} className="bg-indigo-50" />
                   </label>
-                  <label style={{ display: "grid", gap: 6, width: 180 }}>
+                  <label className="grid w-full gap-2 sm:w-[180px]">
                     <div>Price (USD)</div>
                     <Input
                       type="number"

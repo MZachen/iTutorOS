@@ -1,4 +1,6 @@
 node_modules
+.vscode/
+tmpclaude-*-cwd
 # Keep environment variables out of version control
 .env
 

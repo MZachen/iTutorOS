@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     }
 
     const origin = req.headers.get("origin") ?? new URL(req.url).origin;
-    const returnUrl = typeof body.returnUrl === "string" ? body.returnUrl : `${origin}/settings/organization`;
+    const returnUrl = typeof body.returnUrl === "string" ? body.returnUrl : `${origin}/settings`;
 
     const stripe = getStripeClient();
     const existing = await stripe.customers.list({ email, limit: 1 });

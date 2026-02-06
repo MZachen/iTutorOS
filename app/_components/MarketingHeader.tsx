@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import BrandLogo from "@/app/_components/BrandLogo";
 import FloatingSocial from "@/app/_components/FloatingSocial";
 
@@ -28,13 +29,31 @@ type MarketingHeaderProps = {
 };
 
 export default function MarketingHeader({ showSocial = true }: MarketingHeaderProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <>
-      <header className="sticky top-0 z-50 h-[50px] w-full bg-white shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
-        <div className="mx-auto flex h-full w-full max-w-[1200px] items-center justify-between px-6">
+      <header className="sticky top-0 z-50 w-full bg-white shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
+        <div className="mx-auto flex min-h-[50px] w-full max-w-[1200px] items-center justify-between px-4 py-2 sm:px-6">
           <BrandLogo href="/" width={150} />
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-700 md:hidden"
+            aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+            onClick={() => setMenuOpen((prev) => !prev)}
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d={
+                  menuOpen
+                    ? "M6.5 5.5L12 11l5.5-5.5 1.5 1.5L13.5 12l5.5 5.5-1.5 1.5L12 13.5 6.5 19l-1.5-1.5L10.5 12 5 6.5z"
+                    : "M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"
+                }
+              />
+            </svg>
+          </button>
 
-          <nav className="flex items-center gap-6 text-sm font-semibold">
+          <nav className="hidden items-center gap-6 text-sm font-semibold md:flex">
             {navItems.map((item) =>
               item.children ? (
                 <div key={item.href} className="relative group">
@@ -61,6 +80,46 @@ export default function MarketingHeader({ showSocial = true }: MarketingHeaderPr
             )}
           </nav>
         </div>
+        {menuOpen ? (
+          <div className="border-t border-gray-100 md:hidden">
+            <nav className="mx-auto grid w-full max-w-[1200px] gap-2 px-4 py-3 text-sm font-semibold sm:px-6">
+              {navItems.map((item) =>
+                item.children ? (
+                  <div key={item.href} className="grid gap-1">
+                    <a
+                      href={item.href}
+                      className="text-[#7200dc]"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      {item.label}
+                    </a>
+                    <div className="grid gap-1 pl-3 text-sm font-medium">
+                      {item.children.map((child) => (
+                        <a
+                          key={child.href}
+                          href={child.href}
+                          className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
+                          onClick={() => setMenuOpen(false)}
+                        >
+                          {child.label}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    {item.label}
+                  </a>
+                )
+              )}
+            </nav>
+          </div>
+        ) : null}
       </header>
       {showSocial ? <FloatingSocial /> : null}
     </>

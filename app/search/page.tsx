@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import MarketingFooter from "@/app/_components/MarketingFooter";
 import MarketingHeader from "@/app/_components/MarketingHeader";
 import { searchSiteIndex } from "@/lib/site-search";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AiSearchIcon } from "@hugeicons/core-free-icons";
 
 export default function SearchPage() {
   const router = useRouter();
@@ -36,9 +38,7 @@ export default function SearchPage() {
           >
             <label className="relative block w-full">
               <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7200dc]">
-                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-current">
-                  <path d="M10.5 3a7.5 7.5 0 1 1 4.74 13.3l4.23 4.24-1.42 1.41-4.24-4.23A7.5 7.5 0 0 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11a5.5 5.5 0 0 0 0-11Z" />
-                </svg>
+                <HugeiconsIcon icon={AiSearchIcon} size={16} />
               </span>
               <input
                 type="search"

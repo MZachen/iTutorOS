@@ -11,6 +11,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 const PRICING_PLANS = [
   {
+    id: "basic",
     name: "Basic",
     description: "Essentials for getting started.",
     price: "$19.95/month",
@@ -27,6 +28,7 @@ const PRICING_PLANS = [
     ],
   },
   {
+    id: "basic-plus",
     name: "Basic+",
     description: "More tutors and more marketing capacity.",
     price: "$29.95/month",
@@ -43,6 +45,7 @@ const PRICING_PLANS = [
     ],
   },
   {
+    id: "pro",
     name: "Pro",
     description: "Full feature set for growing businesses.",
     price: "$49.95/month",
@@ -59,6 +62,7 @@ const PRICING_PLANS = [
     ],
   },
   {
+    id: "enterprise",
     name: "Enterprise",
     description: "Built for multi-location organizations.",
     price: "$99.95/month",
@@ -82,13 +86,14 @@ export default function PricingPage() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState("basic");
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setStatus(null);
     setBusy(true);
     try {
-      const emailRedirectTo = `${window.location.origin}/auth/callback`;
+      const emailRedirectTo = `${window.location.origin}/auth/callback?plan=${encodeURIComponent(selectedPlan)}`;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -126,23 +131,35 @@ export default function PricingPage() {
           </p>
 
           <div className="mt-8 grid gap-6 md:grid-cols-2">
-            {PRICING_PLANS.map((plan) => (
-              <Card key={plan.name}>
-                <CardContent className="p-6">
-                  <div className="text-xl font-extrabold">{plan.name}</div>
-                  <div className="mt-2 text-3xl font-extrabold text-[#7200dc]">{plan.price}</div>
-                  <p className="mt-2 text-sm text-gray-600">{plan.description}</p>
-                  <ul className="mt-4 grid gap-2 text-sm text-gray-700">
-                    {plan.highlights.map((item) => (
-                      <li key={item} className="flex items-start gap-2">
-                        <span className="mt-1 h-2 w-2 rounded-full bg-[#7200dc]" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            ))}
+            {PRICING_PLANS.map((plan) => {
+              const selected = plan.id === selectedPlan;
+              return (
+                <button
+                  key={plan.id}
+                  type="button"
+                  onClick={() => setSelectedPlan(plan.id)}
+                  className="text-left"
+                >
+                  <div className="rounded-2xl bg-gradient-to-br from-gray-200 to-gray-600 p-[3px] shadow-lg">
+                    <div className={`rounded-2xl ${selected ? "bg-[#e0fde5]" : "bg-white"}`}>
+                      <div className="p-6">
+                        <div className="text-xl font-extrabold">{plan.name}</div>
+                        <div className="mt-2 text-3xl font-extrabold text-[#7200dc]">{plan.price}</div>
+                        <p className="mt-2 text-sm text-gray-600">{plan.description}</p>
+                        <ul className="mt-4 grid gap-2 text-sm text-gray-700">
+                          {plan.highlights.map((item) => (
+                            <li key={item} className="flex items-start gap-2">
+                              <span className="mt-1 h-2 w-2 rounded-full bg-[#7200dc]" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           <div className="mt-10">

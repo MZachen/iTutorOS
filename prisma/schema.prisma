@@ -189,11 +189,13 @@ model Room {
   room_name   String
   room_number String?
   floor_number String?
+  archived_at DateTime?
 
   scheduleEntryRooms ScheduleEntryRoom[]
 
   @@index([location_id])
   @@index([room_name])
+  @@index([archived_at])
 }
 
 model Image {
@@ -316,6 +318,7 @@ model Subject {
   subject_name    String
   sort_order      Int?
   organization_id String?  @db.Uuid // nullable for custom entries
+  archived_at     DateTime?
 
   topics          Topic[]
   leads           Lead[]
@@ -325,6 +328,7 @@ model Subject {
 
   @@index([organization_id])
   @@index([subject_name])
+  @@index([archived_at])
 }
 
 model Topic {
@@ -335,6 +339,7 @@ model Topic {
   topic_name      String
   sort_order      Int?
   organization_id String?  @db.Uuid // nullable for custom entries
+  archived_at     DateTime?
 
   leads           Lead[]
   products        Product[]
@@ -344,6 +349,7 @@ model Topic {
   @@index([subject_id])
   @@index([organization_id])
   @@index([topic_name])
+  @@index([archived_at])
 }
 
 model ServiceOffered {

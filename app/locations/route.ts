@@ -23,11 +23,16 @@ export async function POST(req: Request) {
 
     if (!location_name) badRequest("location_name is required");
 
-    const org = await prisma.organization.findUnique({
-      where: { id: organization_id },
-      select: { subscription_plan: true },
-    });
-    const plan = org?.subscription_plan ?? "basic";
+    let plan = "basic";
+    try {
+      const org = await prisma.organization.findUnique({
+        where: { id: organization_id },
+        select: { subscription_plan: true },
+      });
+      plan = org?.subscription_plan ?? "basic";
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2022")) throw err;
+    }
     const planLabel =
       plan === "enterprise" ? "Enterprise" : plan === "pro" ? "Pro" : plan === "basic-plus" ? "Basic+" : "Basic";
     const limit = plan === "enterprise" ? null : 1;
@@ -127,9 +132,24 @@ export async function PATCH(req: Request) {
 
     if (Object.keys(data).length === 0) badRequest("No fields to update");
 
-    const updated = await prisma.location.update({
-      where: { id: location_id },
-      data,
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedLoc = await tx.location.update({
+        where: { id: location_id },
+        data,
+      });
+
+      if (updatedLoc.is_virtual) {
+        const archived_at = new Date();
+        await tx.room.updateMany({
+          where: { location_id, archived_at: null },
+          data: { archived_at },
+        });
+        await tx.scheduleEntryRoom.deleteMany({
+          where: { room: { location_id } },
+        });
+      }
+
+      return updatedLoc;
     });
 
     return NextResponse.json(updated);

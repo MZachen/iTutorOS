@@ -22,6 +22,7 @@ export default function AuthCallbackPage() {
     let cancelled = false;
 
     async function run() {
+      const planParam = new URLSearchParams(window.location.search).get("plan");
       // If Supabase redirected back with tokens in the URL hash, persist them into a session first.
       const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
       const hp = new URLSearchParams(hash);
@@ -61,7 +62,14 @@ export default function AuthCallbackPage() {
 
       try {
         const registered = await userIsRegistered(session.access_token);
-        if (!cancelled) router.replace(registered ? "/dashboard" : "/onboarding");
+        if (!cancelled) {
+          if (registered) {
+            router.replace("/dashboard");
+          } else {
+            const target = planParam ? `/onboarding?plan=${encodeURIComponent(planParam)}` : "/onboarding";
+            router.replace(target);
+          }
+        }
       } catch (err) {
         setStatus(err instanceof Error ? err.message : "Auth callback failed");
       }

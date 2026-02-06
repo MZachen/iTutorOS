@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { badRequest, conflict, handleRoute, notFound } from "@/lib/api";
+import { badRequest, handleRoute, notFound } from "@/lib/api";
 import { requireAuth, requireLocationInOrg, requireNotTutor } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -25,6 +24,12 @@ export async function POST(req: Request) {
     if (!room_name) badRequest("room_name required");
 
     await requireLocationInOrg(location_id, auth.organization_id);
+    const location = await prisma.location.findUnique({
+      where: { id: location_id },
+      select: { is_virtual: true },
+    });
+    if (!location) notFound("location_id not found");
+    if (location.is_virtual) badRequest("Virtual locations cannot have rooms");
 
     const room = await prisma.room.create({
       data: {
@@ -43,12 +48,13 @@ export async function GET(req: Request) {
   return handleRoute(async () => {
     const auth = await requireAuth(req);
     const locationId = new URL(req.url).searchParams.get("location_id");
+    const archivedParam = new URL(req.url).searchParams.get("archived");
     if (!locationId) badRequest("location_id required");
 
     await requireLocationInOrg(locationId, auth.organization_id);
 
     const rooms = await prisma.room.findMany({
-      where: { location_id: locationId },
+      where: { location_id: locationId, ...(archivedParam === "all" ? {} : { archived_at: null }) },
       orderBy: { room_name: "asc" },
     });
 
@@ -78,9 +84,15 @@ export async function PATCH(req: Request) {
     if (!room) notFound("room_id not found");
 
     await requireLocationInOrg(room.location_id, auth.organization_id);
+    const location = await prisma.location.findUnique({
+      where: { id: room.location_id },
+      select: { is_virtual: true },
+    });
+    if (!location) notFound("location_id not found");
 
     const data: Record<string, any> = {};
     if (typeof body.room_name === "string") data.room_name = body.room_name.trim();
+    if (typeof body.archived === "boolean") data.archived_at = body.archived ? new Date() : null;
 
     const normalize = (val: any) => (typeof val === "string" ? val.trim() || null : val === null ? null : undefined);
     const roomNumber = normalize(body.room_number);
@@ -89,6 +101,13 @@ export async function PATCH(req: Request) {
     if (floorNumber !== undefined) data.floor_number = floorNumber;
 
     if (Object.keys(data).length === 0) badRequest("No fields to update");
+
+    if (location.is_virtual) {
+      const extraKeys = Object.keys(data).filter((k) => k !== "archived_at");
+      if (!("archived_at" in data) || data.archived_at === null || extraKeys.length) {
+        badRequest("Virtual locations cannot have rooms");
+      }
+    }
 
     const updated = await prisma.room.update({
       where: { id: room_id },
@@ -122,14 +141,11 @@ export async function DELETE(req: Request) {
 
     await requireLocationInOrg(room.location_id, auth.organization_id);
 
-    try {
-      const deleted = await prisma.room.delete({ where: { id: room_id } });
-      return NextResponse.json({ id: deleted.id });
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
-        conflict({ message: "Room is in use and cannot be removed. Remove it from schedules first." });
-      }
-      throw err;
-    }
+    const updated = await prisma.room.update({
+      where: { id: room_id },
+      // Prisma Client types may be stale until `prisma generate` is run after schema changes.
+      data: { archived_at: new Date() } as any,
+    });
+    return NextResponse.json({ id: updated.id, archived_at: (updated as any).archived_at });
   });
 }

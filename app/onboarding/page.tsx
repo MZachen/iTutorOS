@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import BrandLogo from "@/app/_components/BrandLogo";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ const PLANS = [
 export default function OnboardingPage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -57,6 +58,11 @@ export default function OnboardingPage() {
   useEffect(() => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (tz && timezones.includes(tz)) setTimezone(tz);
+
+    const planParam = searchParams.get("plan");
+    if (planParam && PLANS.some((p) => p.id === planParam)) {
+      setSelectedPlan(planParam);
+    }
 
     supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session?.access_token) {
@@ -169,8 +175,8 @@ export default function OnboardingPage() {
         </div>
 
         <form onSubmit={onSubmit} className="mt-6 grid gap-3">
-          <div className="flex flex-wrap gap-3">
-            <div className="grid min-w-[240px] flex-1 gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="grid w-full gap-2 sm:min-w-[240px] sm:flex-1">
               <Label htmlFor="firstName">Your First Name</Label>
               <Input
                 id="firstName"
@@ -181,7 +187,7 @@ export default function OnboardingPage() {
                 autoComplete="given-name"
               />
             </div>
-            <div className="grid min-w-[240px] flex-1 gap-2">
+            <div className="grid w-full gap-2 sm:min-w-[240px] sm:flex-1">
               <Label htmlFor="lastName">Your Last Name</Label>
               <Input
                 id="lastName"
@@ -241,8 +247,8 @@ export default function OnboardingPage() {
             />
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <div className="grid min-w-[240px] flex-[2_1_240px] gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <div className="grid w-full gap-2 sm:min-w-[240px] sm:flex-[2_1_240px]">
               <Label htmlFor="businessCity">City</Label>
               <Input
                 id="businessCity"
@@ -253,7 +259,7 @@ export default function OnboardingPage() {
                 autoComplete="address-level2"
               />
             </div>
-            <div className="grid w-[110px] gap-2">
+            <div className="grid w-full gap-2 sm:w-[110px]">
               <Label htmlFor="businessState">State</Label>
               <Input
                 id="businessState"
@@ -264,7 +270,7 @@ export default function OnboardingPage() {
                 autoComplete="address-level1"
               />
             </div>
-            <div className="grid w-[160px] gap-2">
+            <div className="grid w-full gap-2 sm:w-[160px]">
               <Label htmlFor="businessZip">ZIP</Label>
               <Input
                 id="businessZip"

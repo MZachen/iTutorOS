@@ -8,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { PencilIcon } from "@hugeicons/core-free-icons";
 
 export default function SalesFeaturePage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -60,7 +62,7 @@ export default function SalesFeaturePage() {
                 <p className="mt-3 text-base font-bold">Every lead has a next step, and iTutorOS keeps you on track.</p>
               </div>
 
-              <img src="/sales-header-1.png" alt="Sales overview" className="mt-6 mx-auto w-1/2 rounded-2xl object-cover" />
+              <img src="/sales-header-1.png" alt="Sales overview" className="mt-6 mx-auto w-full rounded-2xl object-cover sm:w-1/2" />
 
               <p className="mt-6 text-base leading-relaxed text-gray-700">
                 Tutors often lose leads because follow-up is inconsistent or hard to track. iTutorOS includes a simple, structured pipeline
@@ -82,10 +84,8 @@ export default function SalesFeaturePage() {
                   "Pipeline ties directly into student registration and scheduling.",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3">
-                    <span className="mt-1 text-[#7200dc]" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current">
-                        <path d="M3 21l3.5-0.5L19 8l-3.5-3.5L3 17.5V21zm14.3-14.8l-9.9 9.9L6 18l1.9-1.4 9.9-9.9-0.5-0.5zM20.7 6.3c0.4-0.4 0.4-1 0-1.4L19.1 3.3c-0.4-0.4-1-0.4-1.4 0l-1.2 1.2 3.5 3.5 1.2-1.2z" />
-                      </svg>
+                    <span className="mt-1 text-[#ff9df9]" aria-hidden="true">
+                      <HugeiconsIcon icon={PencilIcon} size={16} />
                     </span>
                     <span>{item}</span>
                   </li>

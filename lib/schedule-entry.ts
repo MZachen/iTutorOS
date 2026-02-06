@@ -431,7 +431,7 @@ class ScheduleEntryService {
     // Validate location belongs to org
     const location = await prisma.location.findUnique({
       where: { id: location_id },
-      select: { id: true, organization_id: true },
+      select: { id: true, organization_id: true, is_virtual: true },
     });
     if (!location) badRequest("location_id not found");
     if (location.organization_id !== organization_id) {
@@ -467,6 +467,9 @@ class ScheduleEntryService {
 
     // Validate rooms belong to location (if provided)
     const room_ids = Array.isArray(body.room_ids) ? Array.from(new Set(body.room_ids)) : [];
+    if (location.is_virtual && room_ids.length) {
+      badRequest("Virtual locations cannot have rooms");
+    }
     if (room_ids.length) {
       const rooms = await prisma.room.findMany({
         where: { id: { in: room_ids }, location_id },
@@ -1038,6 +1041,15 @@ class ScheduleEntryService {
     const entry = await this.getActiveEntryOrThrow(id);
     const room_ids = Array.isArray(body.room_ids) ? Array.from(new Set(body.room_ids)) : [];
     if (!Array.isArray(body.room_ids)) badRequest("room_ids must be an array");
+    if (room_ids.length) {
+      const location = await prisma.location.findUnique({
+        where: { id: entry.location_id },
+        select: { is_virtual: true },
+      });
+      if (location?.is_virtual) {
+        badRequest("Virtual locations cannot have rooms");
+      }
+    }
 
     if (scope !== "THIS") {
       this.requireSeriesIdForScope(entry, scope);
