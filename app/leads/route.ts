@@ -5,6 +5,50 @@ import { requireAuth, requireLocationInOrg, requireOrgMatch } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
+function normalizeLeadStudents(input: any): Record<string, any>[] | null {
+  if (input == null) return null;
+  if (!Array.isArray(input)) badRequest("lead_students must be an array");
+  return input
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const student: Record<string, any> = {};
+      if (typeof item.first_name === "string") student.first_name = item.first_name.trim();
+      if (typeof item.last_name === "string") student.last_name = item.last_name.trim();
+      if (typeof item.email === "string") student.email = item.email.trim();
+      if (typeof item.phone === "string") student.phone = item.phone.trim();
+      if (typeof item.school === "string") student.school = item.school.trim();
+      if (typeof item.dob === "string" || item.dob === null) student.dob = item.dob;
+      if (typeof item.iep === "boolean") student.iep = item.iep;
+      if (typeof item.allergies === "boolean") student.allergies = item.allergies;
+      if (typeof item.medical_condition === "boolean") student.medical_condition = item.medical_condition;
+      if (typeof item.behaviorial_issue === "boolean") student.behaviorial_issue = item.behaviorial_issue;
+      if (typeof item.vision_issue === "boolean") student.vision_issue = item.vision_issue;
+      if (typeof item.hearing_issue === "boolean") student.hearing_issue = item.hearing_issue;
+      if (typeof item.in_person === "boolean") student.in_person = item.in_person;
+      if (typeof item.notes === "string") student.notes = item.notes;
+      const hasText = [
+        student.first_name,
+        student.last_name,
+        student.email,
+        student.phone,
+        student.school,
+        student.notes,
+        typeof student.dob === "string" ? student.dob : null,
+      ].some((value) => typeof value === "string" && value.trim().length > 0);
+      const hasFlags =
+        student.iep ||
+        student.allergies ||
+        student.medical_condition ||
+        student.behaviorial_issue ||
+        student.vision_issue ||
+        student.hearing_issue ||
+        student.in_person === false;
+      if (!hasText && !hasFlags) return null;
+      return student;
+    })
+    .filter((item): item is Record<string, any> => Boolean(item));
+}
+
 export async function POST(req: Request) {
   return handleRoute(async () => {
     const auth = await requireAuth(req);
@@ -21,6 +65,9 @@ export async function POST(req: Request) {
     if (typeof body.lead_location_id === "string") {
       await requireLocationInOrg(body.lead_location_id, organization_id);
     }
+
+    const leadStudents = normalizeLeadStudents(body.lead_students);
+    const leadStudentsValue = leadStudents && leadStudents.length > 0 ? leadStudents : undefined;
 
     const lead = await prisma.lead.create({
       data: {
@@ -48,6 +95,9 @@ export async function POST(req: Request) {
         // your rule: only stage initialized; everything else null unless provided
         stage: "NEW",
         source: typeof body.source === "string" ? body.source : null,
+        source_detail: typeof body.source_detail === "string" ? body.source_detail : null,
+        lead_students: leadStudentsValue,
+        archived_at: typeof body.archived === "boolean" ? (body.archived ? new Date() : null) : undefined,
       },
     });
 
@@ -60,10 +110,18 @@ export async function GET(req: Request) {
     const auth = await requireAuth(req);
     const organizationIdParam = new URL(req.url).searchParams.get("organization_id");
     requireOrgMatch(organizationIdParam, auth.organization_id);
+    const archivedParam = new URL(req.url).searchParams.get("archived");
     const organizationId = auth.organization_id;
 
     const leads = await prisma.lead.findMany({
-      where: { organization_id: organizationId, archived_at: null },
+      where: {
+        organization_id: organizationId,
+        ...(archivedParam === "all"
+          ? {}
+          : archivedParam === "only"
+            ? { archived_at: { not: null } }
+            : { archived_at: null }),
+      },
       orderBy: { created_at: "desc" },
     });
 

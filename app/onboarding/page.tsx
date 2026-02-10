@@ -183,7 +183,7 @@ export default function OnboardingPage() {
                 required
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="bg-indigo-50"
+                className="bg-zinc-50"
                 autoComplete="given-name"
               />
             </div>
@@ -194,7 +194,7 @@ export default function OnboardingPage() {
                 required
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="bg-indigo-50"
+                className="bg-zinc-50"
                 autoComplete="family-name"
               />
             </div>
@@ -207,7 +207,7 @@ export default function OnboardingPage() {
               required
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
-              className="bg-indigo-50"
+              className="bg-zinc-50"
             />
           </div>
 
@@ -219,7 +219,7 @@ export default function OnboardingPage() {
               type="tel"
               value={businessPhone}
               onChange={(e) => setBusinessPhone(e.target.value)}
-              className="bg-indigo-50"
+              className="bg-zinc-50"
               autoComplete="tel"
             />
           </div>
@@ -231,7 +231,7 @@ export default function OnboardingPage() {
               required
               value={businessAddress1}
               onChange={(e) => setBusinessAddress1(e.target.value)}
-              className="bg-indigo-50"
+              className="bg-zinc-50"
               autoComplete="address-line1"
             />
           </div>
@@ -242,7 +242,7 @@ export default function OnboardingPage() {
               id="businessAddress2"
               value={businessAddress2}
               onChange={(e) => setBusinessAddress2(e.target.value)}
-              className="bg-indigo-50"
+              className="bg-zinc-50"
               autoComplete="address-line2"
             />
           </div>
@@ -255,7 +255,7 @@ export default function OnboardingPage() {
                 required
                 value={businessCity}
                 onChange={(e) => setBusinessCity(e.target.value)}
-                className="bg-indigo-50"
+                className="bg-zinc-50"
                 autoComplete="address-level2"
               />
             </div>
@@ -266,7 +266,7 @@ export default function OnboardingPage() {
                 required
                 value={businessState}
                 onChange={(e) => setBusinessState(e.target.value)}
-                className="bg-indigo-50"
+                className="bg-zinc-50"
                 autoComplete="address-level1"
               />
             </div>
@@ -277,7 +277,7 @@ export default function OnboardingPage() {
                 required
                 value={businessZip}
                 onChange={(e) => setBusinessZip(e.target.value)}
-                className="bg-indigo-50"
+                className="bg-zinc-50"
                 autoComplete="postal-code"
               />
             </div>
@@ -289,7 +289,7 @@ export default function OnboardingPage() {
               id="timezone"
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
-              className="min-h-10 w-full rounded-xl border border-input bg-indigo-50 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+              className="min-h-10 w-full rounded-xl border border-input bg-zinc-50 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
             >
               {timezones.map((tz) => (
                 <option key={tz} value={tz}>

@@ -135,6 +135,12 @@ body {
   textarea {
     @apply rounded-xl;
   }
+
+  .itutoros-post-login input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .itutoros-post-login select,
+  .itutoros-post-login textarea {
+    background-color: #f4f4f5 !important;
+  }
 }
 
 @layer utilities {
@@ -206,12 +212,17 @@ body {
   }
 
   .itutoros-settings-btn-primary {
-    background: var(--primary);
-    color: var(--primary-foreground);
+    background: #0b1f5f;
+    color: #ffffff;
   }
 
   .itutoros-settings-btn-secondary {
     background: #6b6b6b;
+    color: #ffffff;
+  }
+
+  .itutoros-settings-btn-danger {
+    background: #ef4444;
     color: #ffffff;
   }
 
@@ -221,5 +232,76 @@ body {
 
   .itutoros-settings-btn-secondary:not(:disabled):hover {
     filter: brightness(1.2);
+  }
+
+  .itutoros-settings-btn-danger:not(:disabled):hover {
+    filter: brightness(1.2);
+  }
+
+  .itutoros-clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    line-height: 1.25rem;
+    max-height: 2.5rem;
+  }
+
+  .itutoros-notes-col {
+    width: 220px;
+    min-width: 220px;
+    max-width: 220px;
+  }
+
+  .itutoros-calendar .fc {
+    --fc-button-bg-color: #0b1f5f;
+    --fc-button-border-color: #0b1f5f;
+    --fc-button-hover-bg-color: #132a73;
+    --fc-button-hover-border-color: #132a73;
+    --fc-button-active-bg-color: #0b1f5f;
+    --fc-button-active-border-color: #0b1f5f;
+    --fc-event-bg-color: #7c3aed;
+    --fc-event-border-color: #6d28d9;
+    --fc-event-text-color: #ffffff;
+    --fc-today-bg-color: rgba(255, 240, 204, 0.55);
+  }
+
+  .itutoros-calendar .fc .fc-toolbar-title {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #0b1f5f;
+  }
+
+  .itutoros-calendar .fc .fc-button {
+    border-radius: 999px;
+    font-weight: 700;
+    padding: 0.35rem 0.85rem;
+  }
+
+  .itutoros-calendar .fc .fc-col-header-cell-cushion {
+    font-weight: 700;
+    color: #4b5563;
+  }
+
+  .itutoros-calendar .fc .fc-daygrid-day-number {
+    color: #6b7280;
+  }
+
+  .itutoros-calendar .fc .fc-event {
+    border-radius: 10px;
+    padding: 2px 4px;
+    font-weight: 700;
+  }
+
+  .itutoros-calendar .fc .fc-event.itutoros-fc-conflict {
+    background: #fee2e2;
+    border-color: #ef4444;
+    color: #7f1d1d;
+  }
+
+  .itutoros-calendar .fc .fc-timegrid-now-indicator-line {
+    border-color: #ef4444;
   }
 }

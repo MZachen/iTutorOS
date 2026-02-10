@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute, notFound } from "@/lib/api";
 import { requireAuth, requireLocationInOrg, requireNotTutor } from "@/lib/auth";
 
 export const runtime = "nodejs";
+
+const HAS_CAPACITY = "capacity" in Prisma.ServiceOfferedScalarFieldEnum;
+const HAS_UNIT_LENGTH = "unit_length_minutes" in Prisma.ServiceOfferedScalarFieldEnum;
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
@@ -20,10 +24,33 @@ export async function POST(req: Request) {
     const location_id = typeof body.location_id === "string" ? body.location_id : null;
     const service_code = typeof body.service_code === "string" ? body.service_code : null;
     const hourly_rate_cents = typeof body.hourly_rate_cents === "number" ? body.hourly_rate_cents : null;
+    const capacityRaw = body.capacity;
+    const capacity =
+      capacityRaw == null
+        ? 1
+        : Number.isInteger(capacityRaw)
+          ? capacityRaw
+          : Number.isInteger(Number(capacityRaw))
+            ? Number(capacityRaw)
+            : null;
+    const unitLengthRaw = body.unit_length_minutes;
+    const unitLength =
+      unitLengthRaw == null
+        ? 60
+        : Number.isInteger(unitLengthRaw)
+          ? unitLengthRaw
+          : Number.isInteger(Number(unitLengthRaw))
+            ? Number(unitLengthRaw)
+            : null;
 
     if (!location_id) badRequest("location_id required");
     if (!service_code) badRequest("service_code required");
     if (hourly_rate_cents == null) badRequest("hourly_rate_cents required");
+    if (!HAS_CAPACITY || !HAS_UNIT_LENGTH) {
+      badRequest("Service model is out of date. Run prisma generate and apply migrations.");
+    }
+    if (capacity == null || capacity < 1) badRequest("capacity must be >= 1");
+    if (unitLength == null || unitLength < 1) badRequest("unit_length_minutes must be >= 1");
 
     await requireLocationInOrg(location_id, auth.organization_id);
 
@@ -32,6 +59,8 @@ export async function POST(req: Request) {
         location_id,
         service_code,
         hourly_rate_cents,
+        capacity,
+        unit_length_minutes: unitLength,
         display_name: typeof body.display_name === "string" ? body.display_name : null,
         description_text: typeof body.description_text === "string" ? body.description_text : null,
         is_active: body.is_active == null ? true : Boolean(body.is_active),
@@ -85,6 +114,38 @@ export async function PATCH(req: Request) {
     const data: Record<string, any> = {};
     if (typeof body.service_code === "string") data.service_code = body.service_code.trim();
     if (typeof body.hourly_rate_cents === "number") data.hourly_rate_cents = body.hourly_rate_cents;
+    if ("capacity" in body) {
+      if (!HAS_CAPACITY) {
+        badRequest("Service model is out of date. Run prisma generate and apply migrations.");
+      }
+      const raw = body.capacity;
+      const next =
+        raw == null
+          ? null
+          : Number.isInteger(raw)
+            ? raw
+            : Number.isInteger(Number(raw))
+              ? Number(raw)
+              : null;
+      if (next == null || next < 1) badRequest("capacity must be >= 1");
+      data.capacity = next;
+    }
+    if ("unit_length_minutes" in body) {
+      if (!HAS_UNIT_LENGTH) {
+        badRequest("Service model is out of date. Run prisma generate and apply migrations.");
+      }
+      const raw = body.unit_length_minutes;
+      const next =
+        raw == null
+          ? null
+          : Number.isInteger(raw)
+            ? raw
+            : Number.isInteger(Number(raw))
+              ? Number(raw)
+              : null;
+      if (next == null || next < 1) badRequest("unit_length_minutes must be >= 1");
+      data.unit_length_minutes = next;
+    }
     if (typeof body.is_active === "boolean") data.is_active = body.is_active;
 
     const normalize = (val: any) => (typeof val === "string" ? val.trim() || null : val === null ? null : undefined);

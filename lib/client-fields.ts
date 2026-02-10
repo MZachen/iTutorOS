@@ -28,7 +28,6 @@ export const PARENT_FIELDS: ClientFieldDef[] = [
   { key: "notes", label: "Notes" },
   { key: "created_at", label: "Created At" },
   { key: "updated_at", label: "Updated At" },
-  { key: "archived_at", label: "Archived At" },
 ];
 
 export const STUDENT_FIELDS: ClientFieldDef[] = [
@@ -42,15 +41,14 @@ export const STUDENT_FIELDS: ClientFieldDef[] = [
   { key: "allergies", label: "Allergies" },
   { key: "medical_condition", label: "Medical Condition" },
   { key: "behaviorial_issue", label: "Behavioral Issue" },
-  { key: "vision_ok", label: "Vision OK" },
-  { key: "hearing_ok", label: "Hearing OK" },
+  { key: "vision_issue", label: "Vision Issue" },
+  { key: "hearing_issue", label: "Hearing Issue" },
   { key: "in_person", label: "In-person" },
   { key: "notes", label: "Notes" },
   { key: "parent", label: "Linked Parent" },
   { key: "location", label: "Location" },
   { key: "created_at", label: "Created At" },
   { key: "updated_at", label: "Updated At" },
-  { key: "archived_at", label: "Archived At" },
 ];
 
 export type ClientFieldPrefs = {
@@ -75,7 +73,16 @@ export function defaultClientFieldPrefs(): ClientFieldPrefs {
 export function normalizeClientFieldPrefs(raw: any): ClientFieldPrefs {
   const defaults = defaultClientFieldPrefs();
   const parents = { ...defaults.parents, ...(raw?.parents ?? {}) };
-  const students = { ...defaults.students, ...(raw?.students ?? {}) };
+  const rawStudents = { ...(raw?.students ?? {}) };
+  if (rawStudents.vision_ok !== undefined && rawStudents.vision_issue === undefined) {
+    rawStudents.vision_issue = rawStudents.vision_ok;
+  }
+  if (rawStudents.hearing_ok !== undefined && rawStudents.hearing_issue === undefined) {
+    rawStudents.hearing_issue = rawStudents.hearing_ok;
+  }
+  delete rawStudents.vision_ok;
+  delete rawStudents.hearing_ok;
+  const students = { ...defaults.students, ...rawStudents };
   // Ensure only known keys
   Object.keys(parents).forEach((k) => {
     if (!(k in defaults.parents)) delete parents[k];

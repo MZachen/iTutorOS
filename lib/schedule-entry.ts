@@ -19,6 +19,10 @@ type CreateScheduleEntryBody = {
   duration_minutes: number;
   include_buffer?: boolean;
   capacity?: number;
+  location_detail?: string | null;
+  allow_conflicts?: boolean;
+  created_by_user_id?: Uuid | null;
+  updated_by_user_id?: Uuid | null;
 
   // recurrence (V1)
   recurrence_type?: RecurrenceType;
@@ -62,6 +66,13 @@ type ExceptionEditBody = {
   resources_text?: string | null;
 };
 type RestoreExceptionBody = { archived_series_entry_id: Uuid };
+
+type ConflictPayload = {
+  message: string;
+  conflict_tags: string[];
+  conflicting_schedule_entry_id: string;
+  resource?: Record<string, any>;
+};
 
 class ScheduleEntryService {
   // -------------------------
@@ -266,13 +277,21 @@ class ScheduleEntryService {
     conflict_tags: string[];
     conflicting_schedule_entry_id: string;
     resource?: Record<string, any>;
-  }) {
+  }): ConflictPayload {
     return {
       message: params.message,
       conflict_tags: params.conflict_tags,
       conflicting_schedule_entry_id: params.conflicting_schedule_entry_id,
-      ...(params.resource ? params.resource : {}),
+      resource: params.resource,
     };
+  }
+
+  private handleConflict(payload: ConflictPayload, allowConflicts?: boolean, conflicts?: ConflictPayload[]) {
+    if (allowConflicts) {
+      conflicts?.push(payload);
+      return;
+    }
+    conflict(payload);
   }
 
   private async assertTutorAvailable(params: {
@@ -281,6 +300,8 @@ class ScheduleEntryService {
     newStart: Date;
     newEnd: Date;
     newBlockedEnd: Date;
+    allowConflicts?: boolean;
+    conflicts?: ConflictPayload[];
     context?: Record<string, any>;
   }) {
     const excludeIds = params.exclude_schedule_entry_ids?.filter(Boolean) ?? [];
@@ -309,13 +330,15 @@ class ScheduleEntryService {
       }),
     ];
 
-    conflict(
+    this.handleConflict(
       this.conflictPayload({
         message: `Tutor is already booked (tutor_id=${params.tutor_id} conflicts with schedule_entry_id=${conflictEntry.id})`,
         conflict_tags: tags,
         conflicting_schedule_entry_id: conflictEntry.id,
         resource: { tutor_id: params.tutor_id, ...(params.context ?? {}) },
       }),
+      params.allowConflicts,
+      params.conflicts,
     );
   }
 
@@ -325,6 +348,8 @@ class ScheduleEntryService {
     newStart: Date;
     newEnd: Date;
     newBlockedEnd: Date;
+    allowConflicts?: boolean;
+    conflicts?: ConflictPayload[];
     context?: Record<string, any>;
   }) {
     if (!params.room_ids?.length) return;
@@ -360,13 +385,15 @@ class ScheduleEntryService {
       }),
     ];
 
-    conflict(
+    this.handleConflict(
       this.conflictPayload({
         message: `Room is already booked (room_id=${conflictRoom.room_id} conflicts with schedule_entry_id=${conflictRoom.scheduleEntry.id})`,
         conflict_tags: tags,
         conflicting_schedule_entry_id: conflictRoom.scheduleEntry.id,
         resource: { room_id: conflictRoom.room_id, ...(params.context ?? {}) },
       }),
+      params.allowConflicts,
+      params.conflicts,
     );
   }
 
@@ -376,6 +403,8 @@ class ScheduleEntryService {
     exclude_schedule_entry_ids?: Uuid[];
     newStart: Date;
     newEnd: Date;
+    allowConflicts?: boolean;
+    conflicts?: ConflictPayload[];
     context?: Record<string, any>;
   }) {
     if (!params.student_ids?.length) return;
@@ -399,13 +428,15 @@ class ScheduleEntryService {
 
     if (!conflictAttendance) return;
 
-    conflict(
+    this.handleConflict(
       this.conflictPayload({
         message: `Student is already booked (student_id=${conflictAttendance.student_id} conflicts with schedule_entry_id=${conflictAttendance.scheduleEntry.id})`,
         conflict_tags: ["overlap", "student"],
         conflicting_schedule_entry_id: conflictAttendance.scheduleEntry.id,
         resource: { student_id: conflictAttendance.student_id, ...(params.context ?? {}) },
       }),
+      params.allowConflicts,
+      params.conflicts,
     );
   }
 
@@ -423,30 +454,35 @@ class ScheduleEntryService {
     if (durationMinutes < 1) badRequest("duration_minutes must be >= 1");
 
     const includeBuffer = Boolean(body.include_buffer ?? false);
-    const capacity = body.capacity == null ? 1 : this.requireInt("capacity", body.capacity);
-    if (capacity < 1) badRequest("capacity must be >= 1");
-
     const recurrence_type = this.parseRecurrenceType(body.recurrence_type);
+    const allowConflicts = Boolean(body.allow_conflicts ?? false);
+    const location_detail = typeof body.location_detail === "string" ? body.location_detail.trim() : null;
 
     // Validate location belongs to org
     const location = await prisma.location.findUnique({
       where: { id: location_id },
-      select: { id: true, organization_id: true, is_virtual: true },
+      select: { id: true, organization_id: true, is_virtual: true, is_system: true },
     });
     if (!location) badRequest("location_id not found");
     if (location.organization_id !== organization_id) {
       badRequest("location_id does not belong to organization_id");
     }
+    if ((location.is_virtual || location.is_system) && !location_detail) {
+      badRequest("location_detail is required for virtual or offsite sessions");
+    }
 
     // Validate service offered belongs to location
     const svc = await prisma.serviceOffered.findUnique({
       where: { id: service_offered_id },
-      select: { id: true, location_id: true, hourly_rate_cents: true },
+      select: { id: true, location_id: true, hourly_rate_cents: true, capacity: true },
     });
     if (!svc) badRequest("service_offered_id not found");
-    if (svc.location_id !== location_id) {
+    if (!location.is_system && svc.location_id !== location_id) {
       badRequest("service_offered_id does not belong to location_id");
     }
+
+    const capacity = body.capacity == null ? Number(svc.capacity ?? 1) : this.requireInt("capacity", body.capacity);
+    if (capacity < 1) badRequest("capacity must be >= 1");
 
     // Validate tutor belongs to org and is associated to location
     const tutor = await prisma.tutor.findUnique({
@@ -467,8 +503,8 @@ class ScheduleEntryService {
 
     // Validate rooms belong to location (if provided)
     const room_ids = Array.isArray(body.room_ids) ? Array.from(new Set(body.room_ids)) : [];
-    if (location.is_virtual && room_ids.length) {
-      badRequest("Virtual locations cannot have rooms");
+    if ((location.is_virtual || location.is_system) && room_ids.length) {
+      badRequest("Virtual or offsite locations cannot have rooms");
     }
     if (room_ids.length) {
       const rooms = await prisma.room.findMany({
@@ -485,9 +521,6 @@ class ScheduleEntryService {
       ? Array.from(new Set(body.attendee_student_ids))
       : [];
     if (attendee_student_ids.length) {
-      if (attendee_student_ids.length > capacity) {
-        badRequest("attendee_student_ids cannot exceed capacity");
-      }
       const students = await prisma.student.findMany({
         where: { id: { in: attendee_student_ids }, location_id, archived_at: null },
         select: { id: true },
@@ -508,23 +541,30 @@ class ScheduleEntryService {
         includeBuffer,
       });
 
+      const conflicts: ConflictPayload[] = [];
       // Conflicts
       await this.assertTutorAvailable({
         tutor_id,
         newStart: startAt,
         newEnd: end_at,
         newBlockedEnd: blocked_end_at,
+        allowConflicts,
+        conflicts,
       });
       await this.assertRoomsAvailable({
         room_ids,
         newStart: startAt,
         newEnd: end_at,
         newBlockedEnd: blocked_end_at,
+        allowConflicts,
+        conflicts,
       });
       await this.assertStudentsAvailable({
         student_ids: attendee_student_ids,
         newStart: startAt,
         newEnd: end_at,
+        allowConflicts,
+        conflicts,
       });
 
       const created = await prisma.$transaction(async (tx) => {
@@ -535,6 +575,7 @@ class ScheduleEntryService {
             service_offered_id,
             tutor_id,
             start_at: startAt,
+            location_detail,
             duration_minutes: durationMinutes,
             include_buffer: includeBuffer,
             end_at,
@@ -546,6 +587,8 @@ class ScheduleEntryService {
             subject_id: body.subject_id ?? null,
             topic_id: body.topic_id ?? null,
             resources_text: body.resources_text ?? null,
+            created_by_user_id: body.created_by_user_id ?? null,
+            updated_by_user_id: body.updated_by_user_id ?? null,
           },
         });
 
@@ -566,6 +609,20 @@ class ScheduleEntryService {
               student_id,
             })),
             skipDuplicates: true,
+          });
+        }
+
+        if (allowConflicts && conflicts.length) {
+          await tx.scheduleConflict.createMany({
+            data: conflicts.map((item) => ({
+              organization_id,
+              schedule_entry_id: entry.id,
+              conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+              conflict_tags: item.conflict_tags,
+              message: item.message,
+              resource: item.resource ?? undefined,
+              created_by_user_id: body.created_by_user_id ?? null,
+            })),
           });
         }
 
@@ -641,15 +698,19 @@ class ScheduleEntryService {
       }
     }
 
+    const conflictsByIndex: ConflictPayload[][] = windows.map(() => []);
     // Conflicts (check every occurrence)
-    for (const w of windows) {
+    for (const [idx, w] of windows.entries()) {
       const ctx = { series_id, occurrence_start_at: w.startAt.toISOString() };
+      const bucket = conflictsByIndex[idx] ?? [];
 
       await this.assertTutorAvailable({
         tutor_id,
         newStart: w.startAt,
         newEnd: w.end_at,
         newBlockedEnd: w.blocked_end_at,
+        allowConflicts,
+        conflicts: bucket,
         context: ctx,
       });
       await this.assertRoomsAvailable({
@@ -657,14 +718,19 @@ class ScheduleEntryService {
         newStart: w.startAt,
         newEnd: w.end_at,
         newBlockedEnd: w.blocked_end_at,
+        allowConflicts,
+        conflicts: bucket,
         context: ctx,
       });
       await this.assertStudentsAvailable({
         student_ids: attendee_student_ids,
         newStart: w.startAt,
         newEnd: w.end_at,
+        allowConflicts,
+        conflicts: bucket,
         context: ctx,
       });
+      conflictsByIndex[idx] = bucket;
     }
 
     const recurrence_days_of_week =
@@ -681,6 +747,7 @@ class ScheduleEntryService {
           service_offered_id,
           tutor_id,
           start_at: w.startAt,
+          location_detail,
           duration_minutes: durationMinutes,
           include_buffer: includeBuffer,
           end_at: w.end_at,
@@ -697,6 +764,8 @@ class ScheduleEntryService {
           subject_id: body.subject_id ?? null,
           topic_id: body.topic_id ?? null,
           resources_text: body.resources_text ?? null,
+          created_by_user_id: body.created_by_user_id ?? null,
+          updated_by_user_id: body.updated_by_user_id ?? null,
         })),
       });
 
@@ -716,6 +785,23 @@ class ScheduleEntryService {
           ),
           skipDuplicates: true,
         });
+      }
+
+      if (allowConflicts) {
+        const conflictRows = entry_ids.flatMap((schedule_entry_id, idx) =>
+          (conflictsByIndex[idx] ?? []).map((item) => ({
+            organization_id,
+            schedule_entry_id,
+            conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+            conflict_tags: item.conflict_tags,
+            message: item.message,
+            resource: item.resource ?? undefined,
+            created_by_user_id: body.created_by_user_id ?? null,
+          })),
+        );
+        if (conflictRows.length) {
+          await tx.scheduleConflict.createMany({ data: conflictRows });
+        }
       }
     });
 
@@ -1169,9 +1255,6 @@ class ScheduleEntryService {
         select: { id: true, start_at: true, end_at: true, capacity: true },
       });
 
-      const overCapacity = seriesEntries.find((e) => attendee_student_ids.length > Number(e.capacity));
-      if (overCapacity) badRequest("attendee_student_ids cannot exceed capacity");
-
       const excludeIds = seriesEntries.map((e) => e.id);
       for (const e of seriesEntries) {
         const ctx = { series_id: entry.series_id, scope, schedule_entry_id: e.id };
@@ -1196,10 +1279,6 @@ class ScheduleEntryService {
       });
 
       return { series_id: entry.series_id, scope, updated_count: excludeIds.length, entry_ids: excludeIds };
-    }
-
-    if (attendee_student_ids.length > entry.capacity) {
-      badRequest("attendee_student_ids cannot exceed capacity");
     }
 
     // Validate students belong to entry.location_id (hard rule)
@@ -1240,10 +1319,15 @@ class ScheduleEntryService {
 
     const svc = await prisma.serviceOffered.findUnique({
       where: { id: service_offered_id },
-      select: { id: true, location_id: true, hourly_rate_cents: true },
+      select: { id: true, location_id: true, hourly_rate_cents: true, capacity: true },
     });
     if (!svc) badRequest("service_offered_id not found");
-    if (svc.location_id !== entry.location_id) {
+    const entryLocation = await prisma.location.findUnique({
+      where: { id: entry.location_id },
+      select: { is_system: true },
+    });
+    if (!entryLocation) badRequest("location_id not found");
+    if (!entryLocation.is_system && svc.location_id !== entry.location_id) {
       badRequest("service_offered_id does not belong to this schedule entry location_id");
     }
 
@@ -1262,7 +1346,11 @@ class ScheduleEntryService {
       const entry_ids = entries.map((e) => e.id);
       await prisma.scheduleEntry.updateMany({
         where: { id: { in: entry_ids } },
-        data: { service_offered_id, hourly_rate_cents_snapshot: Number(svc.hourly_rate_cents) },
+        data: {
+          service_offered_id,
+          hourly_rate_cents_snapshot: Number(svc.hourly_rate_cents),
+          capacity: Number(svc.capacity ?? 1),
+        },
       });
 
       return { series_id: entry.series_id, scope, updated_count: entry_ids.length, entry_ids };
@@ -1273,6 +1361,7 @@ class ScheduleEntryService {
       data: {
         service_offered_id,
         hourly_rate_cents_snapshot: Number(svc.hourly_rate_cents),
+        capacity: Number(svc.capacity ?? 1),
       },
       include: { rooms: true, attendees: true },
     });
@@ -1341,10 +1430,8 @@ class ScheduleEntryService {
         ? Boolean(body.include_buffer)
         : entry.include_buffer;
 
-    const capacity =
-      Object.prototype.hasOwnProperty.call(body, "capacity") && body.capacity != null
-        ? this.requireInt("capacity", body.capacity)
-        : entry.capacity;
+    const hasCapacityOverride = Object.prototype.hasOwnProperty.call(body, "capacity") && body.capacity != null;
+    let capacity = hasCapacityOverride ? this.requireInt("capacity", body.capacity) : entry.capacity;
     if (capacity < 1) badRequest("capacity must be >= 1");
 
     const room_ids = Array.isArray(body.room_ids)
@@ -1355,22 +1442,26 @@ class ScheduleEntryService {
       ? Array.from(new Set(body.attendee_student_ids))
       : entry.attendees.map((a: any) => a.student_id);
 
-    if (attendee_student_ids.length > capacity) {
-      badRequest("attendee_student_ids cannot exceed capacity");
-    }
-
     const service_offered_id = body.service_offered_id ?? entry.service_offered_id;
     let hourly_rate_cents_snapshot = entry.hourly_rate_cents_snapshot;
     if (service_offered_id !== entry.service_offered_id) {
       const svc = await prisma.serviceOffered.findUnique({
         where: { id: service_offered_id },
-        select: { id: true, location_id: true, hourly_rate_cents: true },
+        select: { id: true, location_id: true, hourly_rate_cents: true, capacity: true },
       });
       if (!svc) badRequest("service_offered_id not found");
-      if (svc.location_id !== entry.location_id) {
+      const entryLocation = await prisma.location.findUnique({
+        where: { id: entry.location_id },
+        select: { is_system: true },
+      });
+      if (!entryLocation) badRequest("location_id not found");
+      if (!entryLocation.is_system && svc.location_id !== entry.location_id) {
         badRequest("service_offered_id does not belong to this schedule entry location_id");
       }
       hourly_rate_cents_snapshot = Number(svc.hourly_rate_cents);
+      if (!hasCapacityOverride) {
+        capacity = Number(svc.capacity ?? 1);
+      }
     }
 
     // Validate rooms belong to this entry's location

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { badRequest, handleRoute } from "@/lib/api";
+import { badRequest, conflict, handleRoute } from "@/lib/api";
 import { requireAuth, requireLocationInOrg } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -25,34 +25,72 @@ export async function POST(req: Request) {
       badRequest("student.first_name and student.last_name are required");
     }
 
+    const normalize = (val: any) => (typeof val === "string" ? val.trim() || null : null);
+    const parent1Email = normalize(body.parent1?.email);
+    const parent1Phone = normalize(body.parent1?.phone);
+    const parent2Email = normalize(body.parent2?.email);
+    const parent2Phone = normalize(body.parent2?.phone);
+
     const result = await prisma.$transaction(async (tx) => {
+      const orClauses: any[] = [];
+      if (parent1Email) {
+        orClauses.push({ parent1_email: { equals: parent1Email, mode: "insensitive" } });
+      }
+      if (parent1Phone) {
+        orClauses.push({ parent1_phone: parent1Phone });
+      }
+      if (orClauses.length) {
+        const duplicate = await tx.parent.findFirst({
+          where: {
+            organization_id,
+            OR: orClauses,
+          },
+          select: { id: true, parent1_email: true, parent1_phone: true },
+        });
+        if (duplicate) {
+          conflict({ message: "Parent with this email or phone already exists." });
+        }
+      }
+
       const parent = await tx.parent.create({
         data: {
           organization_id,
 
-          parent1_first_name: typeof body.parent1?.first_name === "string" ? body.parent1.first_name : null,
-          parent1_last_name: typeof body.parent1?.last_name === "string" ? body.parent1.last_name : null,
-          parent1_phone: typeof body.parent1?.phone === "string" ? body.parent1.phone : null,
-          parent1_email: typeof body.parent1?.email === "string" ? body.parent1.email : null,
-          parent1_address_1: typeof body.parent1?.address_1 === "string" ? body.parent1.address_1 : null,
-          parent1_address_2: typeof body.parent1?.address_2 === "string" ? body.parent1.address_2 : null,
-          parent1_city: typeof body.parent1?.city === "string" ? body.parent1.city : null,
-          parent1_state: typeof body.parent1?.state === "string" ? body.parent1.state : null,
-          parent1_zip: typeof body.parent1?.zip === "string" ? body.parent1.zip : null,
+          parent1_first_name: normalize(body.parent1?.first_name),
+          parent1_last_name: normalize(body.parent1?.last_name),
+          parent1_phone: parent1Phone,
+          parent1_email: parent1Email,
+          parent1_address_1: normalize(body.parent1?.address_1),
+          parent1_address_2: normalize(body.parent1?.address_2),
+          parent1_city: normalize(body.parent1?.city),
+          parent1_state: normalize(body.parent1?.state),
+          parent1_zip: normalize(body.parent1?.zip),
 
-          parent2_first_name: typeof body.parent2?.first_name === "string" ? body.parent2.first_name : null,
-          parent2_last_name: typeof body.parent2?.last_name === "string" ? body.parent2.last_name : null,
-          parent2_phone: typeof body.parent2?.phone === "string" ? body.parent2.phone : null,
-          parent2_email: typeof body.parent2?.email === "string" ? body.parent2.email : null,
-          parent2_address_1: typeof body.parent2?.address_1 === "string" ? body.parent2.address_1 : null,
-          parent2_address_2: typeof body.parent2?.address_2 === "string" ? body.parent2.address_2 : null,
-          parent2_city: typeof body.parent2?.city === "string" ? body.parent2.city : null,
-          parent2_state: typeof body.parent2?.state === "string" ? body.parent2.state : null,
-          parent2_zip: typeof body.parent2?.zip === "string" ? body.parent2.zip : null,
+          parent2_first_name: normalize(body.parent2?.first_name),
+          parent2_last_name: normalize(body.parent2?.last_name),
+          parent2_phone: parent2Phone,
+          parent2_email: parent2Email,
+          parent2_address_1: normalize(body.parent2?.address_1),
+          parent2_address_2: normalize(body.parent2?.address_2),
+          parent2_city: normalize(body.parent2?.city),
+          parent2_state: normalize(body.parent2?.state),
+          parent2_zip: normalize(body.parent2?.zip),
 
-          notes: typeof body.notes === "string" ? body.notes : null,
+          notes: normalize(body.notes),
         },
       });
+
+      const rawDob = student?.dob;
+      let parsedDob: Date | null | undefined = undefined;
+      if (rawDob instanceof Date) {
+        parsedDob = rawDob;
+      } else if (typeof rawDob === "string" && rawDob.trim()) {
+        const date = new Date(rawDob);
+        if (Number.isNaN(date.getTime())) badRequest("student.dob is invalid");
+        parsedDob = date;
+      } else if (rawDob === null) {
+        parsedDob = null;
+      }
 
       const createdStudent = await tx.student.create({
         data: {
@@ -61,7 +99,18 @@ export async function POST(req: Request) {
           location_id: student.location_id,
           first_name: student.first_name,
           last_name: student.last_name,
-          in_person: Boolean(student.in_person ?? true),
+          email: normalize(student?.email),
+          phone: normalize(student?.phone),
+          dob: parsedDob,
+          school: normalize(student?.school),
+          iep: typeof student?.iep === "boolean" ? student.iep : undefined,
+          allergies: typeof student?.allergies === "boolean" ? student.allergies : undefined,
+          medical_condition: typeof student?.medical_condition === "boolean" ? student.medical_condition : undefined,
+          behaviorial_issue: typeof student?.behaviorial_issue === "boolean" ? student.behaviorial_issue : undefined,
+          vision_issue: typeof student?.vision_issue === "boolean" ? student.vision_issue : undefined,
+          hearing_issue: typeof student?.hearing_issue === "boolean" ? student.hearing_issue : undefined,
+          in_person: typeof student?.in_person === "boolean" ? student.in_person : true,
+          notes: normalize(student?.notes),
         },
       });
 

@@ -10,6 +10,7 @@ export function useSettingsForm<T extends Record<string, any>>(initialData: T) {
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
+    if (jsonEqual(initialData, initialRef.current)) return;
     initialRef.current = initialData;
     setFormData(initialData);
     setHasChanges(false);

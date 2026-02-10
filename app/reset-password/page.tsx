@@ -120,7 +120,7 @@ export default function ResetPasswordPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="bg-indigo-50"
+                    className="bg-zinc-50"
                     autoComplete="new-password"
                   />
                 </div>
@@ -133,7 +133,7 @@ export default function ResetPasswordPage() {
                     required
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
-                    className="bg-indigo-50"
+                    className="bg-zinc-50"
                     autoComplete="new-password"
                   />
                 </div>

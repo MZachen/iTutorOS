@@ -67,6 +67,12 @@ export async function GET(req: Request) {
     try {
       const org = await prisma.organization.findUnique({
         where: { id: auth.organization_id },
+        include: {
+          images: {
+            where: { image_type: "BUSINESS_LOGO", archived_at: null },
+            select: { image_url: true, image_type: true, archived_at: true },
+          },
+        },
       });
       return NextResponse.json(org ? [org] : []);
     } catch (err) {

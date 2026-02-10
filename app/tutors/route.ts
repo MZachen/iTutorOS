@@ -1,94 +1,44 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute } from "@/lib/api";
-import { requireAuth, requireNotTutor } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+export async function GET(req: Request) {
   return handleRoute(async () => {
     const auth = await requireAuth(req);
-    requireNotTutor(auth);
-
-    let body: any;
-    try {
-      body = await req.json();
-    } catch {
-      badRequest("Invalid JSON body");
+    const sp = new URL(req.url).searchParams;
+    const location_id = sp.get("location_id");
+    const archivedParam = sp.get("archived");
+    let archived: "active" | "archived" | "all" = "active";
+    if (archivedParam != null) {
+      const v = archivedParam.toLowerCase();
+      if (v === "true" || v === "1" || v === "archived") archived = "archived";
+      else if (v === "all") archived = "all";
+      else if (v === "false" || v === "0" || v === "active") archived = "active";
+      else badRequest("archived must be one of true,false,all");
     }
 
-    const organization_id = auth.organization_id;
-    const user_id = typeof body.user_id === "string" ? body.user_id : null;
-    const email = typeof body.email === "string" ? body.email : null;
-    const location_ids = Array.isArray(body.location_ids) ? body.location_ids : [];
+    const archivedFilter =
+      archived === "archived" ? { archived_at: { not: null } } : archived === "all" ? {} : { archived_at: null };
 
-    if (!user_id) badRequest("user_id is required");
-    if (!email) badRequest("email is required");
-    if (location_ids.length === 0) badRequest("location_ids required");
-
-    const locations = await prisma.location.findMany({
-      where: { id: { in: location_ids }, organization_id },
-      select: { id: true },
-    });
-    if (locations.length !== location_ids.length) {
-      badRequest("All location_ids must belong to your organization");
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      const existingUser = await tx.user.findUnique({
-        where: { id: user_id },
-        select: { id: true, organization_id: true, email: true },
-      });
-
-      if (existingUser && existingUser.organization_id !== organization_id) {
-        badRequest("user_id belongs to a different organization");
-      }
-
-      if (existingUser && existingUser.email !== email) {
-        badRequest("email does not match existing user_id");
-      }
-
-      const user = existingUser
-        ? await tx.user.findUniqueOrThrow({ where: { id: user_id } })
-        : await tx.user.create({
-            data: {
-              id: user_id,
-              organization_id,
-              email,
-              first_name: typeof body.first_name === "string" ? body.first_name : null,
-              last_name: typeof body.last_name === "string" ? body.last_name : null,
-            },
-          });
-
-      await tx.userRole.createMany({
-        data: [{ user_id: user.id, role: "TUTOR" }],
-        skipDuplicates: true,
-      });
-
-      await tx.userLocation.createMany({
-        data: location_ids.map((location_id: string) => ({ user_id: user.id, location_id })),
-        skipDuplicates: true,
-      });
-
-      const tutor =
-        (await tx.tutor.findUnique({ where: { user_id: user.id } })) ??
-        (await tx.tutor.create({
-          data: {
-            user_id: user.id,
-            organization_id,
-            is_active: true,
-          },
-        }));
-
-      // Also create TutorLocation rows (needed for scheduling)
-      await tx.tutorLocation.createMany({
-        data: location_ids.map((location_id: string) => ({ tutor_id: tutor.id, location_id })),
-        skipDuplicates: true,
-      });
-
-      return { user, tutor };
+    const tutors = await prisma.tutor.findMany({
+      where: {
+        organization_id: auth.organization_id,
+        ...archivedFilter,
+        ...(location_id
+          ? { tutorLocations: { some: { location_id } } }
+          : {}),
+      },
+      orderBy: { created_at: "asc" },
+      include: {
+        user: { select: { first_name: true, last_name: true, email: true } },
+        tutorLocations: true,
+      },
     });
 
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json(tutors);
   });
 }
+

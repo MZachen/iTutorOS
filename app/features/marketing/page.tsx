@@ -107,7 +107,7 @@ export default function MarketingFeaturePage() {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="bg-indigo-50"
+                      className="bg-zinc-50"
                       autoComplete="email"
                     />
                   </div>
@@ -120,7 +120,7 @@ export default function MarketingFeaturePage() {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="bg-indigo-50"
+                      className="bg-zinc-50"
                       autoComplete="new-password"
                     />
                   </div>

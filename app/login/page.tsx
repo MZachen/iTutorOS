@@ -90,7 +90,7 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="bg-indigo-50"
+                  className="bg-zinc-50"
                   autoComplete="email"
                 />
               </div>
@@ -103,7 +103,7 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="bg-indigo-50"
+                  className="bg-zinc-50"
                   autoComplete="current-password"
                 />
               </div>

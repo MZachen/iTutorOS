@@ -70,6 +70,17 @@ enum ContactMethod {
   DM
 }
 
+enum EmailProvider {
+  GMAIL
+  OUTLOOK
+  IMAP
+}
+
+enum EmailAuthType {
+  OAUTH
+  IMAP
+}
+
 enum RecurrenceType {
   AD_HOC
   WEEKLY
@@ -124,9 +135,11 @@ model Organization {
   tutors                 Tutor[]
   products               Product[]
   leads                  Lead[]
+  emailInboxes           EmailInbox[]
   parents                Parent[]
   students               Student[]
   scheduleEntries        ScheduleEntry[]
+  scheduleConflicts      ScheduleConflict[]
 
   @@index([archived_at])
 }
@@ -138,6 +151,7 @@ model Location {
 
   location_name              String
   is_virtual                 Boolean  @default(false)
+  is_system                  Boolean  @default(false)
 
   location_address_1         String?
   location_address_2         String?
@@ -251,12 +265,17 @@ model User {
   leadsCreated    Lead[]    @relation("LeadCreatedBy")
   leadsUpdated    Lead[]    @relation("LeadUpdatedBy")
 
+  emailInboxesCreated EmailInbox[] @relation("EmailInboxCreatedBy")
+  emailInboxesUpdated EmailInbox[] @relation("EmailInboxUpdatedBy")
+
   parentsCreated  Parent[]  @relation("ParentCreatedBy")
   parentsUpdated  Parent[]  @relation("ParentUpdatedBy")
   studentsCreated Student[] @relation("StudentCreatedBy")
   studentsUpdated Student[] @relation("StudentUpdatedBy")
   scheduleCreated ScheduleEntry[] @relation("ScheduleCreatedBy")
   scheduleUpdated ScheduleEntry[] @relation("ScheduleUpdatedBy")
+  scheduleConflictsCreated ScheduleConflict[] @relation("ScheduleConflictCreatedBy")
+  scheduleConflictsResolved ScheduleConflict[] @relation("ScheduleConflictResolvedBy")
 
   @@index([organization_id])
   @@index([archived_at])
@@ -359,6 +378,8 @@ model ServiceOffered {
 
   service_code     String
   hourly_rate_cents Int
+  capacity         Int      @default(1)
+  unit_length_minutes Int   @default(60)
   display_name     String?
   description_text String?
   is_active        Boolean  @default(true)
@@ -405,6 +426,7 @@ model Lead {
   leadLocation       Location?   @relation(fields: [lead_location_id], references: [id], onDelete: SetNull)
 
   source             LeadSource?
+  source_detail      String?
   owner_user_id      String?     @db.Uuid
   ownerUser          User?       @relation("LeadOwner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 
@@ -423,6 +445,7 @@ model Lead {
   parent_email       String?
   parent_phone       String?
   notes              String?
+  lead_students      Json?
 
   subject_id         String?     @db.Uuid
   topic_id           String?     @db.Uuid
@@ -445,6 +468,40 @@ model Lead {
   @@index([stage])
   @@index([lead_location_id])
   @@index([owner_user_id])
+  @@index([archived_at])
+}
+
+model EmailInbox {
+  id                 String       @id @default(uuid()) @db.Uuid
+  organization_id    String       @db.Uuid
+  organization       Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  provider           EmailProvider
+  auth_type          EmailAuthType
+  address            String
+  label              String?
+  enabled            Boolean      @default(true)
+
+  daily_scan_enabled Boolean      @default(false)
+  daily_scan_time    String?
+  last_scan_at        DateTime?
+
+  credentials_encrypted String?
+  imap_host          String?
+  imap_port          Int?
+  imap_secure        Boolean?
+
+  created_at         DateTime     @default(now())
+  updated_at         DateTime     @updatedAt
+  archived_at        DateTime?
+
+  created_by_user_id String?      @db.Uuid
+  updated_by_user_id String?      @db.Uuid
+  createdBy          User?        @relation("EmailInboxCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy          User?        @relation("EmailInboxUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([provider])
   @@index([archived_at])
 }
 
@@ -513,8 +570,8 @@ model Student {
   allergies           Boolean? @default(false)
   medical_condition   Boolean? @default(false)
   behaviorial_issue   Boolean? @default(false)
-  vision_ok           Boolean? @default(true)
-  hearing_ok          Boolean? @default(true)
+  vision_issue        Boolean? @default(false)
+  hearing_issue       Boolean? @default(false)
   in_person           Boolean? @default(true)
 
   notes               String?
@@ -568,6 +625,7 @@ model ScheduleEntry {
   tutor                 Tutor        @relation(fields: [tutor_id], references: [id], onDelete: Restrict)
 
   start_at              DateTime
+  location_detail       String?
   product_id            String?     @db.Uuid
   subject_id            String?     @db.Uuid
   topic_id              String?     @db.Uuid
@@ -595,6 +653,8 @@ model ScheduleEntry {
 
   rooms                 ScheduleEntryRoom[]
   attendees             ScheduleEntryAttendee[]
+  conflicts             ScheduleConflict[]
+  conflictsWith         ScheduleConflict[] @relation("ScheduleConflictOther")
 
   created_at            DateTime @default(now())
   updated_at            DateTime @updatedAt
@@ -634,5 +694,35 @@ model ScheduleEntryAttendee {
 
   @@id([schedule_entry_id, student_id]) // UNIQUE[schedule_entry_id, student_id]
   @@index([student_id])
+}
+
+model ScheduleConflict {
+  id                             String       @id @default(uuid()) @db.Uuid
+  organization_id                String       @db.Uuid
+  organization                   Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  schedule_entry_id              String       @db.Uuid
+  scheduleEntry                  ScheduleEntry @relation(fields: [schedule_entry_id], references: [id], onDelete: Cascade)
+
+  conflicting_schedule_entry_id  String       @db.Uuid
+  conflictingScheduleEntry       ScheduleEntry @relation("ScheduleConflictOther", fields: [conflicting_schedule_entry_id], references: [id], onDelete: Cascade)
+
+  conflict_tags                  Json
+  message                        String
+  resource                       Json?
+
+  resolved_at                    DateTime?
+  created_at                     DateTime @default(now())
+  updated_at                     DateTime @updatedAt
+
+  created_by_user_id             String? @db.Uuid
+  resolved_by_user_id            String? @db.Uuid
+  createdBy                      User?  @relation("ScheduleConflictCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  resolvedBy                     User?  @relation("ScheduleConflictResolvedBy", fields: [resolved_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([schedule_entry_id])
+  @@index([conflicting_schedule_entry_id])
+  @@index([resolved_at])
 }
 

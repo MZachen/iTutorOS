@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { badRequest, handleRoute, notFound } from "@/lib/api";
+import { badRequest, conflict, handleRoute, notFound } from "@/lib/api";
 import { requireAuth, requireOrgMatch } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -82,6 +82,29 @@ export async function PATCH(req: Request) {
     if (typeof body.archived === "boolean") data.archived_at = body.archived ? new Date() : null;
 
     if (Object.keys(data).length === 0) badRequest("No fields to update");
+
+    const emailToCheck = typeof data.parent1_email === "string" ? data.parent1_email : null;
+    const phoneToCheck = typeof data.parent1_phone === "string" ? data.parent1_phone : null;
+    if (emailToCheck || phoneToCheck) {
+      const orClauses: any[] = [];
+      if (emailToCheck) {
+        orClauses.push({ parent1_email: { equals: emailToCheck, mode: "insensitive" } });
+      }
+      if (phoneToCheck) {
+        orClauses.push({ parent1_phone: phoneToCheck });
+      }
+      const duplicate = await prisma.parent.findFirst({
+        where: {
+          organization_id: auth.organization_id,
+          id: { not: parent_id },
+          OR: orClauses,
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        conflict({ message: "Parent with this email or phone already exists." });
+      }
+    }
 
     const updated = await prisma.parent.update({
       where: { id: parent_id },

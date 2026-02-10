@@ -6,6 +6,64 @@ import { requireAuth, requireLocationInOrg, requireNotTutor, requireOrgMatch } f
 
 export const runtime = "nodejs";
 
+const SYSTEM_LOCATIONS = [
+  { name: "Virtual / Web Meeting", is_virtual: true },
+  { name: "Offsite / Homebound", is_virtual: false },
+];
+
+const HAS_IS_SYSTEM = "is_system" in Prisma.LocationScalarFieldEnum;
+
+async function ensureSystemLocations(organization_id: string) {
+  if (!HAS_IS_SYSTEM) return;
+  const existing = await prisma.location.findMany({
+    where: { organization_id, is_system: true, archived_at: null },
+    select: { id: true, location_name: true },
+  });
+  const existingNames = new Set(existing.map((loc) => loc.location_name));
+  const missing = SYSTEM_LOCATIONS.filter((loc) => !existingNames.has(loc.name));
+  if (!missing.length) return;
+
+  await prisma.$transaction(async (tx) => {
+    const createdIds: string[] = [];
+    for (const item of missing) {
+      const created = await tx.location.create({
+        data: {
+          organization_id,
+          location_name: item.name,
+          is_virtual: item.is_virtual,
+          is_system: true,
+        },
+        select: { id: true },
+      });
+      createdIds.push(created.id);
+    }
+
+    if (!createdIds.length) return;
+
+    const owners = await tx.userRole.findMany({
+      where: { role: "OWNER", user: { organization_id } },
+      select: { user_id: true },
+    });
+    if (owners.length) {
+      await tx.userLocation.createMany({
+        data: owners.flatMap((o) => createdIds.map((location_id) => ({ user_id: o.user_id, location_id }))),
+        skipDuplicates: true,
+      });
+    }
+
+    const tutors = await tx.tutor.findMany({
+      where: { organization_id, archived_at: null },
+      select: { id: true },
+    });
+    if (tutors.length) {
+      await tx.tutorLocation.createMany({
+        data: tutors.flatMap((t) => createdIds.map((location_id) => ({ tutor_id: t.id, location_id }))),
+        skipDuplicates: true,
+      });
+    }
+  });
+}
+
 export async function POST(req: Request) {
   return handleRoute(async () => {
     const auth = await requireAuth(req);
@@ -37,7 +95,9 @@ export async function POST(req: Request) {
       plan === "enterprise" ? "Enterprise" : plan === "pro" ? "Pro" : plan === "basic-plus" ? "Basic+" : "Basic";
     const limit = plan === "enterprise" ? null : 1;
     if (limit !== null) {
-      const currentCount = await prisma.location.count({ where: { organization_id, archived_at: null } });
+      const where: Record<string, any> = { organization_id, archived_at: null };
+      if (HAS_IS_SYSTEM) where.is_system = false;
+      const currentCount = await prisma.location.count({ where });
       if (currentCount >= limit) {
         forbidden(`Your ${planLabel} plan allows up to ${limit} location${limit === 1 ? "" : "s"}.`);
       }
@@ -85,6 +145,8 @@ export async function GET(req: Request) {
     requireOrgMatch(organizationIdParam, auth.organization_id);
     const organizationId = auth.organization_id;
 
+    await ensureSystemLocations(organizationId);
+
     const locations = await prisma.location.findMany({
       where: {
         organization_id: organizationId,
@@ -113,10 +175,17 @@ export async function PATCH(req: Request) {
     if (!location_id) badRequest("location_id is required");
 
     await requireLocationInOrg(location_id, auth.organization_id);
+    const select: Record<string, boolean> = { is_virtual: true };
+    if (HAS_IS_SYSTEM) select.is_system = true;
+    const existing = await prisma.location.findUnique({ where: { id: location_id }, select });
+    if (HAS_IS_SYSTEM && existing?.is_system && typeof body.archived === "boolean" && body.archived) {
+      forbidden("System locations cannot be archived");
+    }
 
     const data: Record<string, any> = {};
     if (typeof body.location_name === "string") data.location_name = body.location_name.trim();
     if (typeof body.is_virtual === "boolean") data.is_virtual = body.is_virtual;
+    if (typeof body.archived === "boolean") data.archived_at = body.archived ? new Date() : null;
 
     const normalize = (val: any) => (typeof val === "string" ? val.trim() || null : val === null ? null : undefined);
     const address1 = normalize(body.location_address_1);
@@ -172,6 +241,15 @@ export async function DELETE(req: Request) {
     if (!location_id) badRequest("location_id is required");
 
     await requireLocationInOrg(location_id, auth.organization_id);
+    if (HAS_IS_SYSTEM) {
+      const existing = await prisma.location.findUnique({
+        where: { id: location_id },
+        select: { is_system: true },
+      });
+      if (existing?.is_system) {
+        forbidden("System locations cannot be archived");
+      }
+    }
 
     const updated = await prisma.location.update({
       where: { id: location_id },

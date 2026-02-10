@@ -18,6 +18,8 @@ export async function POST(req: Request) {
     }
 
     body.organization_id = auth.organization_id;
+    body.created_by_user_id = auth.userId;
+    body.updated_by_user_id = auth.userId;
 
     const created = await scheduleEntryService.create(body);
     return NextResponse.json(created, { status: 201 });

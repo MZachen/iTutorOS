@@ -7,6 +7,7 @@ import AppHeader from "@/app/_components/AppHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/lib/use-toast";
 
 type CreatedLocation = { id: string; location_name: string; is_virtual: boolean };
 type CreatedRoom = { id: string; room_name: string; location_id: string };
@@ -21,7 +22,8 @@ type DraftRoom = { room_name: string; room_number: string };
 type DraftService = {
   id: string;
   service_name: string;
-  hourly_rate_dollars: number;
+  hourly_rate_dollars: string;
+  unit_length_minutes: string;
   checked: boolean;
   is_custom: boolean;
 };
@@ -299,6 +301,7 @@ export default function SetupPage() {
   const [locationLimit, setLocationLimit] = useState<number | null>(null);
   const [existingLocations, setExistingLocations] = useState(0);
   const [planKey, setPlanKey] = useState("basic");
+  const [limitChecked, setLimitChecked] = useState(false);
 
   // Location
   const [locationName, setLocationName] = useState("Main Location");
@@ -318,13 +321,15 @@ export default function SetupPage() {
     DEFAULT_SERVICE_NAMES.map((name) => ({
       id: makeId(),
       service_name: name,
-      hourly_rate_dollars: 100,
+      hourly_rate_dollars: "100",
+      unit_length_minutes: "60",
       checked: false,
       is_custom: false,
     })),
   );
   const [newServiceName, setNewServiceName] = useState("");
-  const [newServicePrice, setNewServicePrice] = useState<number>(100);
+  const [newServicePrice, setNewServicePrice] = useState<string>("100");
+  const [newServiceUnitLength, setNewServiceUnitLength] = useState<string>("60");
 
   // Subjects & topics
   const [subjects, setSubjects] = useState<DraftSubject[]>(() =>
@@ -339,6 +344,8 @@ export default function SetupPage() {
   const [newTopicDrafts, setNewTopicDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    let cancelled = false;
+    setLimitChecked(false);
     supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session?.access_token) {
         router.replace("/login");
@@ -368,16 +375,25 @@ export default function SetupPage() {
       });
       if (locRes.ok) {
         const locs = await locRes.json();
-        const count = Array.isArray(locs) ? locs.length : 0;
-        setExistingLocations(count);
+        const billableCount = Array.isArray(locs)
+          ? locs.filter((l) => !l.archived_at && !l.is_system).length
+          : 0;
+        if (!cancelled) {
+          setExistingLocations(billableCount);
+        }
         const limit = getLocationLimit(planKeyValue);
-        const canAdd = limit === null || count < limit;
+        const canAdd = limit === null || billableCount < limit;
         if (!canAdd) {
-          router.replace("/settings");
+          if (!cancelled) setLimitChecked(true);
+          router.replace("/settings?tab=LOCATIONS");
           return;
         }
       }
+      if (!cancelled) setLimitChecked(true);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [router, supabase]);
 
   const planLabel = PLAN_LABELS[planKey] ?? planKey;
@@ -396,20 +412,32 @@ export default function SetupPage() {
       setStatus("Custom service name is required.");
       return;
     }
+    const parsedPrice = Number.parseFloat(newServicePrice);
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      setStatus("Please enter a valid unit price (0 or more).");
+      return;
+    }
+    const parsedUnitLength = Number.parseInt(newServiceUnitLength, 10);
+    if (!Number.isInteger(parsedUnitLength) || parsedUnitLength < 1) {
+      setStatus("Please enter a valid unit length in minutes (>= 1).");
+      return;
+    }
 
     setServices((prev) => [
       ...prev,
       {
         id: makeId(),
         service_name: trimmed,
-        hourly_rate_dollars: Number(newServicePrice) || 0,
+        hourly_rate_dollars: newServicePrice.trim(),
+        unit_length_minutes: newServiceUnitLength.trim(),
         checked: true,
         is_custom: true,
       },
     ]);
 
     setNewServiceName("");
-    setNewServicePrice(100);
+    setNewServicePrice("100");
+    setNewServiceUnitLength("60");
   }
 
   function addSubject() {
@@ -484,9 +512,20 @@ export default function SetupPage() {
         setStatus("Please select at least one service and enter a price.");
         return;
       }
-      const invalid = selected.find((s) => !Number.isFinite(s.hourly_rate_dollars) || Number(s.hourly_rate_dollars) < 0);
+      const invalid = selected.find((s) => {
+        const value = Number.parseFloat(s.hourly_rate_dollars);
+        return !Number.isFinite(value) || value < 0;
+      });
       if (invalid) {
-        setStatus("Please enter a valid hourly rate (0 or more) for each selected service.");
+        setStatus("Please enter a valid unit price (0 or more) for each selected service.");
+        return;
+      }
+      const invalidUnit = selected.find((s) => {
+        const value = Number.parseInt(s.unit_length_minutes, 10);
+        return !Number.isInteger(value) || value < 1;
+      });
+      if (invalidUnit) {
+        setStatus("Please enter a valid unit length in minutes (>= 1) for each selected service.");
         return;
       }
       setStep("SUBJECTS_TOPICS");
@@ -518,13 +557,15 @@ export default function SetupPage() {
       DEFAULT_SERVICE_NAMES.map((name) => ({
         id: makeId(),
         service_name: name,
-        hourly_rate_dollars: 100,
+        hourly_rate_dollars: "100",
+        unit_length_minutes: "60",
         checked: false,
         is_custom: false,
       })),
     );
     setNewServiceName("");
-    setNewServicePrice(100);
+    setNewServicePrice("100");
+    setNewServiceUnitLength("60");
     setSubjects(
       DEFAULT_SUBJECTS.map((s) => ({
         id: makeId(),
@@ -570,11 +611,20 @@ export default function SetupPage() {
       setStatus("Please select at least one service and enter a price.");
       return;
     }
-    const invalidService = selectedServices.find(
-      (s) => !Number.isFinite(s.hourly_rate_dollars) || Number(s.hourly_rate_dollars) < 0,
-    );
+    const invalidService = selectedServices.find((s) => {
+      const value = Number.parseFloat(s.hourly_rate_dollars);
+      return !Number.isFinite(value) || value < 0;
+    });
     if (invalidService) {
-      setStatus("Please enter a valid hourly rate (0 or more) for each selected service.");
+      setStatus("Please enter a valid unit price (0 or more) for each selected service.");
+      return;
+    }
+    const invalidUnitService = selectedServices.find((s) => {
+      const value = Number.parseInt(s.unit_length_minutes, 10);
+      return !Number.isInteger(value) || value < 1;
+    });
+    if (invalidUnitService) {
+      setStatus("Please enter a valid unit length in minutes (>= 1) for each selected service.");
       return;
     }
 
@@ -619,7 +669,8 @@ export default function SetupPage() {
       });
       if (!locRes.ok) {
         const msg = await locRes.text();
-        setStatus(`Location create failed (${locRes.status}): ${msg}`);
+        setStatus(null);
+        toast({ title: `Location create failed (${locRes.status})`, description: msg, variant: "destructive" });
         return;
       }
       const location = (await locRes.json()) as CreatedLocation;
@@ -640,7 +691,8 @@ export default function SetupPage() {
           });
           if (!roomRes.ok) {
             const msg = await roomRes.text();
-            setStatus(`Room create failed (${roomRes.status}): ${msg}`);
+            setStatus(null);
+            toast({ title: `Room create failed (${roomRes.status})`, description: msg, variant: "destructive" });
             return;
           }
           createdRooms.push((await roomRes.json()) as CreatedRoom);
@@ -653,7 +705,8 @@ export default function SetupPage() {
       for (const s of selectedServices) {
         const code = makeUniqueCode(s.service_name, usedCodes);
         usedCodes.add(code);
-        const cents = Math.round(Number(s.hourly_rate_dollars) * 100);
+        const cents = Math.round(Number.parseFloat(s.hourly_rate_dollars) * 100);
+        const unitLength = Number.parseInt(s.unit_length_minutes, 10) || 60;
 
         const svcRes = await fetch("/services-offered", {
           method: "POST",
@@ -663,12 +716,14 @@ export default function SetupPage() {
             service_code: code,
             display_name: s.service_name.trim(),
             hourly_rate_cents: cents,
+            unit_length_minutes: unitLength,
             is_active: true,
           }),
         });
         if (!svcRes.ok) {
           const msg = await svcRes.text();
-          setStatus(`Service create failed (${svcRes.status}): ${msg}`);
+          setStatus(null);
+          toast({ title: `Service create failed (${svcRes.status})`, description: msg, variant: "destructive" });
           return;
         }
         createdServices.push((await svcRes.json()) as CreatedService);
@@ -686,7 +741,8 @@ export default function SetupPage() {
       });
       if (!tutorRes.ok) {
         const msg = await tutorRes.text();
-        setStatus(`Tutor create failed (${tutorRes.status}): ${msg}`);
+        setStatus(null);
+        toast({ title: `Tutor create failed (${tutorRes.status})`, description: msg, variant: "destructive" });
         return;
       }
       const createdTutor = ((await tutorRes.json()) as { tutor: CreatedTutor }).tutor;
@@ -702,7 +758,8 @@ export default function SetupPage() {
         });
         if (!subjRes.ok) {
           const msg = await subjRes.text();
-          setStatus(`Subject create failed (${subjRes.status}): ${msg}`);
+          setStatus(null);
+          toast({ title: `Subject create failed (${subjRes.status})`, description: msg, variant: "destructive" });
           return;
         }
         const createdSubject = (await subjRes.json()) as CreatedSubject;
@@ -719,7 +776,8 @@ export default function SetupPage() {
           });
           if (!topicRes.ok) {
             const msg = await topicRes.text();
-            setStatus(`Topic create failed (${topicRes.status}): ${msg}`);
+            setStatus(null);
+            toast({ title: `Topic create failed (${topicRes.status})`, description: msg, variant: "destructive" });
             return;
           }
           createdTopics.push((await topicRes.json()) as CreatedTopic);
@@ -761,6 +819,44 @@ export default function SetupPage() {
   const stepNumber = Math.max(1, steps.indexOf(step) + 1);
   const stepTotal = steps.length;
 
+  if (!limitChecked) {
+    return (
+      <div className="min-h-screen itutoros-soft-gradient">
+        <AppHeader />
+        <main className="flex justify-center p-6">
+          <Card className="w-full max-w-[720px]">
+            <CardContent className="p-6">
+              <div className="text-sm text-gray-600">Checking your location limit...</div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  if (limitReached) {
+    return (
+      <div className="min-h-screen itutoros-soft-gradient">
+        <AppHeader />
+        <main className="flex justify-center p-6">
+          <Card className="w-full max-w-[720px]">
+            <CardContent className="p-6">
+              <div className="text-lg font-semibold">Location limit reached</div>
+              <p className="mt-2 text-sm text-gray-600">
+                Your {planLabel} plan allows up to {locationLimit} location{locationLimit === 1 ? "" : "s"}.
+              </p>
+              <div className="mt-4">
+                <Button type="button" onClick={() => router.replace("/settings?tab=LOCATIONS")} size="sm">
+                  Go to Locations settings
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen itutoros-soft-gradient">
       <AppHeader />
@@ -789,7 +885,7 @@ export default function SetupPage() {
                   required
                   value={locationName}
                   onChange={(e) => setLocationName(e.target.value)}
-                  className="bg-indigo-50"
+                  className="bg-zinc-50"
                 />
               </label>
 
@@ -806,7 +902,7 @@ export default function SetupPage() {
                     value={meetingUrl}
                     onChange={(e) => setMeetingUrl(e.target.value)}
                     placeholder="https://zoom.us/j/..."
-                    className="bg-indigo-50"
+                    className="bg-zinc-50"
                   />
                 </label>
               ) : (
@@ -820,7 +916,7 @@ export default function SetupPage() {
                     <Input
                       value={locationAddress1}
                       onChange={(e) => setLocationAddress1(e.target.value)}
-                      className="bg-indigo-50"
+                      className="bg-zinc-50"
                       autoComplete="address-line1"
                     />
                   </label>
@@ -830,7 +926,7 @@ export default function SetupPage() {
                     <Input
                       value={locationAddress2}
                       onChange={(e) => setLocationAddress2(e.target.value)}
-                      className="bg-indigo-50"
+                      className="bg-zinc-50"
                       autoComplete="address-line2"
                     />
                   </label>
@@ -841,7 +937,7 @@ export default function SetupPage() {
                       <Input
                         value={locationCity}
                         onChange={(e) => setLocationCity(e.target.value)}
-                        className="bg-indigo-50"
+                        className="bg-zinc-50"
                         autoComplete="address-level2"
                       />
                     </label>
@@ -850,7 +946,7 @@ export default function SetupPage() {
                       <select
                         value={locationState}
                         onChange={(e) => setLocationState(e.target.value)}
-                        className="min-h-10 w-full rounded-xl border border-input bg-indigo-50 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+                        className="min-h-10 w-full rounded-xl border border-input bg-zinc-50 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="">--</option>
                         {US_STATES.map((s) => (
@@ -865,7 +961,7 @@ export default function SetupPage() {
                       <Input
                         value={locationZip}
                         onChange={(e) => setLocationZip(e.target.value)}
-                        className="bg-indigo-50"
+                        className="bg-zinc-50"
                         autoComplete="postal-code"
                       />
                     </label>
@@ -916,7 +1012,7 @@ export default function SetupPage() {
                           onChange={(e) =>
                             setRooms((prev) => prev.map((x, i) => (i === idx ? { ...x, room_name: e.target.value } : x)))
                           }
-                          className="bg-indigo-50"
+                          className="bg-zinc-50"
                         />
                       </label>
                       <label className="grid w-full gap-2 sm:w-[220px]">
@@ -926,7 +1022,7 @@ export default function SetupPage() {
                           onChange={(e) =>
                             setRooms((prev) => prev.map((x, i) => (i === idx ? { ...x, room_number: e.target.value } : x)))
                           }
-                          className="bg-indigo-50"
+                          className="bg-zinc-50"
                         />
                       </label>
                     </div>
@@ -955,7 +1051,7 @@ export default function SetupPage() {
                 {services.map((s) => (
                   <div
                     key={s.id}
-                    className="grid gap-3 rounded-xl border border-[#e6e6e6] p-3 sm:grid-cols-[32px_1fr_180px_90px] sm:items-center"
+                    className="grid gap-3 rounded-xl border border-[#e6e6e6] p-3 sm:grid-cols-[32px_1fr_160px_160px_90px] sm:items-center"
                     style={{ background: s.checked ? "#f2f6ff" : "#fafafa" }}
                   >
                     <input
@@ -968,19 +1064,30 @@ export default function SetupPage() {
                     />
                     <div style={{ fontWeight: 500 }}>{s.service_name}</div>
                     <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      inputMode="decimal"
                       value={s.hourly_rate_dollars}
                       disabled={!s.checked}
                       onChange={(e) => {
-                        const value = Number(e.target.value);
+                        const value = e.target.value;
                         setServices((prev) =>
                           prev.map((x) => (x.id === s.id ? { ...x, hourly_rate_dollars: value } : x)),
                         );
                       }}
-                      className="bg-indigo-50"
-                      placeholder="Price (USD)"
+                      className="bg-zinc-50"
+                      placeholder="Unit price ($)"
+                    />
+                    <Input
+                      inputMode="numeric"
+                      value={s.unit_length_minutes}
+                      disabled={!s.checked}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setServices((prev) =>
+                          prev.map((x) => (x.id === s.id ? { ...x, unit_length_minutes: value } : x)),
+                        );
+                      }}
+                      className="bg-zinc-50"
+                      placeholder="Unit length (min)"
                     />
                     {s.is_custom ? (
                       <Button
@@ -1009,17 +1116,24 @@ export default function SetupPage() {
                 <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
                   <label className="grid w-full gap-2 sm:flex-[2_1_260px]">
                     <div>Service name</div>
-                    <Input value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} className="bg-indigo-50" />
+                    <Input value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} className="bg-zinc-50" />
                   </label>
                   <label className="grid w-full gap-2 sm:w-[180px]">
-                    <div>Price (USD)</div>
+                    <div>Unit price ($)</div>
                     <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      inputMode="decimal"
                       value={newServicePrice}
-                      onChange={(e) => setNewServicePrice(Number(e.target.value))}
-                      className="bg-indigo-50"
+                      onChange={(e) => setNewServicePrice(e.target.value)}
+                      className="bg-zinc-50"
+                    />
+                  </label>
+                  <label className="grid w-full gap-2 sm:w-[180px]">
+                    <div>Unit length (min)</div>
+                    <Input
+                      inputMode="numeric"
+                      value={newServiceUnitLength}
+                      onChange={(e) => setNewServiceUnitLength(e.target.value)}
+                      className="bg-zinc-50"
                     />
                   </label>
                   <Button type="button" onClick={addCustomService} size="sm">
@@ -1101,7 +1215,7 @@ export default function SetupPage() {
                         <Input
                           value={newTopicDrafts[s.id] ?? ""}
                           onChange={(e) => setNewTopicDrafts((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                          className="bg-indigo-50"
+                          className="bg-zinc-50"
                         />
                       </label>
                       <Button type="button" onClick={() => addTopic(s.id)} size="sm">
@@ -1124,7 +1238,7 @@ export default function SetupPage() {
                 <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                   <label style={{ display: "grid", gap: 6, flex: "1 1 260px" }}>
                     <div>Subject name</div>
-                    <Input value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} className="bg-indigo-50" />
+                    <Input value={newSubjectName} onChange={(e) => setNewSubjectName(e.target.value)} className="bg-zinc-50" />
                   </label>
                   <Button type="button" onClick={addSubject} size="sm">
                     Add subject
@@ -1191,7 +1305,11 @@ export default function SetupPage() {
           ) : null}
         </div>
 
-        {status ? <p style={{ marginTop: 16, padding: 12, background: "#f5f5f5" }}>{status}</p> : null}
+        {status ? (
+          <div className="mt-4 rounded-xl border border-[#cfd6ea] bg-[#eef2ff] px-4 py-3 text-sm text-[#1f2a44]">
+            {status}
+          </div>
+        ) : null}
         {limitReached ? (
           <p style={{ marginTop: 12, padding: 12, background: "#fff4f4", color: "#7a0b0b" }}>
             Your {planLabel} plan allows up to {locationLimit} location{locationLimit === 1 ? "" : "s"}. You can manage or
