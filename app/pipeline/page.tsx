@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -17,6 +17,7 @@ import {
   UserAdd01Icon,
 } from "@hugeicons/core-free-icons";
 import { toast } from "@/lib/use-toast";
+import { DEFAULT_DATE_FORMAT, formatDateWithPattern, normalizeDateFormat } from "@/lib/date-format";
 
 const LEAD_STAGES = [
   { value: "NEW", label: "New" },
@@ -59,6 +60,13 @@ const PIPELINE_TABS = [
 ] as const;
 
 type PipelineTab = (typeof PIPELINE_TABS)[number]["key"];
+
+const PIPELINE_TAB_ICON_COLORS: Record<PipelineTab, string> = {
+  PIPELINE: "#04c1ff",
+  ADD_LEAD: "#ff2204",
+  IMPORT: "#ff2204",
+  HELP: "#6e4305",
+};
 
 type Location = { id: string; location_name: string; archived_at?: string | null };
 
@@ -124,23 +132,6 @@ function planLeadLimit(plan: string | null | undefined) {
   if (key === "basic-plus") return 25;
   if (key === "pro") return 100;
   return null;
-}
-
-function formatDate(value: any) {
-  if (!value) return "";
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      return `${match[3]}/${match[2]}/${match[1]}`;
-    }
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
 }
 
 
@@ -209,6 +200,7 @@ export default function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [plan, setPlan] = useState<string | null>("basic");
+  const [dateFormat, setDateFormat] = useState(DEFAULT_DATE_FORMAT);
   const [pipelineSources, setPipelineSources] = useState<PipelineSourceSetting[]>(loadPipelineSources());
 
   const [leadSort, setLeadSort] = useState<{ key: string; dir: "asc" | "desc" }>({
@@ -262,6 +254,8 @@ export default function PipelinePage() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
+  const formatDate = (value: any) => formatDateWithPattern(value, dateFormat);
+
   const locationMap = useMemo(() => {
     const map = new Map<string, string>();
     locations.forEach((l) => map.set(l.id, l.location_name));
@@ -312,9 +306,10 @@ export default function PipelinePage() {
     if (leadRes.ok) setLeads((await leadRes.json()) as Lead[]);
     if (locRes.ok) setLocations((await locRes.json()) as Location[]);
     if (orgRes.ok) {
-      const orgs = (await orgRes.json()) as Array<{ subscription_plan?: string | null }>;
+      const orgs = (await orgRes.json()) as Array<{ subscription_plan?: string | null; date_format?: string | null }>;
       const org = orgs?.[0];
       setPlan(org?.subscription_plan ?? "basic");
+      setDateFormat(normalizeDateFormat(org?.date_format));
     }
   }
 
@@ -833,8 +828,9 @@ export default function PipelinePage() {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
+                    style={{ "--tab-icon-color": PIPELINE_TAB_ICON_COLORS[tab.key] } as CSSProperties}
                     className={[
-                      "w-full rounded-lg px-3 py-2 text-left text-sm transition",
+                      "group w-full rounded-lg px-3 py-2 text-left text-sm transition",
                       activeTab === tab.key ? "bg-gray-100 font-semibold" : "hover:bg-gray-50",
                     ].join(" ")}
                   >
@@ -842,7 +838,12 @@ export default function PipelinePage() {
                       <HugeiconsIcon
                         icon={tab.icon}
                         size={16}
-                        className={activeTab === tab.key ? "text-[#0b1f5f]" : "text-gray-500"}
+                        className={[
+                          "transition-colors",
+                          activeTab === tab.key
+                            ? "text-[var(--tab-icon-color)]"
+                            : "text-gray-500 group-hover:text-[var(--tab-icon-color)]",
+                        ].join(" ")}
                       />
                       <span>{tab.label}</span>
                     </span>

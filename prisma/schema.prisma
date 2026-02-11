@@ -37,6 +37,11 @@ enum ProductType {
   CAMP
 }
 
+enum CatalogMediaType {
+  PHOTO
+  VIDEO
+}
+
 enum LeadStage {
   NEW
   CONTACT_ATTEMPTED
@@ -95,6 +100,7 @@ model Organization {
   timezone               String
   default_buffer_minutes Int
   subscription_plan      String   @default("basic")
+  date_format            String   @default("mm/dd/yyyy")
 
   owner_user_id          String?  @unique @db.Uuid
   ownerUser              User?    @relation("OrgOwner", fields: [owner_user_id], references: [id], onDelete: SetNull)
@@ -134,6 +140,7 @@ model Organization {
   users                  User[]
   tutors                 Tutor[]
   products               Product[]
+  catalogMedia           CatalogMedia[]
   leads                  Lead[]
   emailInboxes           EmailInbox[]
   parents                Parent[]
@@ -308,6 +315,7 @@ model Tutor {
   user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   bio_text        String?
+  color_hex       String?  @db.Text
   
   is_active Boolean @default(true)
 
@@ -335,6 +343,7 @@ model TutorLocation {
 model Subject {
   id              String   @id @default(uuid()) @db.Uuid
   subject_name    String
+  description_text String?
   sort_order      Int?
   organization_id String?  @db.Uuid // nullable for custom entries
   archived_at     DateTime?
@@ -344,6 +353,7 @@ model Subject {
   products        Product[]
   studentSubjects StudentSubject[]
   scheduleEntries ScheduleEntry[]
+  catalogMedia    CatalogMedia[]
 
   @@index([organization_id])
   @@index([subject_name])
@@ -356,6 +366,7 @@ model Topic {
   subject         Subject  @relation(fields: [subject_id], references: [id], onDelete: Cascade)
 
   topic_name      String
+  description_text String?
   sort_order      Int?
   organization_id String?  @db.Uuid // nullable for custom entries
   archived_at     DateTime?
@@ -364,6 +375,7 @@ model Topic {
   products        Product[]
   studentSubjects StudentSubject[]
   scheduleEntries ScheduleEntry[]
+  catalogMedia    CatalogMedia[]
 
   @@index([subject_id])
   @@index([organization_id])
@@ -397,6 +409,8 @@ model Product {
 
   product_type            ProductType
   product_name            String
+  product_slogan_text     String?
+  product_logo_url        String?
 
   subject_id              String? @db.Uuid
   topic_id                String? @db.Uuid
@@ -409,10 +423,43 @@ model Product {
   languages_offered       String?
 
   scheduleEntries         ScheduleEntry[]
+  catalogMedia            CatalogMedia[]
 
   @@index([organization_id])
   @@index([product_type])
   @@index([product_name])
+}
+
+model CatalogMedia {
+  id              String       @id @default(uuid()) @db.Uuid
+  organization_id String       @db.Uuid
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  product_id String? @db.Uuid
+  product    Product? @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  subject_id String? @db.Uuid
+  subject    Subject? @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+
+  topic_id String? @db.Uuid
+  topic    Topic? @relation(fields: [topic_id], references: [id], onDelete: Cascade)
+
+  service_code String?
+  media_type   CatalogMediaType
+  media_url    String
+  caption_text String?
+  sort_order   Int?
+
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  archived_at DateTime?
+
+  @@index([organization_id])
+  @@index([product_id])
+  @@index([subject_id])
+  @@index([topic_id])
+  @@index([service_code])
+  @@index([archived_at])
 }
 
 model Lead {

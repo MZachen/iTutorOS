@@ -8,7 +8,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 export default function AppHeader() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
-  const [isTutor, setIsTutor] = useState(false);
+  const [roleLabel, setRoleLabel] = useState("User");
   const [menuOpen, setMenuOpen] = useState(false);
   const [businessName, setBusinessName] = useState<string | null>(null);
   const [businessLogoUrl, setBusinessLogoUrl] = useState<string | null>(null);
@@ -45,7 +45,8 @@ export default function AppHeader() {
       });
       if (meRes.ok) {
         const me = await meRes.json();
-        setIsTutor(me.isTutor && !me.isOwner && !me.isAdmin);
+        const label = me.isOwner ? "Owner" : me.isAdmin ? "Admin" : me.isTutor ? "Tutor" : "User";
+        setRoleLabel(label);
       }
     }
 
@@ -60,7 +61,7 @@ export default function AppHeader() {
     router.replace("/");
   }
 
-  const settingsLabel = isTutor ? "Settings" : "Organization Settings";
+  const settingsLabel = `${roleLabel} Settings`;
 
   return (
     <header className="sticky top-0 z-50 w-full bg-[#dff8ff] shadow-[0_10px_30px_rgba(0,0,0,0.12)]">

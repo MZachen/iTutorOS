@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { badRequest, handleRoute } from "@/lib/api";
 import { requireAuth, requireNotTutor } from "@/lib/auth";
+import { DEFAULT_DATE_FORMAT, normalizeDateFormat, DATE_FORMAT_OPTIONS } from "@/lib/date-format";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
     const timezone = typeof body.timezone === "string" ? body.timezone.trim() : null;
     const default_buffer_minutes = Number.isInteger(body.default_buffer_minutes) ? body.default_buffer_minutes : null;
     const subscription_plan = typeof body.subscription_plan === "string" ? body.subscription_plan.trim() : "basic";
+    const date_format = typeof body.date_format === "string" ? body.date_format.trim().toLowerCase() : DEFAULT_DATE_FORMAT;
 
     const business_phone = typeof body.business_phone === "string" ? body.business_phone.trim() : null;
     const business_address_1 = typeof body.business_address_1 === "string" ? body.business_address_1.trim() : null;
@@ -35,6 +37,9 @@ export async function POST(req: Request) {
     if (!["basic", "basic-plus", "pro", "enterprise"].includes(subscription_plan)) {
       badRequest("subscription_plan is invalid");
     }
+    if (!DATE_FORMAT_OPTIONS.some((opt) => opt.value === date_format)) {
+      badRequest("date_format is invalid");
+    }
 
     if (!business_phone) badRequest("business_phone is required");
     if (!business_address_1) badRequest("business_address_1 is required");
@@ -48,6 +53,7 @@ export async function POST(req: Request) {
         timezone,
         default_buffer_minutes,
         subscription_plan,
+        date_format: normalizeDateFormat(date_format),
         business_phone,
         business_address_1,
         business_address_2,
@@ -93,6 +99,7 @@ export async function GET(req: Request) {
             business_city: true,
             business_state: true,
             business_zip: true,
+            date_format: true,
             created_at: true,
             updated_at: true,
             archived_at: true,
@@ -179,6 +186,14 @@ export async function PATCH(req: Request) {
       const business_zip = typeof body.business_zip === "string" ? body.business_zip.trim() : "";
       if (!business_zip) badRequest("business_zip is required");
       data.business_zip = business_zip;
+    }
+
+    if ("date_format" in body) {
+      const date_format = typeof body.date_format === "string" ? body.date_format.trim().toLowerCase() : "";
+      if (!DATE_FORMAT_OPTIONS.some((opt) => opt.value === date_format)) {
+        badRequest("date_format is invalid");
+      }
+      data.date_format = normalizeDateFormat(date_format);
     }
 
     if (Object.keys(data).length === 0) badRequest("No fields to update");

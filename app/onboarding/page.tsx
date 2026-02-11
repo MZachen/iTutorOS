@@ -99,6 +99,7 @@ export default function OnboardingPage() {
           timezone,
           default_buffer_minutes: 15,
           subscription_plan: selectedPlan,
+          date_format: "mm/dd/yyyy",
           business_phone: businessPhone,
           business_address_1: businessAddress1,
           business_address_2: businessAddress2,

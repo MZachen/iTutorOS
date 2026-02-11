@@ -970,8 +970,14 @@ class ScheduleEntryService {
     return { series_id: anchor.series_id, scope, archived_count: entry_ids.length, entry_ids };
   }
 
-  async reschedule(id: Uuid, body: RescheduleBody, opts?: { scope?: any }) {
+  async reschedule(
+    id: Uuid,
+    body: RescheduleBody,
+    opts?: { scope?: any; allowConflicts?: boolean; createdByUserId?: Uuid | null },
+  ) {
     const scope = this.parseScope(opts?.scope);
+    const allowConflicts = Boolean(opts?.allowConflicts ?? false);
+    const createdByUserId = opts?.createdByUserId ?? null;
     const entry = await this.getActiveEntryOrThrow(id);
 
     const newStart = this.parseDate("start_at", body.start_at);
@@ -1026,7 +1032,8 @@ class ScheduleEntryService {
       }
 
       const excludeIds = windows.map((w) => w.id);
-      for (const w of windows) {
+      const conflictsByIndex: ConflictPayload[][] = windows.map(() => []);
+      for (const [idx, w] of windows.entries()) {
         const ctx = {
           series_id: entry.series_id,
           scope,
@@ -1041,6 +1048,8 @@ class ScheduleEntryService {
           newEnd: w.end_at,
           newBlockedEnd: w.blocked_end_at,
           context: ctx,
+          allowConflicts,
+          conflicts: conflictsByIndex[idx],
         });
         await this.assertRoomsAvailable({
           room_ids: w.room_ids,
@@ -1049,6 +1058,8 @@ class ScheduleEntryService {
           newEnd: w.end_at,
           newBlockedEnd: w.blocked_end_at,
           context: ctx,
+          allowConflicts,
+          conflicts: conflictsByIndex[idx],
         });
         await this.assertStudentsAvailable({
           student_ids: w.student_ids,
@@ -1056,6 +1067,8 @@ class ScheduleEntryService {
           newStart: w.startAt,
           newEnd: w.end_at,
           context: ctx,
+          allowConflicts,
+          conflicts: conflictsByIndex[idx],
         });
       }
 
@@ -1071,6 +1084,23 @@ class ScheduleEntryService {
               blocked_end_at: w.blocked_end_at,
             },
           });
+        }
+
+        if (allowConflicts) {
+          const conflictRows = windows.flatMap((w, idx) =>
+            (conflictsByIndex[idx] ?? []).map((item) => ({
+              organization_id: entry.organization_id,
+              schedule_entry_id: w.id,
+              conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+              conflict_tags: item.conflict_tags,
+              message: item.message,
+              resource: item.resource ?? undefined,
+              created_by_user_id: createdByUserId,
+            })),
+          );
+          if (conflictRows.length) {
+            await tx.scheduleConflict.createMany({ data: conflictRows });
+          }
         }
       });
 
@@ -1088,12 +1118,15 @@ class ScheduleEntryService {
     const room_ids = entry.rooms.map((r: any) => r.room_id);
     const student_ids = entry.attendees.map((a: any) => a.student_id);
 
+    const conflicts: ConflictPayload[] = [];
     await this.assertTutorAvailable({
       tutor_id: entry.tutor_id,
       exclude_schedule_entry_ids: [id],
       newStart,
       newEnd: end_at,
       newBlockedEnd: blocked_end_at,
+      allowConflicts,
+      conflicts,
     });
     await this.assertRoomsAvailable({
       room_ids,
@@ -1101,15 +1134,19 @@ class ScheduleEntryService {
       newStart,
       newEnd: end_at,
       newBlockedEnd: blocked_end_at,
+      allowConflicts,
+      conflicts,
     });
     await this.assertStudentsAvailable({
       student_ids,
       exclude_schedule_entry_ids: [id],
       newStart,
       newEnd: end_at,
+      allowConflicts,
+      conflicts,
     });
 
-    return prisma.scheduleEntry.update({
+    const updated = await prisma.scheduleEntry.update({
       where: { id },
       data: {
         start_at: newStart,
@@ -1120,10 +1157,32 @@ class ScheduleEntryService {
       },
       include: { rooms: true, attendees: true },
     });
+
+    if (allowConflicts && conflicts.length) {
+      await prisma.scheduleConflict.createMany({
+        data: conflicts.map((item) => ({
+          organization_id: entry.organization_id,
+          schedule_entry_id: entry.id,
+          conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+          conflict_tags: item.conflict_tags,
+          message: item.message,
+          resource: item.resource ?? undefined,
+          created_by_user_id: createdByUserId,
+        })),
+      });
+    }
+
+    return updated;
   }
 
-  async updateRooms(id: Uuid, body: UpdateRoomsBody, opts?: { scope?: any }) {
+  async updateRooms(
+    id: Uuid,
+    body: UpdateRoomsBody,
+    opts?: { scope?: any; allowConflicts?: boolean; createdByUserId?: Uuid | null },
+  ) {
     const scope = this.parseScope(opts?.scope);
+    const allowConflicts = Boolean(opts?.allowConflicts ?? false);
+    const createdByUserId = opts?.createdByUserId ?? null;
     const entry = await this.getActiveEntryOrThrow(id);
     const room_ids = Array.isArray(body.room_ids) ? Array.from(new Set(body.room_ids)) : [];
     if (!Array.isArray(body.room_ids)) badRequest("room_ids must be an array");
@@ -1162,8 +1221,10 @@ class ScheduleEntryService {
       });
 
       const excludeIds = seriesEntries.map((e) => e.id);
+      const conflictsByEntry: Record<string, ConflictPayload[]> = {};
       for (const e of seriesEntries) {
         const ctx = { series_id: entry.series_id, scope, schedule_entry_id: e.id };
+        const bucket: ConflictPayload[] = [];
         await this.assertRoomsAvailable({
           room_ids,
           exclude_schedule_entry_ids: excludeIds,
@@ -1171,7 +1232,10 @@ class ScheduleEntryService {
           newEnd: e.end_at,
           newBlockedEnd: e.blocked_end_at,
           context: ctx,
+          allowConflicts,
+          conflicts: bucket,
         });
+        conflictsByEntry[e.id] = bucket;
       }
 
       await prisma.$transaction(async (tx) => {
@@ -1182,6 +1246,23 @@ class ScheduleEntryService {
               room_ids.map((room_id) => ({ schedule_entry_id, room_id })),
             ),
           });
+        }
+
+        if (allowConflicts) {
+          const conflictRows = excludeIds.flatMap((schedule_entry_id) =>
+            (conflictsByEntry[schedule_entry_id] ?? []).map((item) => ({
+              organization_id: entry.organization_id,
+              schedule_entry_id,
+              conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+              conflict_tags: item.conflict_tags,
+              message: item.message,
+              resource: item.resource ?? undefined,
+              created_by_user_id: createdByUserId,
+            })),
+          );
+          if (conflictRows.length) {
+            await tx.scheduleConflict.createMany({ data: conflictRows });
+          }
         }
       });
 
@@ -1200,12 +1281,15 @@ class ScheduleEntryService {
     }
 
     // Conflicts for rooms use blocked window
+    const conflicts: ConflictPayload[] = [];
     await this.assertRoomsAvailable({
       room_ids,
       exclude_schedule_entry_ids: [id],
       newStart: entry.start_at,
       newEnd: entry.end_at,
       newBlockedEnd: entry.blocked_end_at,
+      allowConflicts,
+      conflicts,
     });
 
     await prisma.$transaction(async (tx) => {
@@ -1215,13 +1299,33 @@ class ScheduleEntryService {
           data: room_ids.map((room_id) => ({ schedule_entry_id: id, room_id })),
         });
       }
+
+      if (allowConflicts && conflicts.length) {
+        await tx.scheduleConflict.createMany({
+          data: conflicts.map((item) => ({
+            organization_id: entry.organization_id,
+            schedule_entry_id: entry.id,
+            conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+            conflict_tags: item.conflict_tags,
+            message: item.message,
+            resource: item.resource ?? undefined,
+            created_by_user_id: createdByUserId,
+          })),
+        });
+      }
     });
 
     return this.getById(id);
   }
 
-  async updateAttendees(id: Uuid, body: UpdateAttendeesBody, opts?: { scope?: any }) {
+  async updateAttendees(
+    id: Uuid,
+    body: UpdateAttendeesBody,
+    opts?: { scope?: any; allowConflicts?: boolean; createdByUserId?: Uuid | null },
+  ) {
     const scope = this.parseScope(opts?.scope);
+    const allowConflicts = Boolean(opts?.allowConflicts ?? false);
+    const createdByUserId = opts?.createdByUserId ?? null;
     const entry = await this.getActiveEntryOrThrow(id);
 
     const attendee_student_ids = Array.isArray(body.attendee_student_ids)
@@ -1256,15 +1360,20 @@ class ScheduleEntryService {
       });
 
       const excludeIds = seriesEntries.map((e) => e.id);
+      const conflictsByEntry: Record<string, ConflictPayload[]> = {};
       for (const e of seriesEntries) {
         const ctx = { series_id: entry.series_id, scope, schedule_entry_id: e.id };
+        const bucket: ConflictPayload[] = [];
         await this.assertStudentsAvailable({
           student_ids: attendee_student_ids,
           exclude_schedule_entry_ids: excludeIds,
           newStart: e.start_at,
           newEnd: e.end_at,
           context: ctx,
+          allowConflicts,
+          conflicts: bucket,
         });
+        conflictsByEntry[e.id] = bucket;
       }
 
       await prisma.$transaction(async (tx) => {
@@ -1275,6 +1384,23 @@ class ScheduleEntryService {
               attendee_student_ids.map((student_id) => ({ schedule_entry_id, student_id })),
             ),
           });
+        }
+
+        if (allowConflicts) {
+          const conflictRows = excludeIds.flatMap((schedule_entry_id) =>
+            (conflictsByEntry[schedule_entry_id] ?? []).map((item) => ({
+              organization_id: entry.organization_id,
+              schedule_entry_id,
+              conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+              conflict_tags: item.conflict_tags,
+              message: item.message,
+              resource: item.resource ?? undefined,
+              created_by_user_id: createdByUserId,
+            })),
+          );
+          if (conflictRows.length) {
+            await tx.scheduleConflict.createMany({ data: conflictRows });
+          }
         }
       });
 
@@ -1293,11 +1419,14 @@ class ScheduleEntryService {
     }
 
     // Student conflicts use real session times (not buffer)
+    const conflicts: ConflictPayload[] = [];
     await this.assertStudentsAvailable({
       student_ids: attendee_student_ids,
       exclude_schedule_entry_ids: [id],
       newStart: entry.start_at,
       newEnd: entry.end_at,
+      allowConflicts,
+      conflicts,
     });
 
     await prisma.$transaction(async (tx) => {
@@ -1305,6 +1434,20 @@ class ScheduleEntryService {
       if (attendee_student_ids.length) {
         await tx.scheduleEntryAttendee.createMany({
           data: attendee_student_ids.map((student_id) => ({ schedule_entry_id: id, student_id })),
+        });
+      }
+
+      if (allowConflicts && conflicts.length) {
+        await tx.scheduleConflict.createMany({
+          data: conflicts.map((item) => ({
+            organization_id: entry.organization_id,
+            schedule_entry_id: entry.id,
+            conflicting_schedule_entry_id: item.conflicting_schedule_entry_id,
+            conflict_tags: item.conflict_tags,
+            message: item.message,
+            resource: item.resource ?? undefined,
+            created_by_user_id: createdByUserId,
+          })),
         });
       }
     });

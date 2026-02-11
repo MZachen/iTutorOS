@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -22,6 +22,7 @@ import {
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import { toast } from "@/lib/use-toast";
+import { DEFAULT_DATE_FORMAT, formatDateWithPattern, normalizeDateFormat } from "@/lib/date-format";
 
 type Location = { id: string; location_name: string; archived_at?: string | null };
 type Parent = {
@@ -83,12 +84,20 @@ const CLIENT_TABS: { key: ClientTab; label: string; icon: any }[] = [
   { key: "STUDENTS", label: "Students", icon: UserIcon },
 ];
 
+const CLIENT_TAB_ICON_COLORS: Record<ClientTab, string> = {
+  ADD_FAMILY: "#04ff1c",
+  ADD_STUDENT: "#1604ff",
+  PARENTS: "#ffa904",
+  STUDENTS: "#ff04f0",
+};
+
 export default function ClientsPage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ClientTab>("STUDENTS");
+  const [dateFormat, setDateFormat] = useState(DEFAULT_DATE_FORMAT);
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [parents, setParents] = useState<Parent[]>([]);
@@ -210,15 +219,20 @@ export default function ClientsPage() {
   }, [router, supabase]);
 
   async function loadData(accessToken: string) {
-    const [locRes, parentRes, studentRes] = await Promise.all([
+    const [locRes, parentRes, studentRes, orgRes] = await Promise.all([
       fetch("/locations", { headers: { Authorization: `Bearer ${accessToken}` } }),
       fetch("/parents?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
       fetch("/students?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
+      fetch("/organizations", { headers: { Authorization: `Bearer ${accessToken}` } }),
     ]);
 
     if (locRes.ok) setLocations((await locRes.json()) as Location[]);
     if (parentRes.ok) setParents((await parentRes.json()) as Parent[]);
     if (studentRes.ok) setStudents((await studentRes.json()) as Student[]);
+    if (orgRes.ok) {
+      const orgs = (await orgRes.json()) as Array<{ date_format?: string | null }>;
+      setDateFormat(normalizeDateFormat(orgs?.[0]?.date_format));
+    }
   }
 
   function parentDisplayName(parent?: Parent | null) {
@@ -249,20 +263,7 @@ export default function ClientsPage() {
   }
 
   function formatDate(value: any) {
-    if (!value) return "";
-    if (typeof value === "string") {
-      const trimmed = value.trim();
-      const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (match) {
-        return `${match[3]}/${match[2]}/${match[1]}`;
-      }
-    }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    return formatDateWithPattern(value, dateFormat);
   }
 
 
@@ -636,8 +637,9 @@ export default function ClientsPage() {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
+                    style={{ "--tab-icon-color": CLIENT_TAB_ICON_COLORS[tab.key] } as CSSProperties}
                     className={[
-                      "w-full rounded-lg px-3 py-2 text-left text-sm transition",
+                      "group w-full rounded-lg px-3 py-2 text-left text-sm transition",
                       activeTab === tab.key ? "bg-gray-100 font-semibold" : "hover:bg-gray-50",
                     ].join(" ")}
                   >
@@ -645,7 +647,12 @@ export default function ClientsPage() {
                       <HugeiconsIcon
                         icon={tab.icon}
                         size={16}
-                        className={activeTab === tab.key ? "text-[#0b1f5f]" : "text-gray-500"}
+                        className={[
+                          "transition-colors",
+                          activeTab === tab.key
+                            ? "text-[var(--tab-icon-color)]"
+                            : "text-gray-500 group-hover:text-[var(--tab-icon-color)]",
+                        ].join(" ")}
                       />
                       <span>{tab.label}</span>
                     </span>

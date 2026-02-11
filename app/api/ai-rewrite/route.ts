@@ -2,17 +2,9 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const PIPELINE_SYSTEM_PROMPT = `You are the iTutorOS Pipeline Copilot. Use the rules below when answering:
-- One pipeline per organization. Leads can exist without a location until the family commits.
-- Stage defaults to NEW when a lead is created. All other pipeline fields are null until a user sets them.
-- Lead stages: New, Contact Attempted, Contacted, Follow-up Attempted, Followed-up, Committed, Scheduled, Assessed, Active, Cold.
-- Lead sources: Web, Walk-in, Phone, Email, Social (Facebook/Instagram/TikTok).
-- Lead temperature: Hot, Warm, Cold.
-- Last contact method: Phone, Email, DM.
-- Reason lost: Price, Timing, No response, Went elsewhere, Other.
-- When a lead is committed: create parent and student records and schedule services.
-- Scheduled means assessment or tutoring is on the calendar. Assessed means an assessment was delivered. Active means tutoring delivered.
-Respond with concise, actionable guidance tailored to the question.`;
+const SYSTEM_PROMPT = `You are the iTutorOS Marketing Copilot.
+Rewrite the provided text for clarity, warmth, and marketing appeal.
+Keep it concise, avoid exaggeration, and return only the rewritten text.`;
 
 export async function POST(req: Request) {
   let body: any;
@@ -20,6 +12,12 @@ export async function POST(req: Request) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+  const current = typeof body?.current === "string" ? body.current.trim() : "";
+  if (!prompt) {
+    return NextResponse.json({ error: "prompt is required" }, { status: 400 });
   }
 
   const baseUrlRaw =
@@ -35,6 +33,7 @@ export async function POST(req: Request) {
       return false;
     }
   })();
+
   const apiKey = isOpenAI
     ? process.env.AI_CHAT_API_KEY || process.env.OPENAI_API_KEY
     : process.env.AI_CHAT_API_KEY;
@@ -70,10 +69,6 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
-  const messages = Array.isArray(body?.messages) ? body.messages : [];
-  const cleaned = messages
-    .filter((msg: any) => msg && (msg.role === "user" || msg.role === "assistant") && typeof msg.content === "string")
-    .map((msg: any) => ({ role: msg.role, content: msg.content }));
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -83,15 +78,21 @@ export async function POST(req: Request) {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
-      messages: [{ role: "system", content: PIPELINE_SYSTEM_PROMPT }, ...cleaned],
+      temperature: 0.4,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: `${prompt}\n\nCurrent text:\n${current || "(empty)"}`,
+        },
+      ],
     }),
   });
 
   const data = await res.json();
   if (!res.ok) {
     return NextResponse.json(
-      { error: data?.error?.message || "OpenAI request failed." },
+      { error: data?.error?.message || "AI request failed." },
       { status: res.status },
     );
   }

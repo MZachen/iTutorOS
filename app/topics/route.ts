@@ -97,6 +97,11 @@ export async function PATCH(req: Request) {
       if (!topic_name) badRequest("topic_name is required");
       data.topic_name = topic_name;
     }
+    if ("description_text" in body) {
+      const description_text =
+        typeof body.description_text === "string" ? body.description_text.trim() || null : body.description_text === null ? null : undefined;
+      if (description_text !== undefined) data.description_text = description_text;
+    }
     if (typeof body.archived === "boolean") {
       data.archived_at = body.archived ? new Date() : null;
     }

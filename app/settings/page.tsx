@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useSettingsForm } from "@/lib/useSettingsForm";
 import { makeUniqueServiceCode } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DATE_FORMAT_OPTIONS,
+  DEFAULT_DATE_FORMAT,
+  formatDateWithPattern,
+  normalizeDateFormat,
+} from "@/lib/date-format";
 import {
   CLIENT_FIELDS_STORAGE_KEY,
   PARENT_FIELDS,
@@ -25,6 +32,7 @@ import {
 import { DEFAULT_SERVICE_NAMES, DEFAULT_SUBJECTS } from "@/lib/catalog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ClampedCell } from "@/components/ui/clamped-cell";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -34,6 +42,8 @@ import {
   BookOpen01Icon,
   Building04Icon,
   Calendar01Icon,
+  Cancel01Icon,
+  CheckmarkCircle01Icon,
   CreditCardIcon,
   Location01Icon,
   MarketingIcon,
@@ -60,6 +70,7 @@ type Org = {
   default_buffer_minutes: number;
   business_phone: string | null;
   business_email: string | null;
+  date_format?: string | null;
   business_address_1: string | null;
   business_address_2: string | null;
   business_city: string | null;
@@ -132,6 +143,13 @@ type EmailInbox = {
   imap_secure?: boolean | null;
 };
 
+type Tutor = {
+  id: string;
+  color_hex?: string | null;
+  archived_at?: string | null;
+  user?: { first_name?: string | null; last_name?: string | null; email?: string | null };
+};
+
 type ServiceOffered = {
   id: string;
   location_id: string;
@@ -140,12 +158,14 @@ type ServiceOffered = {
   capacity: number;
   unit_length_minutes?: number | null;
   display_name?: string | null;
+  description_text?: string | null;
   is_active: boolean;
 };
 
 type Subject = {
   id: string;
   subject_name: string;
+  description_text?: string | null;
   archived_at?: string | null;
 };
 
@@ -153,7 +173,42 @@ type Topic = {
   id: string;
   subject_id: string;
   topic_name: string;
+  description_text?: string | null;
   archived_at?: string | null;
+};
+
+type Product = {
+  id: string;
+  product_name: string;
+  product_type: string;
+  product_slogan_text?: string | null;
+  product_description_text?: string | null;
+  product_logo_url?: string | null;
+  service_code?: string | null;
+  subject_id?: string | null;
+  topic_id?: string | null;
+};
+
+type CatalogMedia = {
+  id: string;
+  media_type: "PHOTO" | "VIDEO";
+  media_url: string;
+  caption_text?: string | null;
+  sort_order?: number | null;
+  archived_at?: string | null;
+};
+
+type MarketingTab = "PRODUCTS" | "SERVICES" | "SUBJECTS" | "TOPICS";
+
+type ProductDraft = {
+  id?: string | null;
+  product_name: string;
+  product_slogan_text: string;
+  product_description_text: string;
+  product_logo_url: string;
+  service_code: string;
+  subject_id: string;
+  topic_id: string;
 };
 
 type TopicDraft = {
@@ -211,6 +266,7 @@ type SettingsTab =
   | "BUSINESS"
   | "LOCATIONS"
   | "CLIENTS"
+  | "TUTORS"
   | "SERVICES"
   | "SUBJECTS_TOPICS"
   | "PRODUCTS"
@@ -225,15 +281,61 @@ const ALL_TABS: { key: SettingsTab; label: string; icon: any }[] = [
   { key: "BUSINESS", label: "Business Info", icon: Building04Icon },
   { key: "LOCATIONS", label: "Locations", icon: Location01Icon },
   { key: "CLIENTS", label: "Clients", icon: UserGroupIcon },
+  { key: "TUTORS", label: "Tutors", icon: UserGroupIcon },
   { key: "SERVICES", label: "Services", icon: ServiceIcon },
   { key: "SUBJECTS_TOPICS", label: "Subjects/Topics", icon: BookOpen01Icon },
-  { key: "PRODUCTS", label: "Products", icon: PackageIcon },
   { key: "SCHEDULE", label: "Schedule", icon: Calendar01Icon },
   { key: "PIPELINE", label: "Pipeline", icon: PipelineIcon },
+  { key: "PRODUCTS", label: "Content Studio", icon: PackageIcon },
   { key: "MARKETING", label: "Marketing", icon: MarketingIcon },
   { key: "WEBSITE", label: "Website", icon: WebDesign01Icon },
   { key: "ARCHIVE", label: "Archive", icon: ArchiveIcon },
 ];
+
+const TAB_HEADINGS: Partial<Record<SettingsTab, string>> = {
+  PRODUCTS: "Products",
+};
+
+const TAB_DIVIDERS = new Set<SettingsTab>(["PRODUCTS", "ARCHIVE"]);
+
+const SETTINGS_TAB_ICON_COLORS: Record<SettingsTab, string> = {
+  ACCOUNT: "#048519",
+  BUSINESS: "#0a8e96",
+  LOCATIONS: "#960a2e",
+  CLIENTS: "#af88e9",
+  TUTORS: "#d1f604",
+  SERVICES: "#ff0000",
+  SUBJECTS_TOPICS: "#00ffb4",
+  PRODUCTS: "#857046",
+  SCHEDULE: "#c00f5e",
+  PIPELINE: "#04c1ff",
+  MARKETING: "#ffc000",
+  WEBSITE: "#c000ff",
+  ARCHIVE: "#ff0060",
+};
+
+const MARKETING_TABS: { key: MarketingTab; label: string }[] = [
+  { key: "PRODUCTS", label: "Products" },
+  { key: "SERVICES", label: "Services" },
+  { key: "SUBJECTS", label: "Subjects" },
+  { key: "TOPICS", label: "Topics" },
+];
+
+const EMPTY_PRODUCT_DRAFT: ProductDraft = {
+  id: null,
+  product_name: "",
+  product_slogan_text: "",
+  product_description_text: "",
+  product_logo_url: "",
+  service_code: "",
+  subject_id: "",
+  topic_id: "",
+};
+
+const UNIT_LENGTH_TOOLTIP =
+  "A unit length is not necessarily the full session duration. Example: Private tutoring can be priced at $100 per 45-minute unit. Camps can use a 60-minute unit at $25; an 8-hour day would be 8 units × $25 = $200.";
+
+const DEFAULT_TUTOR_COLOR = "#7c3aed";
 
 const ARCHIVE_OPTIONS: { key: ArchiveType; label: string }[] = [
   { key: "PARENTS", label: "Parents" },
@@ -329,25 +431,21 @@ function planLeadLimit(plan: string | null | undefined) {
   return null;
 }
 
-function formatDate(value: any) {
-  if (!value) return "";
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (match) {
-      return `${match[3]}/${match[2]}/${match[1]}`;
-    }
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+function planTutorLimit(plan: string | null | undefined) {
+  const key = (plan ?? "basic").toLowerCase();
+  if (key === "basic") return 1;
+  if (key === "basic-plus") return 3;
+  if (key === "pro") return 10;
+  return null;
 }
 
 function centsToDollars(cents: number) {
   return (cents / 100).toFixed(2);
+}
+
+function formatCurrencyFromCents(cents?: number | null) {
+  if (cents == null || !Number.isFinite(cents)) return "--";
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function dollarsToCents(value: string) {
@@ -356,8 +454,46 @@ function dollarsToCents(value: string) {
   return Math.round(n * 100);
 }
 
+function parseNonNegativeInt(value: string, fallback: number) {
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return fallback;
+  return Math.max(0, parsed);
+}
+
 function normalizeKey(value: string) {
   return value.trim().toLowerCase();
+}
+
+function catalogMediaKey(kind: "product" | "subject" | "topic" | "service", id: string) {
+  return `${kind}:${id}`;
+}
+
+function buildProductDraft(product?: Product | null): ProductDraft {
+  return {
+    id: product?.id ?? null,
+    product_name: product?.product_name ?? "",
+    product_slogan_text: product?.product_slogan_text ?? "",
+    product_description_text: product?.product_description_text ?? "",
+    product_logo_url: product?.product_logo_url ?? "",
+    service_code: product?.service_code ?? "",
+    subject_id: product?.subject_id ?? "",
+    topic_id: product?.topic_id ?? "",
+  };
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      if (!result) reject(new Error("Unable to read file."));
+      else resolve(result);
+    };
+    reader.onerror = () => reject(new Error("Unable to read file."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function parentDisplayName(parent?: Parent | null) {
@@ -467,9 +603,32 @@ export default function SettingsPage() {
   const [parents, setParents] = useState<Parent[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [tutors, setTutors] = useState<Tutor[]>([]);
+  const [tutorDrafts, setTutorDrafts] = useState<Record<string, string>>({});
+  const tutorDraftsInitialRef = useRef<Record<string, string>>({});
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topicsBySubject, setTopicsBySubject] = useState<Record<string, Topic[]>>({});
+  const [products, setProducts] = useState<Product[]>([]);
+  const [marketingTab, setMarketingTab] = useState<MarketingTab>("PRODUCTS");
+  const [productDraft, setProductDraft] = useState<ProductDraft>({ ...EMPTY_PRODUCT_DRAFT });
+  const [productDraftInitial, setProductDraftInitial] = useState<ProductDraft>({ ...EMPTY_PRODUCT_DRAFT });
+  const productAutoSelectedRef = useRef(false);
+  const [catalogMediaByKey, setCatalogMediaByKey] = useState<Record<string, CatalogMedia[]>>({});
+  const [catalogMediaLoading, setCatalogMediaLoading] = useState<Record<string, boolean>>({});
+  const [mediaUrlDrafts, setMediaUrlDrafts] = useState<Record<string, string>>({});
+  const [serviceDescriptionDrafts, setServiceDescriptionDrafts] = useState<Record<string, string>>({});
+  const [subjectDescriptionDrafts, setSubjectDescriptionDrafts] = useState<Record<string, string>>({});
+  const [topicDescriptionDrafts, setTopicDescriptionDrafts] = useState<Record<string, string>>({});
+  const [aiRewrites, setAiRewrites] = useState<Record<string, { previous: string }>>({});
+  const [aiRewriteLoading, setAiRewriteLoading] = useState<Record<string, boolean>>({});
+  const [marketingSubjectId, setMarketingSubjectId] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [newTutor, setNewTutor] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    color_hex: DEFAULT_TUTOR_COLOR,
+  });
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("ACCOUNT");
   const [status, setStatus] = useState<string | null>(null);
@@ -501,6 +660,14 @@ export default function SettingsPage() {
         : ["UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"];
     return Array.from(new Set(supported)).sort((a, b) => a.localeCompare(b));
   }, []);
+
+  const accountInitial = useMemo(
+    () => ({
+      date_format: normalizeDateFormat(org?.date_format),
+    }),
+    [org?.id, org?.date_format],
+  );
+  const accountForm = useSettingsForm(accountInitial);
 
   const businessInitial = useMemo(
     () => ({
@@ -534,6 +701,11 @@ export default function SettingsPage() {
     [org?.id, org?.default_buffer_minutes],
   );
   const scheduleForm = useSettingsForm(scheduleInitial);
+  const [bufferDraft, setBufferDraft] = useState(() => String(scheduleInitial.default_buffer_minutes ?? 0));
+  const dateFormat = useMemo(
+    () => normalizeDateFormat(accountForm.formData.date_format ?? org?.date_format),
+    [accountForm.formData.date_format, org?.date_format],
+  );
 
   const [serviceLocationId, setServiceLocationId] = useState("");
   const [serviceEdits, setServiceEdits] = useState<
@@ -625,35 +797,100 @@ export default function SettingsPage() {
   });
 
   const subjectDraftsKey = useMemo(() => JSON.stringify(subjectDrafts), [subjectDrafts]);
+  const subjectBaselineMap = useMemo(
+    () => new Map(subjectDraftsInitialRef.current.map((subject) => [subject.key, subject])),
+    [subjectDraftsInitialKey],
+  );
+
+  useEffect(() => {
+    setBufferDraft(String(scheduleForm.formData.default_buffer_minutes ?? 0));
+  }, [scheduleForm.formData.default_buffer_minutes]);
+
+  const productDirty = useMemo(() => {
+    const hasContent = Boolean(
+      productDraft.product_name ||
+        productDraft.product_slogan_text ||
+        productDraft.product_description_text ||
+        productDraft.product_logo_url ||
+        productDraft.service_code ||
+        productDraft.subject_id ||
+        productDraft.topic_id,
+    );
+    if (!hasContent) return false;
+    return JSON.stringify(productDraft) !== JSON.stringify(productDraftInitial);
+  }, [productDraft, productDraftInitial]);
+
+  const productMediaKey = productDraft.id ? catalogMediaKey("product", productDraft.id) : "";
+  const productMedia = productMediaKey ? catalogMediaByKey[productMediaKey] ?? [] : [];
+  const productMediaLoading = productMediaKey ? Boolean(catalogMediaLoading[productMediaKey]) : false;
+  const productTopicOptions = useMemo(() => {
+    if (!productDraft.subject_id) return [];
+    return (topicsBySubject[productDraft.subject_id] ?? []).filter((topic) => !topic.archived_at);
+  }, [productDraft.subject_id, topicsBySubject]);
+
+  useEffect(() => {
+    if (productAutoSelectedRef.current) return;
+    if (productDraft.id || productDraft.product_name) {
+      productAutoSelectedRef.current = true;
+      return;
+    }
+    if (!products.length) return;
+    selectProduct(products[0]);
+    productAutoSelectedRef.current = true;
+  }, [products, productDraft.id, productDraft.product_name]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (!productDraft.id) return;
+    void loadCatalogMedia({ kind: "product", id: productDraft.id, product_id: productDraft.id });
+  }, [token, productDraft.id]);
+
+  useEffect(() => {
+    if (activeTab === "PRODUCTS") {
+      setMarketingTab("PRODUCTS");
+    }
+  }, [activeTab]);
 
   const dirtyTabs = useMemo(() => {
     const servicesDirty =
       Object.keys(serviceEdits).length > 0 ||
       Object.values(serviceCatalogDrafts).some((byLocation) => Object.keys(byLocation).length > 0);
     const subjectsDirty = subjectDraftsKey !== subjectDraftsInitialKey;
+    const tutorsDirty =
+      Object.keys(tutorDrafts).some((id) => tutorDrafts[id] !== tutorDraftsInitialRef.current[id]) ||
+      Boolean(newTutor.email.trim() || newTutor.first_name.trim() || newTutor.last_name.trim());
+    const marketingDirty = marketingTab === "PRODUCTS" ? productDirty : false;
     return {
-      ACCOUNT: false,
+      ACCOUNT: accountForm.hasChanges,
       BUSINESS: businessForm.hasChanges,
       LOCATIONS: false,
       CLIENTS: clientsForm.hasChanges,
+      TUTORS: tutorsDirty,
       SERVICES: servicesDirty,
       SUBJECTS_TOPICS: subjectsDirty,
-      PRODUCTS: false,
+      PRODUCTS: productDirty,
       SCHEDULE: scheduleForm.hasChanges,
       PIPELINE: pipelineForm.hasChanges,
-      MARKETING: false,
+      MARKETING: marketingDirty,
       WEBSITE: false,
       ARCHIVE: false,
     } as Record<SettingsTab, boolean>;
   }, [
+    accountForm.hasChanges,
     businessForm.hasChanges,
     clientsForm.hasChanges,
+    marketingTab,
     pipelineForm.hasChanges,
     scheduleForm.hasChanges,
+    productDirty,
     serviceEdits,
     serviceCatalogDrafts,
     subjectDraftsKey,
     subjectDraftsInitialKey,
+    tutorDrafts,
+    newTutor.email,
+    newTutor.first_name,
+    newTutor.last_name,
   ]);
 
   const anyDirty = useMemo(() => Object.values(dirtyTabs).some(Boolean), [dirtyTabs]);
@@ -668,6 +905,96 @@ export default function SettingsPage() {
   const billableLocations = activeLocations.filter((l) => !l.is_system);
   const locLimit = planLocationLimit(plan);
   const canAddLocation = locLimit === null || billableLocations.length < locLimit;
+  const tutorLimit = planTutorLimit(plan);
+  const activeTutorCount = tutors.length;
+  const canAddTutor = tutorLimit === null || activeTutorCount < tutorLimit;
+
+  const marketingServices = useMemo(() => {
+    const byCode = new Map<string, ServiceOffered>();
+    Object.values(servicesByLocation).forEach((list) => {
+      list.forEach((svc) => {
+        if (!svc.is_active) return;
+        if (!byCode.has(svc.service_code)) byCode.set(svc.service_code, svc);
+      });
+    });
+    return Array.from(byCode.values()).sort((a, b) => {
+      const aLabel = (a.display_name ?? a.service_code).toLowerCase();
+      const bLabel = (b.display_name ?? b.service_code).toLowerCase();
+      return aLabel.localeCompare(bLabel);
+    });
+  }, [servicesByLocation]);
+  const marketingServiceByCode = useMemo(
+    () => new Map(marketingServices.map((svc) => [svc.service_code, svc])),
+    [marketingServices],
+  );
+  const selectedProductService = useMemo(
+    () => (productDraft.service_code ? marketingServiceByCode.get(productDraft.service_code) ?? null : null),
+    [productDraft.service_code, marketingServiceByCode],
+  );
+
+  useEffect(() => {
+    if (!token) return;
+    if (marketingTab !== "SERVICES") return;
+    marketingServices.forEach((svc) => {
+      void loadCatalogMedia({ kind: "service", id: svc.service_code, service_code: svc.service_code });
+    });
+  }, [marketingTab, marketingServices, token]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (marketingTab !== "SUBJECTS") return;
+    subjects
+      .filter((subject) => !subject.archived_at)
+      .forEach((subject) => {
+        void loadCatalogMedia({ kind: "subject", id: subject.id, subject_id: subject.id });
+      });
+  }, [marketingTab, subjects, token]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (marketingTab !== "TOPICS") return;
+    const topics = topicsBySubject[marketingSubjectId] ?? [];
+    topics
+      .filter((topic) => !topic.archived_at)
+      .forEach((topic) => {
+        void loadCatalogMedia({ kind: "topic", id: topic.id, topic_id: topic.id });
+      });
+  }, [marketingTab, marketingSubjectId, topicsBySubject, token]);
+
+  useEffect(() => {
+    if (Object.keys(serviceDescriptionDrafts).length) return;
+    if (!marketingServices.length) return;
+    const next: Record<string, string> = {};
+    marketingServices.forEach((svc) => {
+      next[svc.service_code] = svc.description_text ?? "";
+    });
+    setServiceDescriptionDrafts(next);
+  }, [marketingServices, serviceDescriptionDrafts]);
+
+  useEffect(() => {
+    if (!subjects.length) return;
+    if (!marketingSubjectId) {
+      setMarketingSubjectId(subjects.find((s) => !s.archived_at)?.id ?? subjects[0]?.id ?? "");
+    }
+    if (Object.keys(subjectDescriptionDrafts).length) return;
+    const next: Record<string, string> = {};
+    subjects.forEach((subject) => {
+      next[subject.id] = subject.description_text ?? "";
+    });
+    setSubjectDescriptionDrafts(next);
+  }, [subjects, marketingSubjectId, subjectDescriptionDrafts]);
+
+  useEffect(() => {
+    if (!marketingSubjectId) return;
+    const topics = topicsBySubject[marketingSubjectId] ?? [];
+    if (!topics.length) return;
+    if (Object.keys(topicDescriptionDrafts).length) return;
+    const next: Record<string, string> = {};
+    topics.forEach((topic) => {
+      next[topic.id] = topic.description_text ?? "";
+    });
+    setTopicDescriptionDrafts(next);
+  }, [topicsBySubject, marketingSubjectId, topicDescriptionDrafts]);
 
   const selectedServiceLocationId = serviceLocationId || billableLocations[0]?.id || activeLocations[0]?.id || "";
 
@@ -1126,11 +1453,10 @@ export default function SettingsPage() {
   const sortedSubjectDrafts = useMemo(() => {
     const rows = [...subjectDrafts];
     const dir = subjectSort.dir === "asc" ? 1 : -1;
-    const baselineMap = new Map(subjectDraftsInitialRef.current.map((subject) => [subject.key, subject]));
     rows.sort((a, b) => {
       if (subjectSort.key === "included") {
-        const aBaseline = baselineMap.get(a.key);
-        const bBaseline = baselineMap.get(b.key);
+        const aBaseline = subjectBaselineMap.get(a.key);
+        const bBaseline = subjectBaselineMap.get(b.key);
         const aIncluded = (aBaseline?.included ?? false) || (aBaseline?.topics ?? []).some((t) => t.included);
         const bIncluded = (bBaseline?.included ?? false) || (bBaseline?.topics ?? []).some((t) => t.included);
         const diff = Number(aIncluded) - Number(bIncluded);
@@ -1141,7 +1467,7 @@ export default function SettingsPage() {
       return 0;
     });
     return rows;
-  }, [subjectDrafts, subjectSort]);
+  }, [subjectDrafts, subjectSort, subjectBaselineMap]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1178,87 +1504,129 @@ export default function SettingsPage() {
         if (!serviceLocationId && activeLocs[0]) {
           setServiceLocationId(activeLocs[0].id);
         }
-
-        const roomsNext: Record<string, Room[]> = {};
-        const servicesNext: Record<string, ServiceOffered[]> = {};
-        await Promise.all(
-          locList.map(async (loc) => {
-            const [roomRes, svcRes] = await Promise.all([
-              fetch(`/rooms?location_id=${encodeURIComponent(loc.id)}&archived=all`, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              }),
-              fetch(`/services-offered?location_id=${encodeURIComponent(loc.id)}`, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              }),
-            ]);
-            if (roomRes.ok) roomsNext[loc.id] = (await roomRes.json()) as Room[];
-            if (svcRes.ok) servicesNext[loc.id] = (await svcRes.json()) as ServiceOffered[];
-          }),
-        );
-        if (cancelled) return;
-        setRoomsByLocation(roomsNext);
-        setServicesByLocation(servicesNext);
-
-        const subjRes = await fetch("/subjects?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } });
-        const subjList = subjRes.ok ? ((await subjRes.json()) as Subject[]) : [];
-        if (cancelled) return;
-        const subj = Array.isArray(subjList) ? subjList : [];
-        setSubjects(subj);
-
-        const topicsNext: Record<string, Topic[]> = {};
-        await Promise.all(
-          subj.map(async (s) => {
-            const tRes = await fetch(`/topics?subject_id=${encodeURIComponent(s.id)}&archived=all`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            });
-            if (tRes.ok) topicsNext[s.id] = (await tRes.json()) as Topic[];
-          }),
-        );
-        if (cancelled) return;
-        setTopicsBySubject(topicsNext);
-
-        const drafts = buildSubjectDrafts(subj, topicsNext);
-        setSubjectDrafts(drafts);
-        subjectDraftsInitialRef.current = drafts;
-        setSubjectDraftsInitialKey(JSON.stringify(drafts));
-
-        const [parentRes, studentRes, leadRes] = await Promise.all([
-          fetch("/parents?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
-          fetch("/students?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
-          fetch("/leads?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
-        ]);
-        if (cancelled) return;
-        if (parentRes.ok) {
-          const parentList = (await parentRes.json()) as Parent[];
-          setParents(Array.isArray(parentList) ? parentList : []);
-        }
-        if (studentRes.ok) {
-          const studentList = (await studentRes.json()) as Student[];
-          setStudents(Array.isArray(studentList) ? studentList : []);
-        }
-        if (leadRes.ok) {
-          const leadList = (await leadRes.json()) as Lead[];
-          setLeads(Array.isArray(leadList) ? leadList : []);
-        }
-
-        const inboxRes = await fetch("/email-inboxes?archived=all", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (inboxRes.ok) {
-          const inboxList = (await inboxRes.json()) as EmailInbox[];
-          const inboxes = Array.isArray(inboxList) ? inboxList : [];
-          setEmailInboxes(inboxes);
-          const mergedSources = mergeEmailInboxSources(loadPipelineSources(), inboxes);
-          pipelineForm.commit({ sources: mergedSources });
-          savePipelineSources(mergedSources);
-        }
-
         if (email) {
           setNewService((prev) => ({
             ...prev,
             location_id: prev.location_id || (activeLocs[0]?.id ?? ""),
           }));
         }
+
+        if (!cancelled) setLoading(false);
+
+        const loadRoomsAndServices = async () => {
+          const roomsNext: Record<string, Room[]> = {};
+          const servicesNext: Record<string, ServiceOffered[]> = {};
+          await Promise.all(
+            locList.map(async (loc) => {
+              const [roomRes, svcRes] = await Promise.all([
+                fetch(`/rooms?location_id=${encodeURIComponent(loc.id)}&archived=all`, {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                }),
+                fetch(`/services-offered?location_id=${encodeURIComponent(loc.id)}`, {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                }),
+              ]);
+              if (roomRes.ok) roomsNext[loc.id] = (await roomRes.json()) as Room[];
+              if (svcRes.ok) servicesNext[loc.id] = (await svcRes.json()) as ServiceOffered[];
+            }),
+          );
+          if (cancelled) return;
+          setRoomsByLocation(roomsNext);
+          setServicesByLocation(servicesNext);
+        };
+
+        const loadSubjectsAndTopics = async () => {
+          const subjRes = await fetch("/subjects?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } });
+          const subjList = subjRes.ok ? ((await subjRes.json()) as Subject[]) : [];
+          if (cancelled) return;
+          const subj = Array.isArray(subjList) ? subjList : [];
+          setSubjects(subj);
+
+          const topicsNext: Record<string, Topic[]> = {};
+          await Promise.all(
+            subj.map(async (s) => {
+              const tRes = await fetch(`/topics?subject_id=${encodeURIComponent(s.id)}&archived=all`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+              if (tRes.ok) topicsNext[s.id] = (await tRes.json()) as Topic[];
+            }),
+          );
+          if (cancelled) return;
+          setTopicsBySubject(topicsNext);
+
+          const drafts = buildSubjectDrafts(subj, topicsNext);
+          setSubjectDrafts(drafts);
+          subjectDraftsInitialRef.current = drafts;
+          setSubjectDraftsInitialKey(JSON.stringify(drafts));
+        };
+
+        const loadProducts = async () => {
+          const prodRes = await fetch("/products", { headers: { Authorization: `Bearer ${accessToken}` } });
+          if (cancelled) return;
+          if (prodRes.ok) {
+            const prodList = (await prodRes.json()) as Product[];
+            setProducts(Array.isArray(prodList) ? prodList : []);
+          }
+        };
+
+        const loadClients = async () => {
+          const [parentRes, studentRes, leadRes] = await Promise.all([
+            fetch("/parents?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
+            fetch("/students?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
+            fetch("/leads?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
+          ]);
+          if (cancelled) return;
+          if (parentRes.ok) {
+            const parentList = (await parentRes.json()) as Parent[];
+            setParents(Array.isArray(parentList) ? parentList : []);
+          }
+          if (studentRes.ok) {
+            const studentList = (await studentRes.json()) as Student[];
+            setStudents(Array.isArray(studentList) ? studentList : []);
+          }
+          if (leadRes.ok) {
+            const leadList = (await leadRes.json()) as Lead[];
+            setLeads(Array.isArray(leadList) ? leadList : []);
+          }
+        };
+
+        const loadTutors = async () => {
+          const tutorRes = await fetch("/tutors?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } });
+          if (cancelled) return;
+          if (tutorRes.ok) {
+            const tutorList = (await tutorRes.json()) as Tutor[];
+            const activeTutors = Array.isArray(tutorList) ? tutorList.filter((t) => !t.archived_at) : [];
+            setTutors(activeTutors);
+            const draftMap: Record<string, string> = {};
+            activeTutors.forEach((t) => {
+              draftMap[t.id] = t.color_hex ?? DEFAULT_TUTOR_COLOR;
+            });
+            setTutorDrafts(draftMap);
+            tutorDraftsInitialRef.current = draftMap;
+          }
+        };
+
+        const loadEmailInboxes = async () => {
+          const inboxRes = await fetch("/email-inboxes?archived=all", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (cancelled) return;
+          if (inboxRes.ok) {
+            const inboxList = (await inboxRes.json()) as EmailInbox[];
+            const inboxes = Array.isArray(inboxList) ? inboxList : [];
+            setEmailInboxes(inboxes);
+            const mergedSources = mergeEmailInboxSources(loadPipelineSources(), inboxes);
+            pipelineForm.commit({ sources: mergedSources });
+            savePipelineSources(mergedSources);
+          }
+        };
+
+        void loadRoomsAndServices();
+        void loadSubjectsAndTopics();
+        void loadProducts();
+        void loadClients();
+        void loadTutors();
+        void loadEmailInboxes();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1341,6 +1709,35 @@ export default function SettingsPage() {
         daily_scan_time: "08:00",
       });
     }
+    if (activeTab === "TUTORS") {
+      setTutorDrafts(tutorDraftsInitialRef.current);
+      setNewTutor({ first_name: "", last_name: "", email: "", color_hex: DEFAULT_TUTOR_COLOR });
+    }
+    if (activeTab === "PRODUCTS" || (activeTab === "MARKETING" && marketingTab === "PRODUCTS")) {
+      setProductDraft(productDraftInitial);
+    }
+    if (activeTab === "MARKETING" && marketingTab === "SERVICES") {
+      const next: Record<string, string> = {};
+      marketingServices.forEach((svc) => {
+        next[svc.service_code] = svc.description_text ?? "";
+      });
+      setServiceDescriptionDrafts(next);
+    }
+    if (activeTab === "MARKETING" && marketingTab === "SUBJECTS") {
+      const next: Record<string, string> = {};
+      subjects.forEach((subject) => {
+        next[subject.id] = subject.description_text ?? "";
+      });
+      setSubjectDescriptionDrafts(next);
+    }
+    if (activeTab === "MARKETING" && marketingTab === "TOPICS") {
+      const topics = topicsBySubject[marketingSubjectId] ?? [];
+      const next: Record<string, string> = {};
+      topics.forEach((topic) => {
+        next[topic.id] = topic.description_text ?? "";
+      });
+      setTopicDescriptionDrafts(next);
+    }
   }
 
   async function switchTab(next: SettingsTab) {
@@ -1390,6 +1787,25 @@ export default function SettingsPage() {
     window.location.href = json.url;
   }
 
+  async function saveAccount() {
+    if (!token) return;
+    setStatus(null);
+    const date_format = normalizeDateFormat(accountForm.formData.date_format);
+    const res = await fetch("/organizations", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ date_format }),
+    });
+    if (!res.ok) {
+      setStatus(`Save failed (${res.status}): ${await res.text()}`);
+      return;
+    }
+    const updated = (await res.json()) as Org;
+    setOrg((prev) => (prev ? { ...prev, ...updated } : updated));
+    accountForm.commit({ date_format: normalizeDateFormat(updated.date_format) });
+    setStatus("Saved.");
+  }
+
   async function saveBusiness() {
     if (!token) return;
     setStatus(null);
@@ -1431,10 +1847,15 @@ export default function SettingsPage() {
   async function saveSchedule() {
     if (!token) return;
     setStatus(null);
+    const normalizedBuffer = parseNonNegativeInt(bufferDraft, scheduleForm.formData.default_buffer_minutes ?? 0);
+    if (String(normalizedBuffer) !== bufferDraft.trim()) {
+      setBufferDraft(String(normalizedBuffer));
+    }
+    scheduleForm.updateField("default_buffer_minutes", normalizedBuffer);
     const res = await fetch("/organizations", {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify({ default_buffer_minutes: scheduleForm.formData.default_buffer_minutes }),
+      body: JSON.stringify({ default_buffer_minutes: normalizedBuffer }),
     });
     if (!res.ok) {
       setStatus(`Save failed (${res.status}): ${await res.text()}`);
@@ -1449,195 +1870,303 @@ export default function SettingsPage() {
   async function saveServices() {
     if (!token) return;
     setStatus(null);
-    const locId = selectedServiceLocationId;
-    if (!locId) {
-      setStatus("Choose a location.");
+    const locationIds = new Set<string>();
+    Object.keys(serviceEdits).forEach((id) => {
+      const svc = serviceById.get(id);
+      if (svc?.location_id) locationIds.add(svc.location_id);
+    });
+    Object.entries(serviceCatalogDrafts).forEach(([locId, drafts]) => {
+      if (Object.keys(drafts).length > 0) locationIds.add(locId);
+    });
+
+    if (locationIds.size === 0) {
+      setStatus("No changes to save.");
       return;
     }
 
-    const existingServices = servicesByLocation[locId] ?? [];
-    const existingById = new Map(existingServices.map((s) => [s.id, s]));
-    const existingCodes = new Set(existingServices.map((s) => s.service_code));
+    const savedLocationIds: string[] = [];
 
-    for (const [id, patch] of Object.entries(serviceEdits)) {
-      const svc = existingById.get(id);
-      if (!svc) continue;
-      const desiredActive = patch.is_active;
-      let cents = dollarsToCents(patch.hourly_rate_dollars);
-      let capacity = Number.parseInt(patch.capacity || "0", 10);
-      let unitLength = Number.parseInt(patch.unit_length_minutes || "0", 10);
+    for (const locId of locationIds) {
+      const locationLabel = locationNameById.get(locId) ?? "Location";
+      const existingServices = servicesByLocation[locId] ?? [];
+      const existingById = new Map(existingServices.map((s) => [s.id, s]));
+      const existingCodes = new Set(existingServices.map((s) => s.service_code));
 
-      if (desiredActive) {
+      const editsForLocation = Object.entries(serviceEdits).filter(([id]) => {
+        const svc = serviceById.get(id);
+        return svc?.location_id === locId;
+      });
+
+      for (const [id, patch] of editsForLocation) {
+        const svc = existingById.get(id) ?? serviceById.get(id);
+        if (!svc) continue;
+        const desiredActive = patch.is_active;
+        let cents = dollarsToCents(patch.hourly_rate_dollars);
+        let capacity = Number.parseInt(patch.capacity || "0", 10);
+        let unitLength = Number.parseInt(patch.unit_length_minutes || "0", 10);
+
+        if (desiredActive) {
+          if (cents == null) {
+            setStatus(`${locationLabel}: please enter a valid unit price (e.g. 99.95).`);
+            return;
+          }
+          if (!Number.isInteger(capacity) || capacity < 1) {
+            setStatus(`${locationLabel}: please enter a valid capacity (>= 1).`);
+            return;
+          }
+          if (!Number.isInteger(unitLength) || unitLength < 1) {
+            setStatus(`${locationLabel}: please enter a valid unit length in minutes (>= 1).`);
+            return;
+          }
+        } else {
+          if (cents == null) cents = svc.hourly_rate_cents;
+          if (!Number.isInteger(capacity) || capacity < 1) capacity = svc.capacity ?? 1;
+          if (!Number.isInteger(unitLength) || unitLength < 1) unitLength = svc.unit_length_minutes ?? 60;
+        }
+        const res = await fetch("/services-offered", {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            service_offered_id: id,
+            display_name: svc.display_name ?? svc.service_code,
+            hourly_rate_cents: cents,
+            capacity,
+            unit_length_minutes: unitLength,
+            is_active: patch.is_active,
+          }),
+        });
+        if (!res.ok) {
+          let message = "";
+          try {
+            const json = await res.json();
+            message = typeof json?.message === "string" ? json.message : "";
+          } catch {
+            message = "";
+          }
+          const cleaned = message && message.length < 160 ? message : "Please check your inputs and try again.";
+          setStatus(`Service save failed for ${locationLabel} (${res.status}). ${cleaned}`);
+          return;
+        }
+      }
+
+      const catalogDrafts = serviceCatalogDrafts[locId] ?? {};
+      for (const [name, patch] of Object.entries(catalogDrafts)) {
+        if (!patch.is_active) continue;
+        const exists = existingServices.find(
+          (s) => normalizeKey(s.display_name ?? s.service_code) === normalizeKey(name),
+        );
+        if (exists) continue;
+        const cents = dollarsToCents(patch.hourly_rate_dollars);
         if (cents == null) {
-          setStatus("Please enter a valid unit price (e.g. 99.95).");
+          setStatus(`${locationLabel}: please enter a valid unit price (e.g. 99.95).`);
           return;
         }
+        const capacity = Number.parseInt(patch.capacity || "0", 10);
         if (!Number.isInteger(capacity) || capacity < 1) {
-          setStatus("Please enter a valid capacity (>= 1).");
+          setStatus(`${locationLabel}: please enter a valid capacity (>= 1).`);
           return;
         }
+        const unitLength = Number.parseInt(patch.unit_length_minutes || "0", 10);
         if (!Number.isInteger(unitLength) || unitLength < 1) {
-          setStatus("Please enter a valid unit length in minutes (>= 1).");
+          setStatus(`${locationLabel}: please enter a valid unit length in minutes (>= 1).`);
           return;
         }
-      } else {
-        if (cents == null) cents = svc.hourly_rate_cents;
-        if (!Number.isInteger(capacity) || capacity < 1) capacity = svc.capacity ?? 1;
-        if (!Number.isInteger(unitLength) || unitLength < 1) unitLength = svc.unit_length_minutes ?? 60;
-      }
-      const res = await fetch("/services-offered", {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          service_offered_id: id,
-          display_name: svc.display_name ?? svc.service_code,
-          hourly_rate_cents: cents,
-          capacity,
-          unit_length_minutes: unitLength,
-          is_active: patch.is_active,
-        }),
-      });
-      if (!res.ok) {
-        let message = "";
-        try {
-          const json = await res.json();
-          message = typeof json?.message === "string" ? json.message : "";
-        } catch {
-          message = "";
+        const service_code = makeUniqueServiceCode(name, existingCodes);
+        existingCodes.add(service_code);
+        const res = await fetch("/services-offered", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            location_id: locId,
+            service_code,
+            display_name: name,
+            hourly_rate_cents: cents,
+            capacity,
+            unit_length_minutes: unitLength,
+            is_active: true,
+          }),
+        });
+        if (!res.ok) {
+          let message = "";
+          try {
+            const json = await res.json();
+            message = typeof json?.message === "string" ? json.message : "";
+          } catch {
+            message = "";
+          }
+          const cleaned = message && message.length < 160 ? message : "Please check your inputs and try again.";
+          setStatus(`Add service failed for ${locationLabel} (${res.status}). ${cleaned}`);
+          return;
         }
-        const cleaned = message && message.length < 160 ? message : "Please check your inputs and try again.";
-        setStatus(`Service save failed (${res.status}). ${cleaned}`);
-        return;
       }
+
+      const refreshRes = await fetch(`/services-offered?location_id=${encodeURIComponent(locId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (refreshRes.ok) {
+        const refreshed = (await refreshRes.json()) as ServiceOffered[];
+        setServicesByLocation((prev) => ({ ...prev, [locId]: refreshed }));
+      }
+
+      savedLocationIds.push(locId);
     }
 
-    const catalogDrafts = serviceCatalogDrafts[locId] ?? {};
-    for (const [name, patch] of Object.entries(catalogDrafts)) {
-      if (!patch.is_active) continue;
-      const exists = existingServices.find(
-        (s) => normalizeKey(s.display_name ?? s.service_code) === normalizeKey(name),
-      );
-      if (exists) continue;
-      const cents = dollarsToCents(patch.hourly_rate_dollars);
-      if (cents == null) {
-        setStatus("Please enter a valid unit price (e.g. 99.95).");
-        return;
-      }
-      const capacity = Number.parseInt(patch.capacity || "0", 10);
-      if (!Number.isInteger(capacity) || capacity < 1) {
-        setStatus("Please enter a valid capacity (>= 1).");
-        return;
-      }
-      const unitLength = Number.parseInt(patch.unit_length_minutes || "0", 10);
-      if (!Number.isInteger(unitLength) || unitLength < 1) {
-        setStatus("Please enter a valid unit length in minutes (>= 1).");
-        return;
-      }
-      const service_code = makeUniqueServiceCode(name, existingCodes);
-      existingCodes.add(service_code);
-      const res = await fetch("/services-offered", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          location_id: locId,
-          service_code,
-          display_name: name,
-          hourly_rate_cents: cents,
-          capacity,
-          unit_length_minutes: unitLength,
-          is_active: true,
-        }),
-      });
-      if (!res.ok) {
-        let message = "";
-        try {
-          const json = await res.json();
-          message = typeof json?.message === "string" ? json.message : "";
-        } catch {
-          message = "";
+    setServiceEdits((prev) => {
+      if (savedLocationIds.length === 0) return prev;
+      const savedSet = new Set(savedLocationIds);
+      const next: typeof prev = {};
+      Object.entries(prev).forEach(([id, patch]) => {
+        const svc = serviceById.get(id);
+        if (!svc || !savedSet.has(svc.location_id)) {
+          next[id] = patch;
         }
-        const cleaned = message && message.length < 160 ? message : "Please check your inputs and try again.";
-        setStatus(`Add service failed (${res.status}). ${cleaned}`);
-        return;
-      }
-    }
-
-    const refreshRes = await fetch(`/services-offered?location_id=${encodeURIComponent(locId)}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      });
+      return next;
     });
-    if (refreshRes.ok) {
-      const refreshed = (await refreshRes.json()) as ServiceOffered[];
-      setServicesByLocation((prev) => ({ ...prev, [locId]: refreshed }));
-    }
 
-    setServiceEdits({});
-    setServiceCatalogDrafts((prev) => ({ ...prev, [locId]: {} }));
-    setStatus("Saved.");
+    setServiceCatalogDrafts((prev) => {
+      if (savedLocationIds.length === 0) return prev;
+      const savedSet = new Set(savedLocationIds);
+      const next: typeof prev = {};
+      Object.entries(prev).forEach(([locId, drafts]) => {
+        if (!savedSet.has(locId)) next[locId] = drafts;
+      });
+      return next;
+    });
+
+    setStatus(savedLocationIds.length > 1 ? "Saved all locations." : "Saved.");
   }
 
   async function saveSubjectsTopics() {
-    if (!token) return;
     setStatus(null);
+    let accessToken = token;
+    if (!accessToken) {
+      const sessionRes = await supabase.auth.getSession();
+      accessToken = sessionRes.data.session?.access_token ?? null;
+    }
+    if (!accessToken) {
+      const refreshRes = await supabase.auth.refreshSession();
+      accessToken = refreshRes.data.session?.access_token ?? null;
+    }
+    if (!accessToken) {
+      setStatus("Session expired. Please log in again.");
+      return;
+    }
+    if (accessToken !== token) setToken(accessToken);
     const nextDrafts: SubjectDraft[] = subjectDrafts.map((s) => ({
       ...s,
       topics: s.topics.map((t) => ({ ...t })),
     }));
-
-    for (const subject of nextDrafts) {
-      const shouldInclude = subject.included || subject.topics.some((t) => t.included);
-      if (!subject.id && shouldInclude) {
-        const res = await fetch("/subjects", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-          body: JSON.stringify({ subject_name: subject.name }),
-        });
-        if (!res.ok) {
-          setStatus(`Add subject failed (${res.status}): ${await res.text()}`);
-          return;
-        }
-        const created = (await res.json()) as Subject;
-        subject.id = created.id;
+    const baselineMap = subjectBaselineMap;
+    const requestOrThrow = async (input: string, init: RequestInit, label: string) => {
+      const res = await fetch(input, init);
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(`${label} (${res.status}): ${message}`);
       }
+      return res;
+    };
 
-      if (subject.id) {
-        const res = await fetch("/subjects", {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-          body: JSON.stringify({ subject_id: subject.id, subject_name: subject.name, archived: !subject.included }),
-        });
-        if (!res.ok) {
-          setStatus(`Subject save failed (${res.status}): ${await res.text()}`);
-          return;
-        }
-      }
+    try {
+      const newSubjects = nextDrafts.filter(
+        (subject) => !subject.id && (subject.included || subject.topics.some((t) => t.included)),
+      );
+      await Promise.all(
+        newSubjects.map(async (subject) => {
+          const res = await requestOrThrow(
+            "/subjects",
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+              body: JSON.stringify({ subject_name: subject.name }),
+            },
+            "Add subject failed",
+          );
+          const created = (await res.json()) as Subject;
+          subject.id = created.id;
+        }),
+      );
 
-      if (!subject.id) continue;
-      for (const topic of subject.topics) {
-        if (!topic.id && !topic.included) continue;
-        if (!topic.id) {
-          const res = await fetch("/topics", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-            body: JSON.stringify({ subject_id: subject.id, topic_name: topic.name }),
-          });
-          if (!res.ok) {
-            setStatus(`Add topic failed (${res.status}): ${await res.text()}`);
+      const subjectUpdates: Promise<void>[] = [];
+      nextDrafts.forEach((subject) => {
+        if (!subject.id) return;
+        const baseline = baselineMap.get(subject.key);
+        if (!baseline) return;
+        const includedChanged = baseline.included !== subject.included;
+        const nameChanged = baseline.name !== subject.name;
+        if (!includedChanged && !nameChanged) return;
+        subjectUpdates.push(
+          (async () => {
+            await requestOrThrow(
+              "/subjects",
+              {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+                body: JSON.stringify({
+                  subject_id: subject.id,
+                  subject_name: subject.name,
+                  archived: !subject.included,
+                }),
+              },
+              "Subject save failed",
+            );
+          })(),
+        );
+      });
+
+      const topicOps: Promise<void>[] = [];
+      nextDrafts.forEach((subject) => {
+        if (!subject.id) return;
+        const baselineSubject = baselineMap.get(subject.key);
+        const baselineTopicsByKey = new Map((baselineSubject?.topics ?? []).map((topic) => [topic.key, topic]));
+        subject.topics.forEach((topic) => {
+          const baselineTopic = baselineTopicsByKey.get(topic.key);
+          if (!topic.id) {
+            if (!topic.included) return;
+            topicOps.push(
+              (async () => {
+                const res = await requestOrThrow(
+                  "/topics",
+                  {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+                    body: JSON.stringify({ subject_id: subject.id, topic_name: topic.name }),
+                  },
+                  "Add topic failed",
+                );
+                const created = (await res.json()) as Topic;
+                topic.id = created.id;
+              })(),
+            );
             return;
           }
-          const created = (await res.json()) as Topic;
-          topic.id = created.id;
-          continue;
-        }
-        const res = await fetch("/topics", {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-          body: JSON.stringify({ topic_id: topic.id, topic_name: topic.name, archived: !topic.included }),
+          const includedChanged = (baselineTopic?.included ?? false) !== topic.included;
+          const nameChanged = (baselineTopic?.name ?? "") !== topic.name;
+          if (!includedChanged && !nameChanged) return;
+          topicOps.push(
+            (async () => {
+              await requestOrThrow(
+                "/topics",
+                {
+                  method: "PATCH",
+                  headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+                  body: JSON.stringify({
+                    topic_id: topic.id,
+                    topic_name: topic.name,
+                    archived: !topic.included,
+                  }),
+                },
+                "Topic save failed",
+              );
+            })(),
+          );
         });
-        if (!res.ok) {
-          setStatus(`Topic save failed (${res.status}): ${await res.text()}`);
-          return;
-        }
-      }
+      });
+
+      await Promise.all([...subjectUpdates, ...topicOps]);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Save failed.");
+      return;
     }
 
     setSubjectDrafts(nextDrafts);
@@ -1833,10 +2362,218 @@ export default function SettingsPage() {
     return "IMAP";
   }
 
+  async function archiveTutor(id: string) {
+    if (!token) return;
+    setStatus(null);
+    const res = await fetch("/tutors", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ tutor_id: id, archived: true }),
+    });
+    if (!res.ok) {
+      setStatus(`Tutor archive failed (${res.status}): ${await res.text()}`);
+      return;
+    }
+    setTutors((prev) => prev.filter((tutor) => tutor.id !== id));
+    setTutorDrafts((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    const nextInitial = { ...tutorDraftsInitialRef.current };
+    delete nextInitial[id];
+    tutorDraftsInitialRef.current = nextInitial;
+  }
+
   function savePipelineSettings() {
     savePipelineSources(pipelineForm.formData.sources);
     pipelineForm.commit(pipelineForm.formData);
     setStatus("Pipeline settings saved.");
+  }
+
+  async function saveProducts() {
+    if (!token) return;
+    setStatus(null);
+    const name = productDraft.product_name.trim();
+    if (!name) {
+      setStatus("Enter a product name.");
+      return;
+    }
+
+    const payload = {
+      product_id: productDraft.id,
+      product_name: name,
+      product_slogan_text: productDraft.product_slogan_text,
+      product_description_text: productDraft.product_description_text,
+      product_logo_url: productDraft.product_logo_url,
+      service_code: productDraft.service_code || null,
+      subject_id: productDraft.subject_id || null,
+      topic_id: productDraft.topic_id || null,
+      product_type: "CLASS",
+    };
+
+    const method = productDraft.id ? "PATCH" : "POST";
+    const res = await fetch("/products", {
+      method,
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      setStatus(`Product save failed (${res.status}): ${text}`);
+      return;
+    }
+
+    const saved = (await res.json()) as Product;
+    setProducts((prev) => {
+      const exists = prev.find((p) => p.id === saved.id);
+      if (!exists) return [...prev, saved].sort((a, b) => a.product_name.localeCompare(b.product_name));
+      return prev.map((p) => (p.id === saved.id ? saved : p));
+    });
+    const draft = buildProductDraft(saved);
+    setProductDraft(draft);
+    setProductDraftInitial(draft);
+    setStatus("Product saved.");
+  }
+
+  function selectProduct(product: Product | null) {
+    productAutoSelectedRef.current = true;
+    const draft = product ? buildProductDraft(product) : { ...EMPTY_PRODUCT_DRAFT };
+    setProductDraft(draft);
+    setProductDraftInitial(draft);
+    if (product?.id) {
+      void loadCatalogMedia({ kind: "product", id: product.id, product_id: product.id });
+    }
+  }
+
+  async function saveServiceDescription(service_code: string) {
+    if (!token) return;
+    const description_text = serviceDescriptionDrafts[service_code] ?? "";
+    const serviceIds = Object.values(servicesByLocation)
+      .flat()
+      .filter((svc) => svc.service_code === service_code)
+      .map((svc) => svc.id);
+    if (!serviceIds.length) return;
+    for (const id of serviceIds) {
+      const res = await fetch("/services-offered", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ service_offered_id: id, description_text }),
+      });
+      if (!res.ok) {
+        setStatus(`Service description save failed (${res.status}): ${await res.text()}`);
+        return;
+      }
+    }
+    setServicesByLocation((prev) => {
+      const next: Record<string, ServiceOffered[]> = {};
+      Object.entries(prev).forEach(([locId, list]) => {
+        next[locId] = list.map((svc) =>
+          svc.service_code === service_code ? { ...svc, description_text } : svc,
+        );
+      });
+      return next;
+    });
+    setStatus("Service description saved.");
+  }
+
+  async function saveSubjectDescription(subject_id: string) {
+    if (!token) return;
+    const description_text = subjectDescriptionDrafts[subject_id] ?? "";
+    const res = await fetch("/subjects", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ subject_id, description_text }),
+    });
+    if (!res.ok) {
+      setStatus(`Subject description save failed (${res.status}): ${await res.text()}`);
+      return;
+    }
+    setSubjects((prev) =>
+      prev.map((subject) =>
+        subject.id === subject_id ? { ...subject, description_text } : subject,
+      ),
+    );
+    setStatus("Subject description saved.");
+  }
+
+  async function saveTopicDescription(topic_id: string) {
+    if (!token) return;
+    const description_text = topicDescriptionDrafts[topic_id] ?? "";
+    const res = await fetch("/topics", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ topic_id, description_text }),
+    });
+    if (!res.ok) {
+      setStatus(`Topic description save failed (${res.status}): ${await res.text()}`);
+      return;
+    }
+    setTopicsBySubject((prev) => {
+      const next: Record<string, Topic[]> = {};
+      Object.entries(prev).forEach(([subjectId, list]) => {
+        next[subjectId] = list.map((topic) =>
+          topic.id === topic_id ? { ...topic, description_text } : topic,
+        );
+      });
+      return next;
+    });
+    setStatus("Topic description saved.");
+  }
+
+  async function saveTutors() {
+    if (!token) return;
+    setStatus(null);
+
+    const updates = Object.entries(tutorDrafts).filter(
+      ([id, color]) => color !== tutorDraftsInitialRef.current[id],
+    );
+
+    for (const [id, color_hex] of updates) {
+      const res = await fetch("/tutors", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ tutor_id: id, color_hex }),
+      });
+      if (!res.ok) {
+        setStatus(`Tutor update failed (${res.status}): ${await res.text()}`);
+        return;
+      }
+    }
+
+    const email = newTutor.email.trim();
+    if (email) {
+      const res = await fetch("/tutors", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          email,
+          first_name: newTutor.first_name.trim() || null,
+          last_name: newTutor.last_name.trim() || null,
+          color_hex: newTutor.color_hex,
+        }),
+      });
+      if (!res.ok) {
+        setStatus(`Tutor create failed (${res.status}): ${await res.text()}`);
+        return;
+      }
+    }
+
+    const tutorRes = await fetch("/tutors?archived=all", { headers: { Authorization: `Bearer ${token}` } });
+    if (tutorRes.ok) {
+      const tutorList = (await tutorRes.json()) as Tutor[];
+      const activeTutors = Array.isArray(tutorList) ? tutorList.filter((t) => !t.archived_at) : [];
+      setTutors(activeTutors);
+      const draftMap: Record<string, string> = {};
+      activeTutors.forEach((t) => {
+        draftMap[t.id] = t.color_hex ?? DEFAULT_TUTOR_COLOR;
+      });
+      setTutorDrafts(draftMap);
+      tutorDraftsInitialRef.current = draftMap;
+    }
+
+    setNewTutor({ first_name: "", last_name: "", email: "", color_hex: DEFAULT_TUTOR_COLOR });
+    setStatus("Tutors saved.");
   }
 
   async function updateArchive() {
@@ -2228,12 +2965,154 @@ export default function SettingsPage() {
   }
 
   async function onSave() {
+    if (activeTab === "ACCOUNT") return saveAccount();
     if (activeTab === "BUSINESS") return saveBusiness();
     if (activeTab === "SCHEDULE") return saveSchedule();
     if (activeTab === "SERVICES") return saveServices();
     if (activeTab === "SUBJECTS_TOPICS") return saveSubjectsTopics();
     if (activeTab === "CLIENTS") return saveClientFields();
     if (activeTab === "PIPELINE") return savePipelineSettings();
+    if (activeTab === "TUTORS") return saveTutors();
+    if (activeTab === "PRODUCTS") return saveProducts();
+    if (activeTab === "MARKETING" && marketingTab === "PRODUCTS") return saveProducts();
+  }
+
+  async function loadCatalogMedia(params: {
+    kind: "product" | "subject" | "topic" | "service";
+    id: string;
+    product_id?: string;
+    subject_id?: string;
+    topic_id?: string;
+    service_code?: string;
+  }) {
+    if (!token || !params.id) return;
+    const key = catalogMediaKey(params.kind, params.id);
+    setCatalogMediaLoading((prev) => ({ ...prev, [key]: true }));
+    const sp = new URLSearchParams();
+    if (params.product_id) sp.set("product_id", params.product_id);
+    if (params.subject_id) sp.set("subject_id", params.subject_id);
+    if (params.topic_id) sp.set("topic_id", params.topic_id);
+    if (params.service_code) sp.set("service_code", params.service_code);
+    const res = await fetch(`/catalog-media?${sp.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const rows = (await res.json()) as CatalogMedia[];
+      setCatalogMediaByKey((prev) => ({ ...prev, [key]: rows }));
+    }
+    setCatalogMediaLoading((prev) => ({ ...prev, [key]: false }));
+  }
+
+  async function addCatalogMedia(params: {
+    kind: "product" | "subject" | "topic" | "service";
+    id: string;
+    media_url: string;
+    media_type: "PHOTO" | "VIDEO";
+    product_id?: string;
+    subject_id?: string;
+    topic_id?: string;
+    service_code?: string;
+  }) {
+    if (!token) return;
+    const payload: Record<string, any> = {
+      media_url: params.media_url,
+      media_type: params.media_type,
+    };
+    if (params.product_id) payload.product_id = params.product_id;
+    if (params.subject_id) payload.subject_id = params.subject_id;
+    if (params.topic_id) payload.topic_id = params.topic_id;
+    if (params.service_code) payload.service_code = params.service_code;
+    const res = await fetch("/catalog-media", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      setStatus(`Media upload failed (${res.status}): ${text}`);
+      return;
+    }
+    await loadCatalogMedia(params);
+  }
+
+  async function handleMediaFileUpload(params: {
+    kind: "product" | "subject" | "topic" | "service";
+    id: string;
+    file: File;
+    media_type: "PHOTO" | "VIDEO";
+    product_id?: string;
+    subject_id?: string;
+    topic_id?: string;
+    service_code?: string;
+  }) {
+    try {
+      const dataUrl = await readFileAsDataUrl(params.file);
+      await addCatalogMedia({ ...params, media_url: dataUrl });
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : "Unable to read file.");
+    }
+  }
+
+  async function removeCatalogMedia(id: string, reload?: () => Promise<void>) {
+    if (!token) return;
+    const res = await fetch("/catalog-media", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      setStatus(`Remove media failed (${res.status}): ${text}`);
+      return;
+    }
+    if (reload) await reload();
+  }
+
+  async function rewriteWithAi(prompt: string, current: string) {
+    if (!token) return current;
+    const res = await fetch("/api/ai-rewrite", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ prompt, current }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      setStatus(`AI rewrite failed (${res.status}): ${text}`);
+      return current;
+    }
+    const data = (await res.json()) as { message?: string };
+    return data.message ?? current;
+  }
+
+  function setAiRewrite(key: string, previous: string, next: string) {
+    if (next.trim() === previous.trim()) {
+      setAiRewrites((prev) => {
+        if (!prev[key]) return prev;
+        const updated = { ...prev };
+        delete updated[key];
+        return updated;
+      });
+      return;
+    }
+    setAiRewrites((prev) => ({ ...prev, [key]: { previous } }));
+  }
+
+  function clearAiRewrite(key: string) {
+    setAiRewrites((prev) => {
+      if (!prev[key]) return prev;
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  }
+
+  function setAiLoading(key: string, value: boolean) {
+    setAiRewriteLoading((prev) => {
+      if (!value && !prev[key]) return prev;
+      const updated = { ...prev, [key]: value };
+      if (!value) delete updated[key];
+      return updated;
+    });
   }
 
   async function addService(e: FormEvent) {
@@ -2541,27 +3420,35 @@ export default function SettingsPage() {
               </div>
               <nav className="grid gap-1 p-2">
                 {tabs.map((t) => (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => void switchTab(t.key)}
-                    className={[
-                      "w-full rounded-lg px-3 py-2 text-left text-sm transition",
-                      t.key === activeTab ? "bg-gray-100 font-semibold" : "hover:bg-gray-50",
-                    ].join(" ")}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2">
-                        <HugeiconsIcon
-                          icon={t.icon}
-                          size={16}
-                          className={t.key === activeTab ? "text-[#0b1f5f]" : "text-gray-500"}
-                        />
-                        <span>{t.label}</span>
+                  <Fragment key={t.key}>
+                    {TAB_DIVIDERS.has(t.key) ? <div className="my-2 h-px bg-gray-200" /> : null}
+                    <button
+                      type="button"
+                      onClick={() => void switchTab(t.key)}
+                      style={{ "--tab-icon-color": SETTINGS_TAB_ICON_COLORS[t.key] } as CSSProperties}
+                      className={[
+                        "group w-full rounded-lg px-3 py-2 text-left text-sm transition",
+                        t.key === activeTab ? "bg-gray-100 font-semibold" : "hover:bg-gray-50",
+                      ].join(" ")}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <HugeiconsIcon
+                            icon={t.icon}
+                            size={16}
+                            className={[
+                              "transition-colors",
+                              t.key === activeTab
+                                ? "text-[var(--tab-icon-color)]"
+                                : "text-gray-500 group-hover:text-[var(--tab-icon-color)]",
+                            ].join(" ")}
+                          />
+                          <span>{t.label}</span>
+                        </span>
+                        {dirtyTabs[t.key] ? <span className="text-xs text-purple-700">(unsaved)</span> : null}
                       </span>
-                      {dirtyTabs[t.key] ? <span className="text-xs text-purple-700">(unsaved)</span> : null}
-                    </span>
-                  </button>
+                    </button>
+                  </Fragment>
                 ))}
               </nav>
             </div>
@@ -2570,7 +3457,9 @@ export default function SettingsPage() {
           <section className="min-w-0 flex-1 bg-white">
             <div className="flex flex-col gap-3 border-b border-gray-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div>
-                <h1 className="m-0 text-xl font-bold">{tabs.find((t) => t.key === activeTab)?.label ?? "Settings"}</h1>
+                <h1 className="m-0 text-xl font-bold">
+                  {TAB_HEADINGS[activeTab] ?? tabs.find((t) => t.key === activeTab)?.label ?? "Settings"}
+                </h1>
                 <p className="mt-1 text-sm text-gray-600">Save or discard changes before switching sections.</p>
               </div>
 
@@ -2625,6 +3514,23 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   ) : null}
+
+                  <div className="grid max-w-[360px] gap-2">
+                    <Label htmlFor="date-format">Date format</Label>
+                    <select
+                      id="date-format"
+                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                      value={accountForm.formData.date_format}
+                      onChange={(e) => accountForm.updateField("date_format", e.target.value)}
+                    >
+                      {DATE_FORMAT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-xs text-gray-500">Applies across the entire app.</div>
+                  </div>
 
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -3126,6 +4032,119 @@ export default function SettingsPage() {
                 </div>
               ) : null}
 
+              {!loading && activeTab === "TUTORS" ? (
+                <div className="grid gap-6">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-[#0b1f5f]">Tutors</h2>
+                        <div className="text-xs text-gray-500">
+                          Plan limit: {tutorLimit ?? "Unlimited"} · Current: {activeTutorCount}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      {tutors.length === 0 ? (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                          No tutors yet. Add one below and click Save.
+                        </div>
+                      ) : (
+                        tutors.map((tutor) => {
+                          const name = [tutor.user?.first_name, tutor.user?.last_name].filter(Boolean).join(" ");
+                          const label = name || tutor.user?.email || "Tutor";
+                          return (
+                            <div
+                              key={tutor.id}
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
+                            >
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{label}</div>
+                                {tutor.user?.email ? (
+                                  <div className="text-xs text-gray-500">{tutor.user.email}</div>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-gray-600">Color</span>
+                                  <input
+                                    type="color"
+                                    value={tutorDrafts[tutor.id] ?? DEFAULT_TUTOR_COLOR}
+                                    onChange={(e) =>
+                                      setTutorDrafts((prev) => ({ ...prev, [tutor.id]: e.target.value }))
+                                    }
+                                    className="h-9 w-9 cursor-pointer rounded-md border border-gray-200 bg-white"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  className="itutoros-settings-btn itutoros-settings-btn-danger"
+                                  onClick={() => archiveTutor(tutor.id)}
+                                >
+                                  Archive
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <h2 className="text-lg font-semibold text-[#0b1f5f]">Add tutor</h2>
+                    <p className="mt-1 text-sm text-gray-600">Add a tutor profile and assign a calendar color.</p>
+                    {!canAddTutor ? (
+                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                        Your plan is at the tutor limit. Upgrade to add more tutors.
+                      </div>
+                    ) : null}
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label htmlFor="new-tutor-first">First name</Label>
+                        <Input
+                          id="new-tutor-first"
+                          value={newTutor.first_name}
+                          onChange={(e) => setNewTutor((prev) => ({ ...prev, first_name: e.target.value }))}
+                          disabled={!canAddTutor}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="new-tutor-last">Last name</Label>
+                        <Input
+                          id="new-tutor-last"
+                          value={newTutor.last_name}
+                          onChange={(e) => setNewTutor((prev) => ({ ...prev, last_name: e.target.value }))}
+                          disabled={!canAddTutor}
+                        />
+                      </div>
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label htmlFor="new-tutor-email">Email</Label>
+                        <Input
+                          id="new-tutor-email"
+                          type="email"
+                          placeholder="tutor@yourbusiness.com"
+                          value={newTutor.email}
+                          onChange={(e) => setNewTutor((prev) => ({ ...prev, email: e.target.value }))}
+                          disabled={!canAddTutor}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="new-tutor-color">Color</Label>
+                        <input
+                          id="new-tutor-color"
+                          type="color"
+                          value={newTutor.color_hex}
+                          onChange={(e) => setNewTutor((prev) => ({ ...prev, color_hex: e.target.value }))}
+                          className="h-10 w-16 cursor-pointer rounded-md border border-gray-200 bg-white"
+                          disabled={!canAddTutor}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4 text-xs text-gray-500">Click Save to add the tutor.</div>
+                  </div>
+                </div>
+              ) : null}
+
               {!loading && activeTab === "SERVICES" ? (
                 <div className="grid gap-6">
                   <div className="text-sm text-gray-600">
@@ -3195,12 +4214,16 @@ export default function SettingsPage() {
                               onClick={() => toggleServiceSort("unit_length")}
                             >
                               <span>Unit length (min)</span>
-                              <span
-                                title="A unit length is not necessarily the full session duration. Example: Private tutoring can be priced at $100 per 45-minute unit. Camps can use a 60-minute unit at $25; an 8-hour day would be 8 units × $25 = $200."
-                                className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600"
-                              >
-                                i
-                              </span>
+                              <TooltipProvider delayDuration={200}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600">
+                                      i
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{UNIT_LENGTH_TOOLTIP}</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                               {renderSortIcons(serviceSort.key === "unit_length", serviceSort.dir)}
                             </button>
                           </th>
@@ -3297,14 +4320,18 @@ export default function SettingsPage() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label>
-                          Unit length (min)
-                          <span
-                            title="A unit length is not necessarily the full session duration. Example: Private tutoring can be priced at $100 per 45-minute unit. Camps can use a 60-minute unit at $25; an 8-hour day would be 8 units × $25 = $200."
-                            className="ml-2 inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600"
-                          >
-                            i
-                          </span>
+                        <Label className="flex items-center gap-2">
+                          <span>Unit length (min)</span>
+                          <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600">
+                                  i
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{UNIT_LENGTH_TOOLTIP}</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </Label>
                         <Input
                           inputMode="numeric"
@@ -3360,8 +4387,14 @@ export default function SettingsPage() {
                   <div className="grid gap-4">
                     {sortedSubjectDrafts.map((subject) => {
                       const subjectIncluded = subject.included || subject.topics.some((t) => t.included);
+                      const baselineSubject = subjectBaselineMap.get(subject.key);
+                      const baselineTopicsByKey = new Map(
+                        (baselineSubject?.topics ?? []).map((topic) => [topic.key, topic]),
+                      );
                       const sortedTopics = [...subject.topics].sort((a, b) => {
-                        const diff = Number(b.included) - Number(a.included);
+                        const aIncluded = baselineTopicsByKey.get(a.key)?.included ?? false;
+                        const bIncluded = baselineTopicsByKey.get(b.key)?.included ?? false;
+                        const diff = Number(bIncluded) - Number(aIncluded);
                         if (diff !== 0) return diff;
                         return a.name.localeCompare(b.name);
                       });
@@ -3588,10 +4621,24 @@ export default function SettingsPage() {
                     id="buffer"
                     type="number"
                     min={0}
-                    value={String(scheduleForm.formData.default_buffer_minutes)}
-                    onChange={(e) =>
-                      scheduleForm.updateField("default_buffer_minutes", Number.parseInt(e.target.value || "0", 10))
-                    }
+                    value={bufferDraft}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setBufferDraft(next);
+                      if (!next.trim()) return;
+                      const parsed = Number.parseInt(next, 10);
+                      if (!Number.isNaN(parsed)) {
+                        scheduleForm.updateField("default_buffer_minutes", Math.max(0, parsed));
+                      }
+                    }}
+                    onBlur={() => {
+                      const normalized = parseNonNegativeInt(
+                        bufferDraft,
+                        scheduleForm.formData.default_buffer_minutes ?? 0,
+                      );
+                      setBufferDraft(String(normalized));
+                      scheduleForm.updateField("default_buffer_minutes", normalized);
+                    }}
                   />
                 </div>
               ) : null}
@@ -3739,7 +4786,7 @@ export default function SettingsPage() {
                                   />
                                 </td>
                                 <td className="px-3 py-2 text-xs text-gray-600">
-                                  {inbox.last_scan_at ? formatDate(inbox.last_scan_at) : "Never"}
+                                  {inbox.last_scan_at ? formatDateWithPattern(inbox.last_scan_at, dateFormat) : "Never"}
                                 </td>
                                 <td className="px-3 py-2">
                                   <span className={inbox.has_credentials ? "text-xs text-emerald-600" : "text-xs text-rose-500"}>
@@ -3902,8 +4949,1151 @@ export default function SettingsPage() {
                 </div>
               ) : null}
 
-              {!loading && (activeTab === "PRODUCTS" || activeTab === "MARKETING" || activeTab === "WEBSITE") ? (
-                <div className="text-sm text-gray-600">Coming soon.</div>
+              {!loading && activeTab === "PRODUCTS" ? (
+                <div className="grid gap-6">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-wrap gap-2">
+                      {MARKETING_TABS.map((tab) => (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                            marketingTab === tab.key
+                              ? "bg-[#0b1f5f] text-white"
+                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          }`}
+                          onClick={() => setMarketingTab(tab.key)}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-sm text-gray-600">
+                      Build marketing-ready copy and media for your services, subjects, topics, and products.
+                    </p>
+                  </div>
+
+                  {marketingTab === "PRODUCTS" ? (
+                    <div className="grid gap-6">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-lg font-semibold text-[#0b1f5f]">Products</div>
+                          <div className="text-sm text-gray-600">
+                            Create marketing-ready offerings tied to your active service types.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                          onClick={() => selectProduct(null)}
+                        >
+                          New product
+                        </button>
+                      </div>
+
+                      <div className="itutoros-carousel">
+                        {products.map((product) => {
+                          const isActive = productDraft.id === product.id;
+                          const service = product.service_code
+                            ? marketingServiceByCode.get(product.service_code)
+                            : null;
+                          const initials = product.product_name
+                            ? product.product_name.slice(0, 2).toUpperCase()
+                            : "PR";
+                          return (
+                            <button
+                              key={product.id}
+                              type="button"
+                              className={`itutoros-card-1 itutoros-carousel-card text-left ${
+                                isActive ? "ring-2 ring-[#0b1f5f]" : ""
+                              }`}
+                              onClick={() => selectProduct(product)}
+                            >
+                              <div className="flex items-center gap-3">
+                                {product.product_logo_url ? (
+                                  <img
+                                    src={product.product_logo_url}
+                                    alt={product.product_name}
+                                    className="h-10 w-10 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef2ff] text-xs font-semibold text-[#0b1f5f]">
+                                    {initials}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-semibold text-gray-900">
+                                    {product.product_name}
+                                  </div>
+                                  <div className="truncate text-xs text-gray-500">
+                                    {product.product_slogan_text || "Add a product slogan"}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                Service type
+                              </div>
+                              <div className="text-sm font-semibold text-[#0b1f5f]">
+                                {service?.display_name ?? product.service_code ?? "Not set"}
+                              </div>
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          className="itutoros-card-1 itutoros-carousel-card border-dashed text-left"
+                          onClick={() => selectProduct(null)}
+                        >
+                          <div className="text-sm font-semibold text-[#0b1f5f]">Add new product</div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            Start a new product card for marketing and scheduling.
+                          </div>
+                        </button>
+                      </div>
+
+                      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="text-lg font-semibold text-[#0b1f5f]">Product details</div>
+                              <div className="text-sm text-gray-600">Use Save above to store changes.</div>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-4">
+                            <div className="grid gap-2">
+                              <Label>Product name</Label>
+                              <Input
+                                value={productDraft.product_name}
+                                onChange={(e) => setProductDraft((prev) => ({ ...prev, product_name: e.target.value }))}
+                                placeholder="SAT Bootcamp"
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <div className="flex items-center justify-between">
+                                <Label>Product slogan</Label>
+                                {(() => {
+                                  const aiKey = "product:slogan";
+                                  const isLoading = Boolean(aiRewriteLoading[aiKey]);
+                                  const hasPending = Boolean(aiRewrites[aiKey]);
+                                  return (
+                                <button
+                                  type="button"
+                                  className={[
+                                    "text-xs font-semibold",
+                                    isLoading || hasPending
+                                      ? "cursor-default text-gray-400"
+                                      : "cursor-pointer text-[#0b1f5f]",
+                                  ].join(" ")}
+                                  disabled={isLoading || hasPending}
+                                  onClick={async () => {
+                                    if (isLoading || hasPending) return;
+                                    const previous = productDraft.product_slogan_text;
+                                    setAiLoading(aiKey, true);
+                                    try {
+                                      const next = await rewriteWithAi(
+                                        "Rewrite this product slogan for clarity and marketing appeal.",
+                                        previous,
+                                      );
+                                      setProductDraft((prev) => ({ ...prev, product_slogan_text: next }));
+                                      setAiRewrite(aiKey, previous, next);
+                                    } finally {
+                                      setAiLoading(aiKey, false);
+                                    }
+                                  }}
+                                >
+                                  {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
+                                </button>
+                                  );
+                                })()}
+                              </div>
+                              <Input
+                                value={productDraft.product_slogan_text}
+                                onChange={(e) =>
+                                  setProductDraft((prev) => ({ ...prev, product_slogan_text: e.target.value }))
+                                }
+                                placeholder="Help students ace the SAT with confidence."
+                              />
+                              {aiRewrites["product:slogan"] ? (
+                                <div className="flex items-center gap-3 text-xs">
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                    onClick={() => clearAiRewrite("product:slogan")}
+                                  >
+                                    <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} className="text-green-600" />
+                                    Accept
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                    onClick={() => {
+                                      const previous = aiRewrites["product:slogan"]?.previous ?? "";
+                                      setProductDraft((prev) => ({ ...prev, product_slogan_text: previous }));
+                                      clearAiRewrite("product:slogan");
+                                    }}
+                                  >
+                                    <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
+                                    Reject
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="grid gap-2">
+                              <div className="flex items-center justify-between">
+                                <Label>Product description</Label>
+                                {(() => {
+                                  const aiKey = "product:description";
+                                  const isLoading = Boolean(aiRewriteLoading[aiKey]);
+                                  const hasPending = Boolean(aiRewrites[aiKey]);
+                                  return (
+                                <button
+                                  type="button"
+                                  className={[
+                                    "text-xs font-semibold",
+                                    isLoading || hasPending
+                                      ? "cursor-default text-gray-400"
+                                      : "cursor-pointer text-[#0b1f5f]",
+                                  ].join(" ")}
+                                  disabled={isLoading || hasPending}
+                                  onClick={async () => {
+                                    if (isLoading || hasPending) return;
+                                    const previous = productDraft.product_description_text;
+                                    setAiLoading(aiKey, true);
+                                    try {
+                                      const next = await rewriteWithAi(
+                                        "Rewrite this product description for a polished marketing tone.",
+                                        previous,
+                                      );
+                                      setProductDraft((prev) => ({ ...prev, product_description_text: next }));
+                                      setAiRewrite(aiKey, previous, next);
+                                    } finally {
+                                      setAiLoading(aiKey, false);
+                                    }
+                                  }}
+                                >
+                                  {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
+                                </button>
+                                  );
+                                })()}
+                              </div>
+                              <Textarea
+                                value={productDraft.product_description_text}
+                                onChange={(e) =>
+                                  setProductDraft((prev) => ({ ...prev, product_description_text: e.target.value }))
+                                }
+                                rows={5}
+                                placeholder="Describe the outcomes, format, and who this product serves."
+                              />
+                              {aiRewrites["product:description"] ? (
+                                <div className="flex items-center gap-3 text-xs">
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                    onClick={() => clearAiRewrite("product:description")}
+                                  >
+                                    <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} className="text-green-600" />
+                                    Accept
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                    onClick={() => {
+                                      const previous = aiRewrites["product:description"]?.previous ?? "";
+                                      setProductDraft((prev) => ({ ...prev, product_description_text: previous }));
+                                      clearAiRewrite("product:description");
+                                    }}
+                                  >
+                                    <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
+                                    Reject
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Service type</Label>
+                              <select
+                                className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                value={productDraft.service_code}
+                                onChange={(e) => setProductDraft((prev) => ({ ...prev, service_code: e.target.value }))}
+                              >
+                                <option value="">Select a service type</option>
+                                {marketingServices.map((svc) => (
+                                  <option key={svc.service_code} value={svc.service_code}>
+                                    {svc.display_name ?? svc.service_code}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                                <div>
+                                  Unit length:{" "}
+                                  {selectedProductService?.unit_length_minutes
+                                    ? `${selectedProductService.unit_length_minutes} minutes`
+                                    : "--"}
+                                </div>
+                                <div>
+                                  Unit price:{" "}
+                                  {selectedProductService
+                                    ? formatCurrencyFromCents(selectedProductService.hourly_rate_cents)
+                                    : "--"}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div className="grid gap-2">
+                                <Label>Subject (optional)</Label>
+                                <select
+                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                  value={productDraft.subject_id}
+                                  onChange={(e) =>
+                                    setProductDraft((prev) => ({
+                                      ...prev,
+                                      subject_id: e.target.value,
+                                      topic_id: "",
+                                    }))
+                                  }
+                                >
+                                  <option value="">Select a subject</option>
+                                  {subjects
+                                    .filter((subject) => !subject.archived_at)
+                                    .map((subject) => (
+                                      <option key={subject.id} value={subject.id}>
+                                        {subject.subject_name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Topic (optional)</Label>
+                                <select
+                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                  value={productDraft.topic_id}
+                                  onChange={(e) => setProductDraft((prev) => ({ ...prev, topic_id: e.target.value }))}
+                                  disabled={!productDraft.subject_id}
+                                >
+                                  <option value="">Select a topic</option>
+                                  {productTopicOptions.map((topic) => (
+                                    <option key={topic.id} value={topic.id}>
+                                      {topic.topic_name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Product logo</Label>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <Input
+                                  value={productDraft.product_logo_url}
+                                  onChange={(e) =>
+                                    setProductDraft((prev) => ({ ...prev, product_logo_url: e.target.value }))
+                                  }
+                                  placeholder="Paste logo URL or upload below"
+                                />
+                                <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                  Upload logo
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      const dataUrl = await readFileAsDataUrl(file);
+                                      setProductDraft((prev) => ({ ...prev, product_logo_url: dataUrl }));
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                              {productDraft.product_logo_url ? (
+                                <img
+                                  src={productDraft.product_logo_url}
+                                  alt="Product logo"
+                                  className="h-16 w-16 rounded-xl border border-gray-200 object-cover"
+                                />
+                              ) : (
+                                <div className="text-xs text-gray-500">No logo uploaded yet.</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                          <div className="text-lg font-semibold text-[#0b1f5f]">Product media</div>
+                          <div className="text-sm text-gray-600">
+                            Upload photos and videos for marketing galleries.
+                          </div>
+                          <div className="mt-4 grid gap-3">
+                            {productDraft.id ? (
+                              <>
+                                {productMediaLoading ? (
+                                  <div className="text-sm text-gray-500">Loading media...</div>
+                                ) : null}
+                                {productMedia.length === 0 && !productMediaLoading ? (
+                                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                    No media yet. Upload photos or videos to build your catalog.
+                                  </div>
+                                ) : null}
+                                {productMedia.length ? (
+                                  <div className="grid gap-3 sm:grid-cols-2">
+                                    {productMedia.map((media) => (
+                                      <div
+                                        key={media.id}
+                                        className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
+                                      >
+                                        {media.media_type === "VIDEO" ? (
+                                          <video src={media.media_url} controls className="h-40 w-full object-cover" />
+                                        ) : (
+                                          <img src={media.media_url} alt="" className="h-40 w-full object-cover" />
+                                        )}
+                                        <button
+                                          type="button"
+                                          className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
+                                          onClick={() =>
+                                            removeCatalogMedia(media.id, () =>
+                                              loadCatalogMedia({
+                                                kind: "product",
+                                                id: productDraft.id!,
+                                                product_id: productDraft.id!,
+                                              }),
+                                            )
+                                          }
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                <div className="flex flex-wrap gap-2">
+                                  <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                    Upload photo
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      multiple
+                                      onChange={(e) => {
+                                        const files = Array.from(e.target.files ?? []);
+                                        files.forEach((file) =>
+                                          handleMediaFileUpload({
+                                            kind: "product",
+                                            id: productDraft.id!,
+                                            file,
+                                            media_type: "PHOTO",
+                                            product_id: productDraft.id!,
+                                          }),
+                                        );
+                                      }}
+                                    />
+                                  </label>
+                                  <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                    Upload video
+                                    <input
+                                      type="file"
+                                      accept="video/*"
+                                      className="hidden"
+                                      multiple
+                                      onChange={(e) => {
+                                        const files = Array.from(e.target.files ?? []);
+                                        files.forEach((file) =>
+                                          handleMediaFileUpload({
+                                            kind: "product",
+                                            id: productDraft.id!,
+                                            file,
+                                            media_type: "VIDEO",
+                                            product_id: productDraft.id!,
+                                          }),
+                                        );
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                Save the product first to upload media.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  {marketingTab === "SERVICES" ? (
+                    <div className="grid gap-6">
+                      <div className="text-sm text-gray-600">
+                        Add marketing descriptions and media for each active service type.
+                      </div>
+                      {marketingServices.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                          No active services yet. Enable services in the Services tab first.
+                        </div>
+                      ) : (
+                        <div className="grid gap-4">
+                          {marketingServices.map((svc) => {
+                            const mediaKey = catalogMediaKey("service", svc.service_code);
+                            const media = catalogMediaByKey[mediaKey] ?? [];
+                            const loadingMedia = Boolean(catalogMediaLoading[mediaKey]);
+                            const aiKey = `service:${svc.service_code}`;
+                            return (
+                              <div
+                                key={svc.service_code}
+                                className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                      Service
+                                    </div>
+                                    <div className="text-lg font-semibold text-[#0b1f5f]">
+                                      {svc.display_name ?? svc.service_code}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      Unit length {svc.unit_length_minutes ?? 60} min - Unit price{" "}
+                                      {formatCurrencyFromCents(svc.hourly_rate_cents)}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="itutoros-settings-btn itutoros-settings-btn-primary"
+                                    onClick={() => saveServiceDescription(svc.service_code)}
+                                  >
+                                    Save
+                                  </button>
+                                </div>
+                                <div className="mt-4 grid gap-2">
+                                  <div className="flex items-center justify-between">
+                                    <Label>Description</Label>
+                                    {(() => {
+                                      const isLoading = Boolean(aiRewriteLoading[aiKey]);
+                                      const hasPending = Boolean(aiRewrites[aiKey]);
+                                      return (
+                                        <button
+                                          type="button"
+                                          className={[
+                                            "text-xs font-semibold",
+                                            isLoading || hasPending
+                                              ? "cursor-default text-gray-400"
+                                              : "cursor-pointer text-[#0b1f5f]",
+                                          ].join(" ")}
+                                          disabled={isLoading || hasPending}
+                                          onClick={async () => {
+                                            if (isLoading || hasPending) return;
+                                            const current = serviceDescriptionDrafts[svc.service_code] ?? "";
+                                            setAiLoading(aiKey, true);
+                                            try {
+                                              const next = await rewriteWithAi(
+                                                `Rewrite the marketing description for ${svc.display_name ?? svc.service_code}.`,
+                                                current,
+                                              );
+                                              setServiceDescriptionDrafts((prev) => ({
+                                                ...prev,
+                                                [svc.service_code]: next,
+                                              }));
+                                              setAiRewrite(aiKey, current, next);
+                                            } finally {
+                                              setAiLoading(aiKey, false);
+                                            }
+                                          }}
+                                        >
+                                          {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
+                                        </button>
+                                      );
+                                    })()}
+                                  </div>
+                                  <Textarea
+                                    rows={4}
+                                    value={serviceDescriptionDrafts[svc.service_code] ?? ""}
+                                    onChange={(e) =>
+                                      setServiceDescriptionDrafts((prev) => ({
+                                        ...prev,
+                                        [svc.service_code]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Describe what makes this service special."
+                                  />
+                                  {aiRewrites[aiKey] ? (
+                                    <div className="flex items-center gap-3 text-xs">
+                                      <button
+                                        type="button"
+                                        className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                        onClick={() => clearAiRewrite(aiKey)}
+                                      >
+                                        <HugeiconsIcon
+                                          icon={CheckmarkCircle01Icon}
+                                          size={14}
+                                          className="text-green-600"
+                                        />
+                                        Accept
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                        onClick={() => {
+                                          const previous = aiRewrites[aiKey]?.previous ?? "";
+                                          setServiceDescriptionDrafts((prev) => ({
+                                            ...prev,
+                                            [svc.service_code]: previous,
+                                          }));
+                                          clearAiRewrite(aiKey);
+                                        }}
+                                      >
+                                        <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
+                                        Reject
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="mt-4 grid gap-3">
+                                  <div className="text-sm font-semibold text-gray-700">Media gallery</div>
+                                  {loadingMedia ? (
+                                    <div className="text-sm text-gray-500">Loading media...</div>
+                                  ) : null}
+                                  {media.length === 0 && !loadingMedia ? (
+                                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                      Add photos or videos to showcase this service.
+                                    </div>
+                                  ) : null}
+                                  {media.length ? (
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      {media.map((item) => (
+                                        <div
+                                          key={item.id}
+                                          className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
+                                        >
+                                          {item.media_type === "VIDEO" ? (
+                                            <video src={item.media_url} controls className="h-36 w-full object-cover" />
+                                          ) : (
+                                            <img src={item.media_url} alt="" className="h-36 w-full object-cover" />
+                                          )}
+                                          <button
+                                            type="button"
+                                            className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
+                                            onClick={() =>
+                                              removeCatalogMedia(item.id, () =>
+                                                loadCatalogMedia({
+                                                  kind: "service",
+                                                  id: svc.service_code,
+                                                  service_code: svc.service_code,
+                                                }),
+                                              )
+                                            }
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                  <div className="flex flex-wrap gap-2">
+                                    <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                      Upload photo
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        multiple
+                                        onChange={(e) => {
+                                          const files = Array.from(e.target.files ?? []);
+                                          files.forEach((file) =>
+                                            handleMediaFileUpload({
+                                              kind: "service",
+                                              id: svc.service_code,
+                                              file,
+                                              media_type: "PHOTO",
+                                              service_code: svc.service_code,
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                    </label>
+                                    <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                      Upload video
+                                      <input
+                                        type="file"
+                                        accept="video/*"
+                                        className="hidden"
+                                        multiple
+                                        onChange={(e) => {
+                                          const files = Array.from(e.target.files ?? []);
+                                          files.forEach((file) =>
+                                            handleMediaFileUpload({
+                                              kind: "service",
+                                              id: svc.service_code,
+                                              file,
+                                              media_type: "VIDEO",
+                                              service_code: svc.service_code,
+                                            }),
+                                          );
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                  {marketingTab === "SUBJECTS" ? (
+                    <div className="grid gap-6">
+                      <div className="text-sm text-gray-600">
+                        Add marketing descriptions and media for your active subjects.
+                      </div>
+                      {subjects.filter((s) => !s.archived_at).length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                          No active subjects yet. Enable subjects first.
+                        </div>
+                      ) : (
+                        <div className="grid gap-4">
+                          {subjects
+                            .filter((subject) => !subject.archived_at)
+                            .map((subject) => {
+                              const mediaKey = catalogMediaKey("subject", subject.id);
+                              const media = catalogMediaByKey[mediaKey] ?? [];
+                              const loadingMedia = Boolean(catalogMediaLoading[mediaKey]);
+                              const aiKey = `subject:${subject.id}`;
+                              return (
+                                <div
+                                  key={subject.id}
+                                  className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                        Subject
+                                      </div>
+                                      <div className="text-lg font-semibold text-[#0b1f5f]">
+                                        {subject.subject_name}
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="itutoros-settings-btn itutoros-settings-btn-primary"
+                                      onClick={() => saveSubjectDescription(subject.id)}
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                  <div className="mt-4 grid gap-2">
+                                    <div className="flex items-center justify-between">
+                                      <Label>Description</Label>
+                                      {(() => {
+                                        const isLoading = Boolean(aiRewriteLoading[aiKey]);
+                                        const hasPending = Boolean(aiRewrites[aiKey]);
+                                        return (
+                                          <button
+                                            type="button"
+                                            className={[
+                                              "text-xs font-semibold",
+                                              isLoading || hasPending
+                                                ? "cursor-default text-gray-400"
+                                                : "cursor-pointer text-[#0b1f5f]",
+                                            ].join(" ")}
+                                            disabled={isLoading || hasPending}
+                                            onClick={async () => {
+                                              if (isLoading || hasPending) return;
+                                              const current = subjectDescriptionDrafts[subject.id] ?? "";
+                                              setAiLoading(aiKey, true);
+                                              try {
+                                                const next = await rewriteWithAi(
+                                                  `Rewrite the marketing description for ${subject.subject_name}.`,
+                                                  current,
+                                                );
+                                                setSubjectDescriptionDrafts((prev) => ({
+                                                  ...prev,
+                                                  [subject.id]: next,
+                                                }));
+                                                setAiRewrite(aiKey, current, next);
+                                              } finally {
+                                                setAiLoading(aiKey, false);
+                                              }
+                                            }}
+                                          >
+                                            {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
+                                          </button>
+                                        );
+                                      })()}
+                                    </div>
+                                    <Textarea
+                                      rows={4}
+                                      value={subjectDescriptionDrafts[subject.id] ?? ""}
+                                      onChange={(e) =>
+                                        setSubjectDescriptionDrafts((prev) => ({
+                                          ...prev,
+                                          [subject.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Share the outcomes and focus areas for this subject."
+                                    />
+                                    {aiRewrites[aiKey] ? (
+                                      <div className="flex items-center gap-3 text-xs">
+                                        <button
+                                          type="button"
+                                          className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                          onClick={() => clearAiRewrite(aiKey)}
+                                        >
+                                          <HugeiconsIcon
+                                            icon={CheckmarkCircle01Icon}
+                                            size={14}
+                                            className="text-green-600"
+                                          />
+                                          Accept
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                          onClick={() => {
+                                            const previous = aiRewrites[aiKey]?.previous ?? "";
+                                            setSubjectDescriptionDrafts((prev) => ({
+                                              ...prev,
+                                              [subject.id]: previous,
+                                            }));
+                                            clearAiRewrite(aiKey);
+                                          }}
+                                        >
+                                          <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
+                                          Reject
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="mt-4 grid gap-3">
+                                    <div className="text-sm font-semibold text-gray-700">Media gallery</div>
+                                    {loadingMedia ? (
+                                      <div className="text-sm text-gray-500">Loading media...</div>
+                                    ) : null}
+                                    {media.length === 0 && !loadingMedia ? (
+                                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                        Add photos or videos to highlight this subject.
+                                      </div>
+                                    ) : null}
+                                    {media.length ? (
+                                      <div className="grid gap-3 sm:grid-cols-2">
+                                        {media.map((item) => (
+                                          <div
+                                            key={item.id}
+                                            className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
+                                          >
+                                            {item.media_type === "VIDEO" ? (
+                                              <video src={item.media_url} controls className="h-36 w-full object-cover" />
+                                            ) : (
+                                              <img src={item.media_url} alt="" className="h-36 w-full object-cover" />
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
+                                              onClick={() =>
+                                                removeCatalogMedia(item.id, () =>
+                                                  loadCatalogMedia({
+                                                    kind: "subject",
+                                                    id: subject.id,
+                                                    subject_id: subject.id,
+                                                  }),
+                                                )
+                                              }
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-2">
+                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                        Upload photo
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          multiple
+                                          onChange={(e) => {
+                                            const files = Array.from(e.target.files ?? []);
+                                            files.forEach((file) =>
+                                              handleMediaFileUpload({
+                                                kind: "subject",
+                                                id: subject.id,
+                                                file,
+                                                media_type: "PHOTO",
+                                                subject_id: subject.id,
+                                              }),
+                                            );
+                                          }}
+                                        />
+                                      </label>
+                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                        Upload video
+                                        <input
+                                          type="file"
+                                          accept="video/*"
+                                          className="hidden"
+                                          multiple
+                                          onChange={(e) => {
+                                            const files = Array.from(e.target.files ?? []);
+                                            files.forEach((file) =>
+                                              handleMediaFileUpload({
+                                                kind: "subject",
+                                                id: subject.id,
+                                                file,
+                                                media_type: "VIDEO",
+                                                subject_id: subject.id,
+                                              }),
+                                            );
+                                          }}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                  {marketingTab === "TOPICS" ? (
+                    <div className="grid gap-6">
+                      <div className="text-sm text-gray-600">
+                        Add marketing descriptions for the topics within a subject.
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Subject</Label>
+                        <select
+                          className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                          value={marketingSubjectId}
+                          onChange={(e) => setMarketingSubjectId(e.target.value)}
+                        >
+                          <option value="">Select a subject</option>
+                          {subjects
+                            .filter((subject) => !subject.archived_at)
+                            .map((subject) => (
+                              <option key={subject.id} value={subject.id}>
+                                {subject.subject_name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                      {!marketingSubjectId ? (
+                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                          Choose a subject to see its topics.
+                        </div>
+                      ) : null}
+                      {marketingSubjectId ? (
+                        <div className="grid gap-4">
+                          {(topicsBySubject[marketingSubjectId] ?? [])
+                            .filter((topic) => !topic.archived_at)
+                            .map((topic) => {
+                              const mediaKey = catalogMediaKey("topic", topic.id);
+                              const media = catalogMediaByKey[mediaKey] ?? [];
+                              const loadingMedia = Boolean(catalogMediaLoading[mediaKey]);
+                              const aiKey = `topic:${topic.id}`;
+                              return (
+                                <div
+                                  key={topic.id}
+                                  className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                                >
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                        Topic
+                                      </div>
+                                      <div className="text-lg font-semibold text-[#0b1f5f]">
+                                        {topic.topic_name}
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="itutoros-settings-btn itutoros-settings-btn-primary"
+                                      onClick={() => saveTopicDescription(topic.id)}
+                                    >
+                                      Save
+                                    </button>
+                                  </div>
+                                  <div className="mt-4 grid gap-2">
+                                    <div className="flex items-center justify-between">
+                                      <Label>Description</Label>
+                                      {(() => {
+                                        const isLoading = Boolean(aiRewriteLoading[aiKey]);
+                                        const hasPending = Boolean(aiRewrites[aiKey]);
+                                        return (
+                                          <button
+                                            type="button"
+                                            className={[
+                                              "text-xs font-semibold",
+                                              isLoading || hasPending
+                                                ? "cursor-default text-gray-400"
+                                                : "cursor-pointer text-[#0b1f5f]",
+                                            ].join(" ")}
+                                            disabled={isLoading || hasPending}
+                                            onClick={async () => {
+                                              if (isLoading || hasPending) return;
+                                              const current = topicDescriptionDrafts[topic.id] ?? "";
+                                              setAiLoading(aiKey, true);
+                                              try {
+                                                const next = await rewriteWithAi(
+                                                  `Rewrite the marketing description for ${topic.topic_name}.`,
+                                                  current,
+                                                );
+                                                setTopicDescriptionDrafts((prev) => ({
+                                                  ...prev,
+                                                  [topic.id]: next,
+                                                }));
+                                                setAiRewrite(aiKey, current, next);
+                                              } finally {
+                                                setAiLoading(aiKey, false);
+                                              }
+                                            }}
+                                          >
+                                            {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
+                                          </button>
+                                        );
+                                      })()}
+                                    </div>
+                                    <Textarea
+                                      rows={3}
+                                      value={topicDescriptionDrafts[topic.id] ?? ""}
+                                      onChange={(e) =>
+                                        setTopicDescriptionDrafts((prev) => ({
+                                          ...prev,
+                                          [topic.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Describe the focus and outcomes for this topic."
+                                    />
+                                    {aiRewrites[aiKey] ? (
+                                      <div className="flex items-center gap-3 text-xs">
+                                        <button
+                                          type="button"
+                                          className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                          onClick={() => clearAiRewrite(aiKey)}
+                                        >
+                                          <HugeiconsIcon
+                                            icon={CheckmarkCircle01Icon}
+                                            size={14}
+                                            className="text-green-600"
+                                          />
+                                          Accept
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                          onClick={() => {
+                                            const previous = aiRewrites[aiKey]?.previous ?? "";
+                                            setTopicDescriptionDrafts((prev) => ({
+                                              ...prev,
+                                              [topic.id]: previous,
+                                            }));
+                                            clearAiRewrite(aiKey);
+                                          }}
+                                        >
+                                          <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
+                                          Reject
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="mt-4 grid gap-3">
+                                    <div className="text-sm font-semibold text-gray-700">Media gallery</div>
+                                    {loadingMedia ? (
+                                      <div className="text-sm text-gray-500">Loading media...</div>
+                                    ) : null}
+                                    {media.length === 0 && !loadingMedia ? (
+                                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                        Add optional visuals for this topic.
+                                      </div>
+                                    ) : null}
+                                    {media.length ? (
+                                      <div className="grid gap-3 sm:grid-cols-2">
+                                        {media.map((item) => (
+                                          <div
+                                            key={item.id}
+                                            className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
+                                          >
+                                            {item.media_type === "VIDEO" ? (
+                                              <video src={item.media_url} controls className="h-32 w-full object-cover" />
+                                            ) : (
+                                              <img src={item.media_url} alt="" className="h-32 w-full object-cover" />
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
+                                              onClick={() =>
+                                                removeCatalogMedia(item.id, () =>
+                                                  loadCatalogMedia({
+                                                    kind: "topic",
+                                                    id: topic.id,
+                                                    topic_id: topic.id,
+                                                  }),
+                                                )
+                                              }
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-2">
+                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                        Upload photo
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          multiple
+                                          onChange={(e) => {
+                                            const files = Array.from(e.target.files ?? []);
+                                            files.forEach((file) =>
+                                              handleMediaFileUpload({
+                                                kind: "topic",
+                                                id: topic.id,
+                                                file,
+                                                media_type: "PHOTO",
+                                                topic_id: topic.id,
+                                              }),
+                                            );
+                                          }}
+                                        />
+                                      </label>
+                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                        Upload video
+                                        <input
+                                          type="file"
+                                          accept="video/*"
+                                          className="hidden"
+                                          multiple
+                                          onChange={(e) => {
+                                            const files = Array.from(e.target.files ?? []);
+                                            files.forEach((file) =>
+                                              handleMediaFileUpload({
+                                                kind: "topic",
+                                                id: topic.id,
+                                                file,
+                                                media_type: "VIDEO",
+                                                topic_id: topic.id,
+                                              }),
+                                            );
+                                          }}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {!loading && (activeTab === "MARKETING" || activeTab === "WEBSITE") ? (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-600">
+                  Coming soon...
+                </div>
               ) : null}
             </div>
           </section>

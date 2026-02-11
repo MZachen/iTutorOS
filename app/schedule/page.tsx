@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ClampedCell } from "@/components/ui/clamped-cell";
+import { DEFAULT_DATE_FORMAT, formatDateTimeWithPattern, formatDateWithPattern, normalizeDateFormat } from "@/lib/date-format";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert01Icon, Calendar01Icon, CalendarAdd01Icon } from "@hugeicons/core-free-icons";
 import FullCalendar from "@fullcalendar/react";
@@ -14,7 +15,7 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
-import type { DateSelectArg, EventClickArg, EventInput } from "@fullcalendar/core";
+import type { DateClickArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { toast } from "@/lib/use-toast";
 
 type ScheduleTab = "CALENDAR" | "NEW" | "CONFLICTS";
@@ -24,6 +25,12 @@ const SCHEDULE_TABS: { key: ScheduleTab; label: string; icon: any }[] = [
   { key: "NEW", label: "New Schedule Entry", icon: CalendarAdd01Icon },
   { key: "CONFLICTS", label: "Conflicts", icon: Alert01Icon },
 ];
+
+const SCHEDULE_TAB_ICON_COLORS: Record<ScheduleTab, string> = {
+  CALENDAR: "#c00f5e",
+  NEW: "#ff4800",
+  CONFLICTS: "#ffde00",
+};
 
 const RECURRENCE_OPTIONS = [
   { value: "AD_HOC", label: "Ad-hoc (one-off)" },
@@ -41,8 +48,6 @@ const DAY_OPTIONS = [
   { value: 6, label: "Sat" },
 ];
 
-const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120, 150, 180];
-
 type Location = {
   id: string;
   location_name: string;
@@ -59,15 +64,24 @@ type Location = {
 type Tutor = {
   id: string;
   user?: { first_name?: string | null; last_name?: string | null; email?: string | null };
+  color_hex?: string | null;
 };
 
 type ServiceOffered = {
   id: string;
+  location_id: string;
   service_code: string;
   display_name?: string | null;
   hourly_rate_cents?: number | null;
+  unit_length_minutes?: number | null;
   capacity?: number | null;
   is_active?: boolean | null;
+};
+
+type Product = {
+  id: string;
+  product_name: string;
+  service_code?: string | null;
 };
 
 type Room = { id: string; room_name: string; archived_at?: string | null };
@@ -102,6 +116,7 @@ type ScheduleEntry = {
   id: string;
   location_id: string;
   service_offered_id: string;
+  product_id?: string | null;
   tutor_id: string;
   start_at: string;
   end_at: string;
@@ -147,6 +162,7 @@ type ScheduleFormState = {
   location_id: string;
   location_detail: string;
   service_offered_id: string;
+  product_id: string;
   tutor_id: string;
   subject_id: string;
   topic_id: string;
@@ -164,33 +180,27 @@ type ScheduleFormState = {
   series_end_date_local: string;
 };
 
-function formatDate(value: any) {
-  if (!value) return "";
-  if (typeof value === "string") {
-    const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
-    if (match) {
-      return `${match[3]}/${match[2]}/${match[1]}`;
-    }
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-}
-
-function formatTime(value: any) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDateTime(value: any) {
-  if (!value) return "";
-  return `${formatDate(value)} ${formatTime(value)}`;
-}
+const DEFAULT_SCHEDULE_FORM: ScheduleFormState = {
+  location_id: "",
+  location_detail: "",
+  service_offered_id: "",
+  product_id: "",
+  tutor_id: "",
+  subject_id: "",
+  topic_id: "",
+  attendee_student_ids: [],
+  room_ids: [],
+  resources_text: "",
+  start_at_local: "",
+  duration_minutes: 60,
+  include_buffer: true,
+  recurrence_type: "AD_HOC",
+  recurrence_interval: 1,
+  recurrence_days_of_week: [],
+  schedule_end_mode: "count",
+  occurrence_count: 12,
+  series_end_date_local: "",
+};
 
 function toDateTimeLocal(value: Date) {
   const offset = value.getTimezoneOffset();
@@ -203,6 +213,33 @@ function parseDateTimeLocal(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
+}
+
+function normalizeKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function formatCurrencyFromCents(cents: number) {
+  const amount = Number.isFinite(cents) ? cents / 100 : 0;
+  return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function serviceKey(service: ServiceOffered) {
+  return normalizeKey(service.display_name || service.service_code || "");
+}
+
+const PRODUCT_OPTION_PREFIX = "product:";
+
+function productOptionKey(productId: string) {
+  return `${PRODUCT_OPTION_PREFIX}${productId}`;
+}
+
+function isProductOption(key: string) {
+  return key.startsWith(PRODUCT_OPTION_PREFIX);
+}
+
+function productIdFromOption(key: string) {
+  return isProductOption(key) ? key.slice(PRODUCT_OPTION_PREFIX.length) : "";
 }
 
 function tutorLabel(tutor?: Tutor | null) {
@@ -262,9 +299,54 @@ function normalizeConflictTags(tags: any): string[] {
   return [];
 }
 
+function parseRecurrenceDays(value: any): number[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((v) => Number.isFinite(v));
+  }
+  return [];
+}
+
+function normalizeHexColor(value?: string | null) {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+}
+
+function getContrastText(hex: string) {
+  const normalized = hex.replace("#", "");
+  if (normalized.length !== 6) return "#ffffff";
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#111827" : "#ffffff";
+}
+
+function lightenHexColor(hex: string, amount = 0.75) {
+  const normalized = hex.replace("#", "");
+  if (normalized.length !== 6) return "#f3e9ff";
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * amount);
+  const toHex = (value: number) => value.toString(16).padStart(2, "0");
+  return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+}
+
+function tutorOptionLabel(tutor: Tutor) {
+  return `● ${tutorLabel(tutor)}`;
+}
+
 export default function SchedulePage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
+  const lastDateClickRef = useRef<{ ts: number; dateStr: string } | null>(null);
 
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -272,7 +354,8 @@ export default function SchedulePage() {
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState("");
-  const [services, setServices] = useState<ServiceOffered[]>([]);
+  const [servicesByLocation, setServicesByLocation] = useState<Record<string, ServiceOffered[]>>({});
+  const [products, setProducts] = useState<Product[]>([]);
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -282,6 +365,8 @@ export default function SchedulePage() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [parents, setParents] = useState<Parent[]>([]);
   const [locationChoice, setLocationChoice] = useState<string>("");
+  const [selectedServiceKey, setSelectedServiceKey] = useState<string>("");
+  const [dateFormat, setDateFormat] = useState(DEFAULT_DATE_FORMAT);
 
   const [activeConflicts, setActiveConflicts] = useState<ScheduleConflict[]>([]);
   const [conflictRows, setConflictRows] = useState<ScheduleConflict[]>([]);
@@ -292,38 +377,16 @@ export default function SchedulePage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [pendingConflict, setPendingConflict] = useState<ConflictPayload | null>(null);
   const [saving, setSaving] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [calendarLocationChoice, setCalendarLocationChoice] = useState<string>("all");
 
-  const [newStudent, setNewStudent] = useState({
-    parent_id: "",
-    location_id: "",
-    first_name: "",
-    last_name: "",
-    email: "",
-    phone: "",
-    dob: "",
-  });
-  const [savingStudent, setSavingStudent] = useState(false);
+  const [attendeeQuery, setAttendeeQuery] = useState("");
+  const [attendeeOpen, setAttendeeOpen] = useState(false);
 
-  const [form, setForm] = useState<ScheduleFormState>({
-    location_id: "",
-    location_detail: "",
-    service_offered_id: "",
-    tutor_id: "",
-    subject_id: "",
-    topic_id: "",
-    attendee_student_ids: [],
-    room_ids: [],
-    resources_text: "",
-    start_at_local: "",
-    duration_minutes: 60,
-    include_buffer: true,
-    recurrence_type: "AD_HOC",
-    recurrence_interval: 1,
-    recurrence_days_of_week: [],
-    schedule_end_mode: "count",
-    occurrence_count: 12,
-    series_end_date_local: "",
-  });
+  const formatDate = (value: any) => formatDateWithPattern(value, dateFormat);
+  const formatDateTime = (value: any) => formatDateTimeWithPattern(value, dateFormat);
+
+  const [form, setForm] = useState<ScheduleFormState>({ ...DEFAULT_SCHEDULE_FORM });
 
   const locationMap = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
   const setupLocations = useMemo(
@@ -349,16 +412,104 @@ export default function SchedulePage() {
   const primarySetupLocationId =
     setupLocations[0]?.id ?? locations.find((loc) => !loc.archived_at && !loc.is_system)?.id ?? "";
 
-  const serviceMap = useMemo(() => new Map(services.map((s) => [s.id, s])), [services]);
+  const allServices = useMemo(() => Object.values(servicesByLocation).flat(), [servicesByLocation]);
+  const serviceMap = useMemo(() => new Map(allServices.map((s) => [s.id, s])), [allServices]);
+  const activeServicesByLocation = useMemo(() => {
+    const next: Record<string, ServiceOffered[]> = {};
+    Object.entries(servicesByLocation).forEach(([locId, list]) => {
+      next[locId] = list.filter(
+        (svc) => svc.is_active === true && typeof svc.hourly_rate_cents === "number" && svc.hourly_rate_cents > 0,
+      );
+    });
+    return next;
+  }, [servicesByLocation]);
+  const allActiveServices = useMemo(
+    () => Object.values(activeServicesByLocation).flat(),
+    [activeServicesByLocation],
+  );
+  const serviceKeyByCode = useMemo(() => {
+    const map = new Map<string, string>();
+    allActiveServices.forEach((svc) => {
+      const key = serviceKey(svc);
+      if (key && !map.has(svc.service_code)) {
+        map.set(svc.service_code, key);
+      }
+    });
+    return map;
+  }, [allActiveServices]);
+  const activeServiceCodes = useMemo(
+    () => new Set(allActiveServices.map((svc) => svc.service_code)),
+    [allActiveServices],
+  );
+  const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const tutorMap = useMemo(() => new Map(tutors.map((t) => [t.id, t])), [tutors]);
   const studentMap = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
   const parentMap = useMemo(() => new Map(parents.map((p) => [p.id, p])), [parents]);
+  const selectedAttendees = useMemo(
+    () => form.attendee_student_ids.map((id) => studentMap.get(id)).filter(Boolean) as Student[],
+    [form.attendee_student_ids, studentMap],
+  );
+  const attendeeSuggestions = useMemo(() => {
+    const query = attendeeQuery.trim().toLowerCase();
+    return students.filter((student) => {
+      if (form.attendee_student_ids.includes(student.id)) return false;
+      if (!query) return true;
+      const studentName = studentLabel(student).toLowerCase();
+      const parentName = parentLabel(student.parent ?? (student.parent_id ? parentMap.get(student.parent_id) : null)).toLowerCase();
+      return studentName.includes(query) || parentName.includes(query);
+    });
+  }, [students, form.attendee_student_ids, attendeeQuery, parentMap]);
 
   const selectedService = useMemo(
     () => serviceMap.get(form.service_offered_id) ?? null,
     [serviceMap, form.service_offered_id],
   );
   const serviceCapacity = useMemo(() => Number(selectedService?.capacity ?? 1), [selectedService]);
+  const serviceUnitLength = useMemo(
+    () => Number(selectedService?.unit_length_minutes ?? 60),
+    [selectedService],
+  );
+  const serviceUnitPriceCents = useMemo(() => Number(selectedService?.hourly_rate_cents ?? 0), [selectedService]);
+  const attendeeCount = form.attendee_student_ids.length;
+  const sessionUnits =
+    serviceUnitLength > 0 ? Math.max(0, Number(form.duration_minutes || 0)) / serviceUnitLength : 0;
+  const sessionRevenueCents = Math.round(serviceUnitPriceCents * sessionUnits * attendeeCount);
+
+  useEffect(() => {
+    if (!selectedService) return;
+    if (editingEntryId) return;
+    const unitLength = Number(selectedService.unit_length_minutes ?? 60);
+    if (!Number.isFinite(unitLength) || unitLength < 1) return;
+    setForm((prev) => ({ ...prev, duration_minutes: unitLength }));
+  }, [selectedService?.id, editingEntryId]);
+
+  useEffect(() => {
+    if (form.product_id) {
+      const nextKey = productOptionKey(form.product_id);
+      if (nextKey && nextKey !== selectedServiceKey) {
+        setSelectedServiceKey(nextKey);
+      }
+      return;
+    }
+    if (!form.service_offered_id) return;
+    const svc = serviceMap.get(form.service_offered_id);
+    if (!svc) return;
+    const key = serviceKey(svc);
+    if (key && key !== selectedServiceKey) {
+      setSelectedServiceKey(key);
+    }
+  }, [form.product_id, form.service_offered_id, productMap, serviceMap, selectedServiceKey]);
+
+  const selectedServiceFilterKey = useMemo(() => {
+    if (!selectedServiceKey) return "";
+    if (isProductOption(selectedServiceKey)) {
+      const productId = productIdFromOption(selectedServiceKey);
+      const product = productMap.get(productId);
+      if (!product?.service_code) return "";
+      return serviceKeyByCode.get(product.service_code) ?? "";
+    }
+    return selectedServiceKey;
+  }, [selectedServiceKey, productMap, serviceKeyByCode]);
 
   const locationDetailMode = useMemo<null | LocationDetailMode>(() => {
     const selected = selectedLocationId ? locationMap.get(selectedLocationId) : null;
@@ -370,8 +521,54 @@ export default function SchedulePage() {
     return null;
   }, [locationChoice, selectedLocationId, locationMap]);
 
-  const locationChoiceOptions = useMemo(
+  const servicesForSelectedLocation = useMemo(
+    () => (selectedLocationId ? activeServicesByLocation[selectedLocationId] ?? [] : []),
+    [selectedLocationId, activeServicesByLocation],
+  );
+
+  const serviceOptions = useMemo(() => {
+    const source = selectedLocationId ? servicesForSelectedLocation : allActiveServices;
+    const seen = new Set<string>();
+    const options: Array<{ key: string; label: string }> = [];
+    source.forEach((svc) => {
+      const key = serviceKey(svc);
+      if (!key) return;
+      if (seen.has(key)) return;
+      seen.add(key);
+      options.push({ key, label: serviceLabel(svc) });
+    });
+
+    const productOptions = products.filter((product) => {
+      if (!product.service_code) return false;
+      if (!activeServiceCodes.has(product.service_code)) return false;
+      if (!selectedLocationId) return true;
+      return servicesForSelectedLocation.some((svc) => svc.service_code === product.service_code);
+    });
+    productOptions.forEach((product) => {
+      options.push({
+        key: productOptionKey(product.id),
+        label: `Product: ${product.product_name}`,
+      });
+    });
+
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    return options;
+  }, [selectedLocationId, servicesForSelectedLocation, allActiveServices, products, activeServiceCodes]);
+
+  const locationsForSelectedService = useMemo(() => {
+    if (!selectedServiceFilterKey) return null;
+    const allowed = new Set<string>();
+    Object.entries(activeServicesByLocation).forEach(([locId, list]) => {
+      if (list.some((svc) => serviceKey(svc) === selectedServiceFilterKey)) {
+        allowed.add(locId);
+      }
+    });
+    return allowed;
+  }, [selectedServiceFilterKey, activeServicesByLocation]);
+
+  const baseLocationOptions = useMemo(
     () => [
+      { value: "", label: "Select a location" },
       ...setupLocations.map((loc) => ({ value: `setup:${loc.id}`, label: loc.location_name })),
       { value: "online", label: "Online / Web meeting" },
       { value: "student_home", label: "Student's home" },
@@ -379,6 +576,44 @@ export default function SchedulePage() {
     ],
     [setupLocations],
   );
+
+  const calendarLocationOptions = useMemo(
+    () => [{ value: "all", label: "All locations" }, ...baseLocationOptions.filter((option) => option.value)],
+    [baseLocationOptions],
+  );
+
+  const locationChoiceOptions = useMemo(() => {
+    if (!locationsForSelectedService) return baseLocationOptions;
+    return baseLocationOptions.filter((option) => {
+      if (!option.value) return true;
+      const locId = resolveLocationChoice(option.value);
+      return locId ? locationsForSelectedService.has(locId) : true;
+    });
+  }, [baseLocationOptions, locationsForSelectedService, systemVirtualLocation, systemOffsiteLocation, primarySetupLocationId]);
+
+  useEffect(() => {
+    if (!locationChoice) return;
+    if (locationChoiceOptions.some((option) => option.value === locationChoice)) return;
+    handleLocationChoiceChange("");
+  }, [locationChoice, locationChoiceOptions]);
+
+  useEffect(() => {
+    if (!locationChoice) return;
+    if (calendarLocationChoice === "all") return;
+    if (calendarLocationChoice === locationChoice) return;
+    setCalendarLocationChoice(locationChoice);
+  }, [locationChoice, calendarLocationChoice]);
+
+  useEffect(() => {
+    if (!selectedServiceKey) return;
+    if (isProductOption(selectedServiceKey)) {
+      const productId = productIdFromOption(selectedServiceKey);
+      if (!productMap.has(productId)) return;
+    }
+    if (serviceOptions.some((option) => option.key === selectedServiceKey)) return;
+    setSelectedServiceKey("");
+    setForm((prev) => ({ ...prev, service_offered_id: "", product_id: "" }));
+  }, [selectedServiceKey, serviceOptions, productMap]);
 
   const dataLocationId = useMemo(() => {
     if (!selectedLocationId) return primarySetupLocationId;
@@ -399,18 +634,23 @@ export default function SchedulePage() {
       if (cancelled) return;
       setToken(session.access_token);
       try {
-        const [locationRes, subjectsRes, orgRes] = await Promise.all([
+        const [locationRes, subjectsRes, orgRes, productsRes] = await Promise.all([
           fetch("/locations?archived=all", { headers: { Authorization: `Bearer ${session.access_token}` } }),
           fetch("/subjects", { headers: { Authorization: `Bearer ${session.access_token}` } }),
           fetch("/organizations", { headers: { Authorization: `Bearer ${session.access_token}` } }),
+          fetch("/products", { headers: { Authorization: `Bearer ${session.access_token}` } }),
         ]);
         const locationData = locationRes.ok ? ((await locationRes.json()) as Location[]) : [];
         const subjectData = subjectsRes.ok ? ((await subjectsRes.json()) as Subject[]) : [];
-        const orgData = orgRes.ok ? ((await orgRes.json()) as Array<{ id: string }>) : [];
+        const orgData =
+          orgRes.ok ? ((await orgRes.json()) as Array<{ id: string; date_format?: string | null }>) : [];
+        const productData = productsRes.ok ? ((await productsRes.json()) as Product[]) : [];
         if (!cancelled) {
           setLocations(locationData);
           setSubjects(subjectData);
+          setProducts(Array.isArray(productData) ? productData : []);
           setOrgId(orgData[0]?.id ?? null);
+          setDateFormat(normalizeDateFormat(orgData[0]?.date_format));
           const defaultLocation =
             locationData.find((l) => !l.archived_at && !l.is_system) ??
             locationData.find((l) => !l.archived_at) ??
@@ -424,6 +664,21 @@ export default function SchedulePage() {
               setLocationChoice(`setup:${defaultLocation.id}`);
             }
           }
+
+          void (async () => {
+            const nextServices: Record<string, ServiceOffered[]> = {};
+            await Promise.all(
+              locationData.map(async (loc) => {
+                const res = await fetch(`/services-offered?location_id=${encodeURIComponent(loc.id)}`, {
+                  headers: { Authorization: `Bearer ${session.access_token}` },
+                });
+                if (res.ok) {
+                  nextServices[loc.id] = (await res.json()) as ServiceOffered[];
+                }
+              }),
+            );
+            if (!cancelled) setServicesByLocation(nextServices);
+          })();
         }
       } catch (err) {
         console.error(err);
@@ -471,25 +726,49 @@ export default function SchedulePage() {
     async function loadLocationData() {
       try {
         const lookupLocationId = dataLocationId || selectedLocationId;
-        const [entryRes, serviceRes, tutorRes, roomRes, studentRes] = await Promise.all([
-          fetch(`/schedule-entries?location_id=${selectedLocationId}`, {
+        const entryPromise = (async () => {
+          if (calendarLocationChoice === "all") {
+            const activeLocationIds = locations.filter((loc) => !loc.archived_at).map((loc) => loc.id);
+            if (!activeLocationIds.length) return [];
+            const results = await Promise.all(
+              activeLocationIds.map(async (locId) => {
+                const res = await fetch(`/schedule-entries?location_id=${locId}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                return res.ok ? ((await res.json()) as ScheduleEntry[]) : [];
+              }),
+            );
+            const merged = results.flat();
+            merged.sort(
+              (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+            );
+            return merged;
+          }
+          const res = await fetch(`/schedule-entries?location_id=${selectedLocationId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          return res.ok ? ((await res.json()) as ScheduleEntry[]) : [];
+        })();
+
+        const tutorUrl =
+          calendarLocationChoice === "all"
+            ? "/tutors"
+            : `/tutors?location_id=${lookupLocationId}`;
+
+        const [entryData, serviceRes, tutorRes, roomRes, studentRes] = await Promise.all([
+          entryPromise,
+          fetch(`/services-offered?location_id=${encodeURIComponent(selectedLocationId)}`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch(`/services-offered?location_id=${lookupLocationId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`/tutors?location_id=${lookupLocationId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          fetch(tutorUrl, { headers: { Authorization: `Bearer ${token}` } }),
           fetch(`/rooms?location_id=${lookupLocationId}`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          fetch(`/students?location_id=${lookupLocationId}`, {
+          fetch(`/students`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
 
-        const entryData = entryRes.ok ? ((await entryRes.json()) as ScheduleEntry[]) : [];
         const serviceData = serviceRes.ok ? ((await serviceRes.json()) as ServiceOffered[]) : [];
         const tutorData = tutorRes.ok ? ((await tutorRes.json()) as Tutor[]) : [];
         const roomData = roomRes.ok ? ((await roomRes.json()) as Room[]) : [];
@@ -497,7 +776,16 @@ export default function SchedulePage() {
 
         if (cancelled) return;
         setEntries(entryData);
-        setServices(serviceData);
+        setSelectedEntryId((prev) => {
+          if (prev && entryData.some((entry) => entry.id === prev)) return prev;
+          const now = Date.now();
+          const nextUpcoming = entryData.find((entry) => {
+            const start = new Date(entry.start_at).getTime();
+            return Number.isFinite(start) && start >= now;
+          });
+          return nextUpcoming?.id ?? entryData[0]?.id ?? null;
+        });
+        setServicesByLocation((prev) => ({ ...prev, [selectedLocationId]: serviceData }));
         setTutors(tutorData);
         setRooms(roomData);
         setStudents(studentData);
@@ -507,8 +795,10 @@ export default function SchedulePage() {
 
         setForm((prev) => {
           const next: ScheduleFormState = { ...prev, location_id: selectedLocationId };
-          if (!serviceData.find((s) => s.id === next.service_offered_id)) {
-            next.service_offered_id = serviceData[0]?.id ?? "";
+          const hasService = serviceData.some((s) => s.id === next.service_offered_id);
+          if (!hasService) {
+            next.service_offered_id = "";
+            next.product_id = "";
           }
           if (!tutorData.find((t) => t.id === next.tutor_id)) {
             next.tutor_id = tutorData[0]?.id ?? "";
@@ -529,7 +819,26 @@ export default function SchedulePage() {
     return () => {
       cancelled = true;
     };
-  }, [token, selectedLocationId, dataLocationId]);
+  }, [token, selectedLocationId, dataLocationId, calendarLocationChoice, locations]);
+
+  useEffect(() => {
+    if (!selectedLocationId || !selectedServiceKey) return;
+    if (form.service_offered_id) return;
+    const list = activeServicesByLocation[selectedLocationId] ?? [];
+    let match: ServiceOffered | undefined;
+    if (isProductOption(selectedServiceKey)) {
+      const productId = productIdFromOption(selectedServiceKey);
+      const product = productMap.get(productId);
+      if (product?.service_code) {
+        match = list.find((svc) => svc.service_code === product.service_code);
+      }
+    } else {
+      match = list.find((svc) => serviceKey(svc) === selectedServiceKey);
+    }
+    if (match) {
+      setForm((prev) => ({ ...prev, service_offered_id: match.id }));
+    }
+  }, [selectedLocationId, selectedServiceKey, activeServicesByLocation, form.service_offered_id, productMap]);
 
   useEffect(() => {
     if (!token) return;
@@ -626,39 +935,150 @@ export default function SchedulePage() {
       const tags = conflictTagMap.get(entry.id);
       if (showConflictsOnly && (!tags || tags.size === 0)) return;
       const service = serviceMap.get(entry.service_offered_id);
+      const product = entry.product_id ? productMap.get(entry.product_id) : null;
       const tutor = tutorMap.get(entry.tutor_id);
-      const title = `${serviceLabel(service)} - ${tutorLabel(tutor)}`;
+      const title = `${product?.product_name ?? serviceLabel(service)} - ${tutorLabel(tutor)}`;
+      const tutorColor = normalizeHexColor(tutor?.color_hex) || "#7c3aed";
+      const textColor = getContrastText(tutorColor);
+      const hasConflict = Boolean(tags && tags.size > 0);
       events.push({
         id: entry.id,
         title,
         start: entry.start_at,
         end: entry.end_at,
-        classNames: tags && tags.size > 0 ? ["itutoros-fc-conflict"] : [],
+        classNames: hasConflict ? ["itutoros-fc-conflict"] : [],
+        backgroundColor: tutorColor,
+        borderColor: tutorColor,
+        textColor,
         extendedProps: {
           entry,
           conflictTags: tags ? Array.from(tags) : [],
         },
       });
+      if (entry.include_buffer && entry.blocked_end_at && entry.end_at) {
+        const endAt = new Date(entry.end_at);
+        const blockedAt = new Date(entry.blocked_end_at);
+        if (!Number.isNaN(endAt.getTime()) && !Number.isNaN(blockedAt.getTime()) && blockedAt > endAt) {
+          events.push({
+            id: `${entry.id}-buffer`,
+            title: "",
+            start: entry.end_at,
+            end: entry.blocked_end_at,
+            display: "background",
+            backgroundColor: tutorColor,
+            classNames: ["itutoros-fc-buffer"],
+            extendedProps: {
+              entry,
+              isBuffer: true,
+            },
+          });
+        }
+      }
     });
     return events;
-  }, [entries, selectedTutorId, showConflictsOnly, conflictTagMap, serviceMap, tutorMap]);
+  }, [entries, selectedTutorId, showConflictsOnly, conflictTagMap, serviceMap, tutorMap, productMap]);
 
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? null,
     [entries, selectedEntryId],
   );
 
+  const editingEntry = useMemo(
+    () => entries.find((entry) => entry.id === editingEntryId) ?? null,
+    [entries, editingEntryId],
+  );
+
   const selectedLocation = selectedLocationId ? locationMap.get(selectedLocationId) : null;
   const locationDetailRequired = Boolean(locationDetailMode);
   const showRooms = Boolean(locationChoice.startsWith("setup:") && selectedLocation && !selectedLocation.is_system);
 
+  function resetFormState(overrides: Partial<ScheduleFormState> = {}) {
+    setForm({ ...DEFAULT_SCHEDULE_FORM, ...overrides });
+  }
+
+  function buildEventDetails(entry: ScheduleEntry) {
+    const service = serviceMap.get(entry.service_offered_id);
+    const product = entry.product_id ? productMap.get(entry.product_id) : null;
+    const tutor = tutorMap.get(entry.tutor_id);
+    const location = locationMap.get(entry.location_id);
+    const attendees =
+      entry.attendees?.length
+        ? entry.attendees.map((att) => studentLabel(studentMap.get(att.student_id))).join(", ")
+        : "No attendees";
+    return [
+      `Service: ${product?.product_name ?? serviceLabel(service)}`,
+      `Tutor: ${tutorLabel(tutor)}`,
+      `Start: ${formatDateTime(entry.start_at)}`,
+      `End: ${formatDateTime(entry.end_at)}`,
+      `Location: ${location?.location_name ?? "Location"}`,
+      entry.location_detail ? `Detail: ${entry.location_detail}` : null,
+      `Attendees: ${attendees}`,
+    ].filter(Boolean) as string[];
+  }
+
+  function startEditEntry(entryId: string) {
+    const entry = entries.find((item) => item.id === entryId);
+    if (!entry) return;
+    setEditingEntryId(entryId);
+    setSelectedEntryId(entryId);
+    setActiveTab("NEW");
+    const location = locationMap.get(entry.location_id);
+    if (location) {
+      if (location.is_system) {
+        setLocationChoice(location.is_virtual ? "online" : "other");
+      } else {
+        setLocationChoice(`setup:${entry.location_id}`);
+      }
+      setSelectedLocationId(entry.location_id);
+    }
+    const svc = serviceMap.get(entry.service_offered_id);
+    const nextKey = entry.product_id ? productOptionKey(entry.product_id) : svc ? serviceKey(svc) : "";
+    setSelectedServiceKey(nextKey);
+    resetFormState({
+      location_id: entry.location_id,
+      location_detail: entry.location_detail ?? "",
+      service_offered_id: entry.service_offered_id,
+      product_id: entry.product_id ?? "",
+      tutor_id: entry.tutor_id,
+      subject_id: entry.subject_id ?? "",
+      topic_id: entry.topic_id ?? "",
+      attendee_student_ids: entry.attendees?.map((att) => att.student_id) ?? [],
+      room_ids: entry.rooms?.map((room) => room.room_id) ?? [],
+      resources_text: entry.resources_text ?? "",
+      start_at_local: entry.start_at ? toDateTimeLocal(new Date(entry.start_at)) : "",
+      duration_minutes: Number(entry.duration_minutes ?? 60),
+      include_buffer: Boolean(entry.include_buffer),
+      recurrence_type: (entry.recurrence_type as ScheduleFormState["recurrence_type"]) ?? "AD_HOC",
+      recurrence_interval: Number(entry.recurrence_interval ?? 1),
+      recurrence_days_of_week: parseRecurrenceDays(entry.recurrence_days_of_week),
+      schedule_end_mode: entry.series_end_date ? "date" : "count",
+      occurrence_count: Number(entry.occurrence_count ?? 12),
+      series_end_date_local: entry.series_end_date ? toDateTimeLocal(new Date(entry.series_end_date)) : "",
+    });
+  }
+
   async function refreshLocationData() {
     if (!token || !selectedLocationId) return;
-    const res = await fetch(`/schedule-entries?location_id=${selectedLocationId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      setEntries((await res.json()) as ScheduleEntry[]);
+    if (calendarLocationChoice === "all") {
+      const activeLocationIds = locations.filter((loc) => !loc.archived_at).map((loc) => loc.id);
+      const results = await Promise.all(
+        activeLocationIds.map(async (locId) => {
+          const res = await fetch(`/schedule-entries?location_id=${locId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          return res.ok ? ((await res.json()) as ScheduleEntry[]) : [];
+        }),
+      );
+      const merged = results.flat();
+      merged.sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+      setEntries(merged);
+    } else {
+      const res = await fetch(`/schedule-entries?location_id=${selectedLocationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setEntries((await res.json()) as ScheduleEntry[]);
+      }
     }
     const conflictRes = await fetch("/schedule-conflicts?resolved=false", {
       headers: { Authorization: `Bearer ${token}` },
@@ -702,89 +1122,119 @@ export default function SchedulePage() {
   }
 
   function resolveLocationChoice(choice: string) {
+    if (!choice) return "";
     if (choice.startsWith("setup:")) return choice.replace("setup:", "");
     if (choice === "online") return systemVirtualLocation?.id ?? primarySetupLocationId ?? "";
     if (choice === "student_home" || choice === "other") return systemOffsiteLocation?.id ?? primarySetupLocationId ?? "";
     return primarySetupLocationId ?? "";
   }
 
+  function handleCalendarLocationChange(choice: string) {
+    setCalendarLocationChoice(choice);
+    if (choice === "all") return;
+    handleLocationChoiceChange(choice);
+  }
+
   function handleLocationChoiceChange(choice: string) {
     const nextLocationId = resolveLocationChoice(choice);
     setLocationChoice(choice);
-    if (nextLocationId) {
-      setSelectedLocationId(nextLocationId);
+    if (!nextLocationId) {
+      setSelectedLocationId("");
       setForm((prev) => ({
         ...prev,
-        location_id: nextLocationId,
-        room_ids: choice.startsWith("setup:") ? prev.room_ids : [],
-        location_detail: choice.startsWith("setup:") ? "" : "",
+        location_id: "",
+        service_offered_id: "",
+        product_id: "",
+        room_ids: [],
+        location_detail: "",
       }));
+      return;
+    }
+    const servicesForLocation = activeServicesByLocation[nextLocationId] ?? [];
+    let matchedService: ServiceOffered | null = null;
+    let nextProductId = "";
+    if (selectedServiceKey) {
+      if (isProductOption(selectedServiceKey)) {
+        const productId = productIdFromOption(selectedServiceKey);
+        const product = productMap.get(productId);
+        if (product?.service_code) {
+          matchedService =
+            servicesForLocation.find((svc) => svc.service_code === product.service_code) ?? null;
+          if (matchedService) nextProductId = productId;
+        }
+      } else {
+        matchedService =
+          servicesForLocation.find((svc) => serviceKey(svc) === selectedServiceKey) ?? null;
+      }
+    }
+    setSelectedLocationId(nextLocationId);
+    setForm((prev) => ({
+      ...prev,
+      location_id: nextLocationId,
+      service_offered_id: matchedService?.id ?? "",
+      product_id: nextProductId,
+      room_ids: choice.startsWith("setup:") ? prev.room_ids : [],
+      location_detail: choice.startsWith("setup:") ? "" : "",
+    }));
+    if (selectedServiceKey && servicesForLocation && !matchedService) {
+      setSelectedServiceKey("");
     }
   }
 
-  async function handleAddStudent(addAnother: boolean) {
-    if (!token) return;
-    if (!newStudent.parent_id) {
-      toast({ title: "Parent is required" });
+  function handleServiceChoiceChange(nextKey: string) {
+    setSelectedServiceKey(nextKey);
+    if (!nextKey) {
+      setForm((prev) => ({ ...prev, service_offered_id: "", product_id: "" }));
       return;
     }
-    if (!newStudent.first_name.trim() || !newStudent.last_name.trim()) {
-      toast({ title: "Student first and last name are required" });
+    const nextProductId = isProductOption(nextKey) ? productIdFromOption(nextKey) : "";
+    if (!selectedLocationId) {
+      setForm((prev) => ({ ...prev, service_offered_id: "", product_id: nextProductId }));
       return;
     }
-
-    const studentLocationId = dataLocationId || selectedLocationId;
-
-    if (!studentLocationId) {
-      toast({ title: "Select a location before adding students." });
-      return;
-    }
-
-    setSavingStudent(true);
-    try {
-      const res = await fetch("/students", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          parent_id: newStudent.parent_id,
-          location_id: studentLocationId,
-          first_name: newStudent.first_name.trim(),
-          last_name: newStudent.last_name.trim(),
-          email: newStudent.email.trim() || null,
-          phone: newStudent.phone.trim() || null,
-          dob: newStudent.dob || null,
-        }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        toast({ title: "Student create failed", description: text });
-        return;
+    const servicesForLocation = activeServicesByLocation[selectedLocationId] ?? [];
+    let match: ServiceOffered | undefined;
+    if (nextProductId) {
+      const product = productMap.get(nextProductId);
+      if (product?.service_code) {
+        match = servicesForLocation.find((svc) => svc.service_code === product.service_code);
       }
-      const created = (await res.json()) as Student;
-      setStudents((prev) => [created, ...prev]);
+    } else {
+      match = servicesForLocation.find((svc) => serviceKey(svc) === nextKey);
+    }
+    if (!match) {
+      setLocationChoice("");
+      setSelectedLocationId("");
       setForm((prev) => ({
         ...prev,
-        attendee_student_ids: prev.attendee_student_ids.includes(created.id)
-          ? prev.attendee_student_ids
-          : [...prev.attendee_student_ids, created.id],
+        location_id: "",
+        service_offered_id: "",
+        product_id: nextProductId,
+        room_ids: [],
+        location_detail: "",
       }));
-      setNewStudent((prev) => ({
-        ...prev,
-        first_name: "",
-        last_name: "",
-        email: "",
-        phone: "",
-        dob: "",
-        parent_id: addAnother ? prev.parent_id : prev.parent_id,
-      }));
-      toast({ title: "Student added" });
-    } finally {
-      setSavingStudent(false);
+      return;
     }
+    setForm((prev) => ({ ...prev, service_offered_id: match.id, product_id: nextProductId }));
+  }
+
+  function addAttendee(studentId: string) {
+    setForm((prev) => {
+      if (prev.attendee_student_ids.includes(studentId)) return prev;
+      return { ...prev, attendee_student_ids: [...prev.attendee_student_ids, studentId] };
+    });
+  }
+
+  function removeAttendee(studentId: string) {
+    setForm((prev) => ({
+      ...prev,
+      attendee_student_ids: prev.attendee_student_ids.filter((id) => id !== studentId),
+    }));
   }
 
   async function submitSchedule(overrideConflicts = false) {
     if (!token) return;
+    const isEditing = Boolean(editingEntryId);
     if (!form.location_id) {
       toast({ title: "Location is required" });
       return;
@@ -824,55 +1274,94 @@ export default function SchedulePage() {
       return;
     }
 
-    const payload: Record<string, any> = {
-      location_id: form.location_id,
-      location_detail: form.location_detail.trim() || null,
-      service_offered_id: form.service_offered_id,
-      tutor_id: form.tutor_id,
-      subject_id: form.subject_id || null,
-      topic_id: form.topic_id || null,
-      attendee_student_ids: form.attendee_student_ids,
-      room_ids: form.room_ids,
-      resources_text: form.resources_text.trim() || null,
-      start_at: startIso,
-      duration_minutes: Number(form.duration_minutes || 60),
-      include_buffer: Boolean(form.include_buffer),
-      recurrence_type: form.recurrence_type,
-      allow_conflicts: overrideConflicts,
-    };
-
-    if (form.recurrence_type !== "AD_HOC") {
-      payload.recurrence_interval = Number(form.recurrence_interval || 1);
-      payload.recurrence_days_of_week = form.recurrence_type === "WEEKLY" ? form.recurrence_days_of_week : undefined;
-      if (form.schedule_end_mode === "count") {
-        payload.occurrence_count = Number(form.occurrence_count || 1);
-      } else {
-        payload.series_end_date = parseDateTimeLocal(form.series_end_date_local);
-      }
-    }
-
     setSaving(true);
     try {
-      const res = await fetch("/schedule-entries", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.status === 409) {
-        const body = (await res.json()) as ConflictPayload;
-        setPendingConflict(body);
-        toast({ title: "Conflict detected", description: body.message || "This schedule overlaps another entry." });
-        return;
+      if (isEditing && editingEntryId) {
+        const updatePayload: Record<string, any> = {
+          start_at: startIso,
+          duration_minutes: Number(form.duration_minutes || 60),
+          include_buffer: Boolean(form.include_buffer),
+          location_detail: form.location_detail.trim() || null,
+          service_offered_id: form.service_offered_id,
+          product_id: form.product_id || null,
+          subject_id: form.subject_id || null,
+          topic_id: form.topic_id || null,
+          attendee_student_ids: form.attendee_student_ids,
+          room_ids: form.room_ids,
+          resources_text: form.resources_text.trim() || null,
+          allow_conflicts: overrideConflicts,
+        };
+        const res = await fetch(`/schedule-entries/${editingEntryId}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify(updatePayload),
+        });
+        if (res.status === 409) {
+          const body = (await res.json()) as ConflictPayload;
+          setPendingConflict(body);
+          toast({ title: "Conflict detected", description: body.message || "This schedule overlaps another entry." });
+          return;
+        }
+        if (!res.ok) {
+          const text = await res.text();
+          toast({ title: "Unable to update schedule entry", description: text });
+          return;
+        }
+        setPendingConflict(null);
+        toast({ title: "Schedule entry updated" });
+        setEditingEntryId(null);
+        await refreshLocationData();
+        setActiveTab("CALENDAR");
+      } else {
+        const payload: Record<string, any> = {
+          location_id: form.location_id,
+          location_detail: form.location_detail.trim() || null,
+          service_offered_id: form.service_offered_id,
+          product_id: form.product_id || null,
+          tutor_id: form.tutor_id,
+          subject_id: form.subject_id || null,
+          topic_id: form.topic_id || null,
+          attendee_student_ids: form.attendee_student_ids,
+          room_ids: form.room_ids,
+          resources_text: form.resources_text.trim() || null,
+          start_at: startIso,
+          duration_minutes: Number(form.duration_minutes || 60),
+          include_buffer: Boolean(form.include_buffer),
+          recurrence_type: form.recurrence_type,
+          allow_conflicts: overrideConflicts,
+        };
+
+        if (form.recurrence_type !== "AD_HOC") {
+          payload.recurrence_interval = Number(form.recurrence_interval || 1);
+          payload.recurrence_days_of_week = form.recurrence_type === "WEEKLY" ? form.recurrence_days_of_week : undefined;
+          if (form.schedule_end_mode === "count") {
+            payload.occurrence_count = Number(form.occurrence_count || 1);
+          } else {
+            payload.series_end_date = parseDateTimeLocal(form.series_end_date_local);
+          }
+        }
+
+        const res = await fetch("/schedule-entries", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.status === 409) {
+          const body = (await res.json()) as ConflictPayload;
+          setPendingConflict(body);
+          toast({ title: "Conflict detected", description: body.message || "This schedule overlaps another entry." });
+          return;
+        }
+        if (!res.ok) {
+          const text = await res.text();
+          toast({ title: "Unable to save schedule entry", description: text });
+          return;
+        }
+        setPendingConflict(null);
+        toast({ title: "Schedule entry saved" });
+        await refreshLocationData();
+        setActiveTab("CALENDAR");
       }
-      if (!res.ok) {
-        const text = await res.text();
-        toast({ title: "Unable to save schedule entry", description: text });
-        return;
-      }
-      setPendingConflict(null);
-      toast({ title: "Schedule entry saved" });
-      await refreshLocationData();
-      setActiveTab("CALENDAR");
     } catch (err) {
       console.error(err);
       toast({ title: "Unable to save schedule entry" });
@@ -881,16 +1370,27 @@ export default function SchedulePage() {
     }
   }
 
-  function handleSelectSlot(info: DateSelectArg) {
+  function openNewEntryAt(date: Date) {
+    setEditingEntryId(null);
     setActiveTab("NEW");
-    const startLocal = toDateTimeLocal(info.start);
-    const durationMinutes = Math.max(15, Math.round((info.end.getTime() - info.start.getTime()) / 60000));
+    const startLocal = toDateTimeLocal(date);
     setForm((prev) => ({
       ...prev,
       start_at_local: startLocal,
-      duration_minutes: durationMinutes,
       recurrence_type: "AD_HOC",
     }));
+  }
+
+  function handleDateClick(info: DateClickArg) {
+    const now = Date.now();
+    const dateStr = info.dateStr;
+    const last = lastDateClickRef.current;
+    if (last && now - last.ts < 400 && last.dateStr === dateStr) {
+      lastDateClickRef.current = null;
+      openNewEntryAt(info.date);
+      return;
+    }
+    lastDateClickRef.current = { ts: now, dateStr };
   }
 
   function handleEventClick(info: EventClickArg) {
@@ -908,7 +1408,12 @@ export default function SchedulePage() {
     );
   }
 
-  const activeTabLabel = SCHEDULE_TABS.find((tab) => tab.key === activeTab)?.label ?? "Schedule";
+  const activeTabLabel =
+    activeTab === "NEW"
+      ? editingEntryId
+        ? "Edit Schedule Entry"
+        : "New Schedule Entry"
+      : SCHEDULE_TABS.find((tab) => tab.key === activeTab)?.label ?? "Schedule";
 
   return (
     <div className="min-h-screen bg-white">
@@ -924,8 +1429,9 @@ export default function SchedulePage() {
                     key={tab.key}
                     type="button"
                     onClick={() => setActiveTab(tab.key)}
+                    style={{ "--tab-icon-color": SCHEDULE_TAB_ICON_COLORS[tab.key] } as CSSProperties}
                     className={[
-                      "w-full rounded-lg px-3 py-2 text-left text-sm transition",
+                      "group w-full rounded-lg px-3 py-2 text-left text-sm transition",
                       activeTab === tab.key ? "bg-gray-100 font-semibold" : "hover:bg-gray-50",
                     ].join(" ")}
                   >
@@ -933,7 +1439,12 @@ export default function SchedulePage() {
                       <HugeiconsIcon
                         icon={tab.icon}
                         size={16}
-                        className={activeTab === tab.key ? "text-[#0b1f5f]" : "text-gray-500"}
+                        className={[
+                          "transition-colors",
+                          activeTab === tab.key
+                            ? "text-[var(--tab-icon-color)]"
+                            : "text-gray-500 group-hover:text-[var(--tab-icon-color)]",
+                        ].join(" ")}
                       />
                       <span>{tab.label}</span>
                     </span>
@@ -961,10 +1472,10 @@ export default function SchedulePage() {
                         <select
                           id="calendar-location"
                           className="h-9 rounded-xl border border-gray-200 bg-zinc-50 px-3 text-sm"
-                          value={locationChoice}
-                          onChange={(e) => handleLocationChoiceChange(e.target.value)}
+                          value={calendarLocationChoice || locationChoice}
+                          onChange={(e) => handleCalendarLocationChange(e.target.value)}
                         >
-                          {locationChoiceOptions.map((option) => (
+                          {calendarLocationOptions.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
@@ -981,8 +1492,12 @@ export default function SchedulePage() {
                         >
                           <option value="all">All tutors</option>
                           {tutors.map((tutor) => (
-                            <option key={tutor.id} value={tutor.id}>
-                              {tutorLabel(tutor)}
+                            <option
+                              key={tutor.id}
+                              value={tutor.id}
+                              style={{ color: normalizeHexColor(tutor.color_hex) || "#7c3aed" }}
+                            >
+                              {tutorOptionLabel(tutor)}
                             </option>
                           ))}
                         </select>
@@ -1000,7 +1515,11 @@ export default function SchedulePage() {
                       <button
                         type="button"
                         className="itutoros-settings-btn itutoros-settings-btn-primary"
-                        onClick={() => setActiveTab("NEW")}
+                        onClick={() => {
+                          setEditingEntryId(null);
+                          resetFormState();
+                          setActiveTab("NEW");
+                        }}
                       >
                         New schedule entry
                       </button>
@@ -1018,16 +1537,116 @@ export default function SchedulePage() {
                       }}
                       customButtons={{
                         print: {
-                          text: "Print",
+                          text: "print",
                           click: () => window.print(),
                         },
                       }}
                       height={720}
-                      selectable
-                      selectMirror
+                      dateClick={handleDateClick}
                       eventClick={handleEventClick}
-                      select={handleSelectSlot}
+                      eventDidMount={(info) => {
+                        const entry = info.event.extendedProps.entry as ScheduleEntry | undefined;
+                        if (!entry) return;
+                        const isBuffer = Boolean(info.event.extendedProps?.isBuffer);
+                        const tutor = tutorMap.get(entry.tutor_id);
+                        const tutorColor = normalizeHexColor(tutor?.color_hex) || "#7c3aed";
+                        const tooltipBg = lightenHexColor(tutorColor, 0.78);
+
+                        const el = info.el as HTMLElement;
+                        let tooltipEl: HTMLDivElement | null = null;
+                        let lastPoint: { x: number; y: number } | null = null;
+                        let repositionHandler: (() => void) | null = null;
+
+                        const buildTooltipHtml = () => {
+                          if (isBuffer) {
+                            const endAt = entry.end_at ? new Date(entry.end_at) : null;
+                            const blockedAt = entry.blocked_end_at ? new Date(entry.blocked_end_at) : null;
+                            const minutes =
+                              endAt && blockedAt ? Math.max(0, Math.round((blockedAt.getTime() - endAt.getTime()) / 60000)) : 0;
+                            return `<div>Buffer time: ${minutes} minutes</div>`;
+                          }
+                          return buildEventDetails(entry)
+                            .map((line) => `<div>${line}</div>`)
+                            .join("");
+                        };
+
+                        const positionTooltip = (point?: { x: number; y: number }) => {
+                          if (!tooltipEl) return;
+                          const scrollX = window.scrollX || document.documentElement.scrollLeft || 0;
+                          const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+                          const rect = el.getBoundingClientRect();
+                          const tipRect = tooltipEl.getBoundingClientRect();
+                          const margin = 8;
+                          const anchorX = point ? point.x : rect.left + rect.width / 2;
+                          const anchorY = point ? point.y : rect.top;
+                          let top = anchorY - tipRect.height - margin;
+                          if (top < margin) {
+                            top = anchorY + margin;
+                          }
+                          let left = anchorX - tipRect.width / 2;
+                          left = Math.max(margin, Math.min(left, window.innerWidth - tipRect.width - margin));
+                          tooltipEl.style.top = `${Math.round(top + scrollY)}px`;
+                          tooltipEl.style.left = `${Math.round(left + scrollX)}px`;
+                        };
+
+                        const showTooltip = () => {
+                          if (tooltipEl) return;
+                          tooltipEl = document.createElement("div");
+                          tooltipEl.className = "itutoros-fc-tooltip";
+                          tooltipEl.style.backgroundColor = tooltipBg;
+                          tooltipEl.style.borderColor = tutorColor;
+                          tooltipEl.style.color = "#111827";
+                          tooltipEl.innerHTML = buildTooltipHtml();
+                          document.body.appendChild(tooltipEl);
+                          const doPosition = () => positionTooltip(lastPoint ?? undefined);
+                          requestAnimationFrame(doPosition);
+                          requestAnimationFrame(doPosition);
+                          repositionHandler = () => positionTooltip(lastPoint ?? undefined);
+                          window.addEventListener("scroll", repositionHandler, true);
+                          window.addEventListener("resize", repositionHandler);
+                        };
+
+                        const hideTooltip = () => {
+                          if (!tooltipEl) return;
+                          tooltipEl.remove();
+                          tooltipEl = null;
+                          if (repositionHandler) {
+                            window.removeEventListener("scroll", repositionHandler, true);
+                            window.removeEventListener("resize", repositionHandler);
+                            repositionHandler = null;
+                          }
+                        };
+
+                        const handleEnter = (event: MouseEvent) => {
+                          lastPoint = { x: event.clientX, y: event.clientY };
+                          showTooltip();
+                        };
+                        const handleLeave = () => {
+                          hideTooltip();
+                        };
+
+                        el.addEventListener("mouseenter", handleEnter);
+                        el.addEventListener("mouseleave", handleLeave);
+
+                        if (!isBuffer) {
+                          el.ondblclick = (event) => {
+                            event.preventDefault();
+                            startEditEntry(entry.id);
+                          };
+                        }
+
+                        (el as any).__itutorosCleanup = () => {
+                          hideTooltip();
+                          el.removeEventListener("mouseenter", handleEnter);
+                          el.removeEventListener("mouseleave", handleLeave);
+                        };
+                      }}
+                      eventWillUnmount={(info) => {
+                        const cleanup = (info.el as any).__itutorosCleanup;
+                        if (typeof cleanup === "function") cleanup();
+                      }}
                       events={calendarEvents}
+                      eventMinHeight={2}
                       nowIndicator
                     />
                   </div>
@@ -1036,19 +1655,31 @@ export default function SchedulePage() {
                     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <h2 className="text-lg font-semibold text-[#0b1f5f]">Entry details</h2>
-                        <button
-                          type="button"
-                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                          onClick={() => setSelectedEntryId(null)}
-                        >
-                          Close
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="itutoros-settings-btn itutoros-settings-btn-primary"
+                            onClick={() => startEditEntry(selectedEntry.id)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                            onClick={() => setSelectedEntryId(null)}
+                          >
+                            Close
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-4 grid gap-4 md:grid-cols-2">
                         <div>
                           <div className="text-xs uppercase text-gray-500">Service</div>
                           <div className="text-sm font-semibold">
-                            {serviceLabel(serviceMap.get(selectedEntry.service_offered_id))}
+                            {selectedEntry.product_id
+                              ? productMap.get(selectedEntry.product_id)?.product_name ??
+                                serviceLabel(serviceMap.get(selectedEntry.service_offered_id))
+                              : serviceLabel(serviceMap.get(selectedEntry.service_offered_id))}
                           </div>
                         </div>
                         <div>
@@ -1115,6 +1746,34 @@ export default function SchedulePage() {
 
               {activeTab === "NEW" ? (
                 <div className="grid gap-6">
+                  {editingEntry ? (
+                    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-indigo-800">Editing schedule entry</div>
+                          <div className="text-xs text-indigo-700">
+                            {editingEntry.product_id
+                              ? productMap.get(editingEntry.product_id)?.product_name ??
+                                serviceLabel(serviceMap.get(editingEntry.service_offered_id))
+                              : serviceLabel(serviceMap.get(editingEntry.service_offered_id))}{" "}
+                            · {formatDateTime(editingEntry.start_at)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                          onClick={() => {
+                            setActiveTab("CALENDAR");
+                            setEditingEntryId(null);
+                            setPendingConflict(null);
+                            resetFormState();
+                          }}
+                        >
+                          Cancel edit
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   {pendingConflict ? (
                     <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
                       <div className="text-sm font-semibold text-red-700">Conflict detected</div>
@@ -1160,19 +1819,16 @@ export default function SchedulePage() {
                         <select
                           id="service-offered"
                           className="h-10 rounded-xl border border-gray-200 bg-zinc-50 px-3 text-sm"
-                          value={form.service_offered_id}
-                          onChange={(e) => setForm((prev) => ({ ...prev, service_offered_id: e.target.value }))}
-                          disabled={services.length === 0}
+                          value={selectedServiceKey}
+                          onChange={(e) => handleServiceChoiceChange(e.target.value)}
+                          disabled={serviceOptions.length === 0}
                         >
-                          {services.length === 0 ? (
-                            <option value="">No services available</option>
-                          ) : (
-                            services.map((service) => (
-                              <option key={service.id} value={service.id}>
-                                {serviceLabel(service)}
-                              </option>
-                            ))
-                          )}
+                          <option value="">Select a service</option>
+                          {serviceOptions.map((service) => (
+                            <option key={service.key} value={service.key}>
+                              {service.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
                       <div className="grid gap-2">
@@ -1182,6 +1838,7 @@ export default function SchedulePage() {
                           className="h-10 rounded-xl border border-gray-200 bg-zinc-50 px-3 text-sm"
                           value={locationChoice}
                           onChange={(e) => handleLocationChoiceChange(e.target.value)}
+                          disabled={Boolean(editingEntryId)}
                         >
                           {locationChoiceOptions.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -1208,10 +1865,15 @@ export default function SchedulePage() {
                           className="h-10 rounded-xl border border-gray-200 bg-zinc-50 px-3 text-sm"
                           value={form.tutor_id}
                           onChange={(e) => setForm((prev) => ({ ...prev, tutor_id: e.target.value }))}
+                          disabled={Boolean(editingEntryId)}
                         >
                           {tutors.map((tutor) => (
-                            <option key={tutor.id} value={tutor.id}>
-                              {tutorLabel(tutor)}
+                            <option
+                              key={tutor.id}
+                              value={tutor.id}
+                              style={{ color: normalizeHexColor(tutor.color_hex) || "#7c3aed" }}
+                            >
+                              {tutorOptionLabel(tutor)}
                             </option>
                           ))}
                         </select>
@@ -1259,19 +1921,32 @@ export default function SchedulePage() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="duration">Duration</Label>
-                        <select
+                        <Label htmlFor="duration">Duration (minutes)</Label>
+                        <Input
                           id="duration"
-                          className="h-10 rounded-xl border border-gray-200 bg-zinc-50 px-3 text-sm"
-                          value={form.duration_minutes}
-                          onChange={(e) => setForm((prev) => ({ ...prev, duration_minutes: Number(e.target.value) }))}
-                        >
-                          {DURATION_OPTIONS.map((mins) => (
-                            <option key={mins} value={mins}>
-                              {mins} minutes
-                            </option>
-                          ))}
-                        </select>
+                          type="number"
+                          min={1}
+                          step={1}
+                          inputMode="numeric"
+                          value={form.duration_minutes || ""}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const next = raw === "" ? 0 : Number(raw);
+                            setForm((prev) => ({ ...prev, duration_minutes: Number.isNaN(next) ? 0 : next }));
+                          }}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="session-revenue">Session revenue</Label>
+                        <Input
+                          id="session-revenue"
+                          readOnly
+                          value={formatCurrencyFromCents(sessionRevenueCents)}
+                          className="bg-zinc-50 text-gray-700"
+                        />
+                        <div className="text-xs text-gray-500">
+                          Based on unit price, duration, and attendees.
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-700">
                         <input
@@ -1299,6 +1974,7 @@ export default function SchedulePage() {
                               recurrence_type: e.target.value as ScheduleFormState["recurrence_type"],
                             }))
                           }
+                          disabled={Boolean(editingEntryId)}
                         >
                           {RECURRENCE_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
@@ -1320,6 +1996,7 @@ export default function SchedulePage() {
                               onChange={(e) =>
                                 setForm((prev) => ({ ...prev, recurrence_interval: Number(e.target.value || 1) }))
                               }
+                              disabled={Boolean(editingEntryId)}
                             />
                             <span className="text-sm text-gray-600">
                               {form.recurrence_type === "DAILY" ? "day(s)" : "week(s)"}
@@ -1351,6 +2028,7 @@ export default function SchedulePage() {
                                     return { ...prev, recurrence_days_of_week: next.sort((a, b) => a - b) };
                                   })
                                 }
+                                disabled={Boolean(editingEntryId)}
                               >
                                 {day.label}
                               </button>
@@ -1372,6 +2050,7 @@ export default function SchedulePage() {
                                   : "border-gray-200 bg-white text-gray-700 hover:border-gray-400",
                               ].join(" ")}
                               onClick={() => setForm((prev) => ({ ...prev, schedule_end_mode: "count" }))}
+                              disabled={Boolean(editingEntryId)}
                             >
                               End after # occurrences
                             </button>
@@ -1384,6 +2063,7 @@ export default function SchedulePage() {
                                   : "border-gray-200 bg-white text-gray-700 hover:border-gray-400",
                               ].join(" ")}
                               onClick={() => setForm((prev) => ({ ...prev, schedule_end_mode: "date" }))}
+                              disabled={Boolean(editingEntryId)}
                             >
                               End on date
                             </button>
@@ -1397,6 +2077,7 @@ export default function SchedulePage() {
                                 onChange={(e) =>
                                   setForm((prev) => ({ ...prev, occurrence_count: Number(e.target.value || 1) }))
                                 }
+                                disabled={Boolean(editingEntryId)}
                               />
                             </div>
                           ) : (
@@ -1405,6 +2086,7 @@ export default function SchedulePage() {
                                 type="datetime-local"
                                 value={form.series_end_date_local}
                                 onChange={(e) => setForm((prev) => ({ ...prev, series_end_date_local: e.target.value }))}
+                                disabled={Boolean(editingEntryId)}
                               />
                             </div>
                           )}
@@ -1418,125 +2100,93 @@ export default function SchedulePage() {
                     <div className="mt-4 grid gap-6 md:grid-cols-2">
                       <div>
                         <div className="text-sm font-semibold text-gray-700">Attendees</div>
-                        <div className="mt-2 max-h-[220px] overflow-y-auto rounded-xl border border-gray-200 p-2">
-                          {students.length === 0 ? (
-                            <div className="p-2 text-sm text-gray-500">No students yet.</div>
-                          ) : (
-                            students.map((student) => (
-                              <label key={student.id} className="flex items-center gap-2 px-2 py-1 text-sm">
-                                <input
-                                  type="checkbox"
-                                  checked={form.attendee_student_ids.includes(student.id)}
-                                  onChange={(e) =>
-                                    setForm((prev) => {
-                                      const has = prev.attendee_student_ids.includes(student.id);
-                                      const next = e.target.checked
-                                        ? [...prev.attendee_student_ids, student.id]
-                                        : prev.attendee_student_ids.filter((id) => id !== student.id);
-                                      return { ...prev, attendee_student_ids: next };
-                                    })
-                                  }
-                                />
-                                {studentLabel(student)}
-                              </label>
-                            ))
-                          )}
+                        <div className="mt-2 rounded-xl border border-gray-200 p-3">
+                          <div className="flex flex-wrap gap-2">
+                            {selectedAttendees.length === 0 ? (
+                              <div className="text-sm text-gray-500">No students selected yet.</div>
+                            ) : (
+                              selectedAttendees.map((student) => (
+                                <span
+                                  key={student.id}
+                                  className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700 shadow-sm"
+                                >
+                                  {studentLabel(student)}
+                                  <button
+                                    type="button"
+                                    className="text-gray-500 hover:text-gray-800"
+                                    onClick={() => removeAttendee(student.id)}
+                                    aria-label={`Remove ${studentLabel(student)}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
+                          <div className="relative mt-3">
+                            <Input
+                              placeholder="Search students to add..."
+                              value={attendeeQuery}
+                              onChange={(e) => {
+                                setAttendeeQuery(e.target.value);
+                                setAttendeeOpen(true);
+                              }}
+                              onFocus={() => setAttendeeOpen(true)}
+                              onBlur={() => {
+                                window.setTimeout(() => setAttendeeOpen(false), 150);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key !== "Enter") return;
+                                e.preventDefault();
+                                const next = attendeeSuggestions[0];
+                                if (next) {
+                                  addAttendee(next.id);
+                                  setAttendeeQuery("");
+                                  setAttendeeOpen(false);
+                                }
+                              }}
+                            />
+                            {attendeeOpen ? (
+                              <div className="absolute z-20 mt-2 max-h-48 w-full overflow-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+                                {attendeeSuggestions.length === 0 ? (
+                                  <div className="p-3 text-sm text-gray-500">No matches found.</div>
+                                ) : (
+                                  attendeeSuggestions.map((student) => {
+                                    const parentName = parentLabel(
+                                      student.parent ?? (student.parent_id ? parentMap.get(student.parent_id) : null),
+                                    );
+                                    return (
+                                      <button
+                                        key={student.id}
+                                        type="button"
+                                        className="flex w-full flex-col gap-1 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={() => {
+                                          addAttendee(student.id);
+                                          setAttendeeQuery("");
+                                          setAttendeeOpen(false);
+                                        }}
+                                      >
+                                        <span className="font-medium text-gray-800">{studentLabel(student)}</span>
+                                        {parentName ? (
+                                          <span className="text-xs text-gray-500">Parent: {parentName}</span>
+                                        ) : null}
+                                      </button>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="mt-2 text-xs text-gray-500">
+                            Start typing a name and press Enter to add a student.
+                          </div>
                         </div>
                         {form.service_offered_id && form.attendee_student_ids.length > serviceCapacity ? (
                           <div className="mt-2 text-xs font-semibold text-red-600">
                             Attendees exceed capacity. You can still save, but it will be flagged.
                           </div>
                         ) : null}
-
-                        <div className="mt-4 rounded-xl border border-gray-200 bg-zinc-50 p-4">
-                          <div className="text-sm font-semibold text-gray-700">Add student</div>
-                          {parents.length === 0 ? (
-                            <div className="mt-2 text-xs text-gray-500">Add a parent in Clients before creating students.</div>
-                          ) : (
-                            <div className="mt-3 grid gap-3">
-                              <div className="grid gap-2">
-                                <Label htmlFor="new-student-parent">Parent</Label>
-                                <select
-                                  id="new-student-parent"
-                                  className="h-9 rounded-xl border border-gray-200 bg-white px-3 text-sm"
-                                  value={newStudent.parent_id}
-                                  onChange={(e) => setNewStudent((prev) => ({ ...prev, parent_id: e.target.value }))}
-                                >
-                                  <option value="">Select parent</option>
-                                  {parents.map((parent) => (
-                                    <option key={parent.id} value={parent.id}>
-                                      {parentLabel(parent)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="grid gap-2 md:grid-cols-2">
-                                <div className="grid gap-2">
-                                  <Label htmlFor="new-student-first">First name</Label>
-                                  <Input
-                                    id="new-student-first"
-                                    value={newStudent.first_name}
-                                    onChange={(e) => setNewStudent((prev) => ({ ...prev, first_name: e.target.value }))}
-                                  />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="new-student-last">Last name</Label>
-                                  <Input
-                                    id="new-student-last"
-                                    value={newStudent.last_name}
-                                    onChange={(e) => setNewStudent((prev) => ({ ...prev, last_name: e.target.value }))}
-                                  />
-                                </div>
-                              </div>
-                              <div className="grid gap-2 md:grid-cols-2">
-                                <div className="grid gap-2">
-                                  <Label htmlFor="new-student-email">Email</Label>
-                                  <Input
-                                    id="new-student-email"
-                                    type="email"
-                                    value={newStudent.email}
-                                    onChange={(e) => setNewStudent((prev) => ({ ...prev, email: e.target.value }))}
-                                  />
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label htmlFor="new-student-phone">Phone</Label>
-                                  <Input
-                                    id="new-student-phone"
-                                    value={newStudent.phone}
-                                    onChange={(e) => setNewStudent((prev) => ({ ...prev, phone: e.target.value }))}
-                                  />
-                                </div>
-                              </div>
-                              <div className="grid gap-2">
-                                <Label htmlFor="new-student-dob">Date of birth</Label>
-                                <Input
-                                  id="new-student-dob"
-                                  type="date"
-                                  value={newStudent.dob}
-                                  onChange={(e) => setNewStudent((prev) => ({ ...prev, dob: e.target.value }))}
-                                />
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                  onClick={() => handleAddStudent(false)}
-                                  disabled={savingStudent}
-                                >
-                                  {savingStudent ? "Saving..." : "Save student"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                  onClick={() => handleAddStudent(true)}
-                                  disabled={savingStudent}
-                                >
-                                  {savingStudent ? "Saving..." : "Save & add another"}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
                       </div>
 
                       <div>
@@ -1713,7 +2363,10 @@ export default function SchedulePage() {
                                     <ClampedCell
                                       text={
                                         schedule
-                                          ? `${serviceLabel(serviceMap.get(schedule.service_offered_id))} - ${formatDateTime(
+                                          ? `${schedule.product_id
+                                              ? productMap.get(schedule.product_id)?.product_name ??
+                                                serviceLabel(serviceMap.get(schedule.service_offered_id))
+                                              : serviceLabel(serviceMap.get(schedule.service_offered_id))} - ${formatDateTime(
                                               schedule.start_at,
                                             )}`
                                           : "--"
@@ -1724,7 +2377,10 @@ export default function SchedulePage() {
                                     <ClampedCell
                                       text={
                                         conflict
-                                          ? `${serviceLabel(serviceMap.get(conflict.service_offered_id))} - ${formatDateTime(
+                                          ? `${conflict.product_id
+                                              ? productMap.get(conflict.product_id)?.product_name ??
+                                                serviceLabel(serviceMap.get(conflict.service_offered_id))
+                                              : serviceLabel(serviceMap.get(conflict.service_offered_id))} - ${formatDateTime(
                                               conflict.start_at,
                                             )}`
                                           : "--"
