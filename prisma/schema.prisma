@@ -86,6 +86,25 @@ enum EmailAuthType {
   IMAP
 }
 
+enum IntegrationProvider {
+  FACEBOOK
+  MESSENGER
+  INSTAGRAM
+  TIKTOK
+  X
+  LINKEDIN
+  SNAPCHAT
+  PINTEREST
+  YOUTUBE
+  WHATSAPP
+}
+
+enum MarketingPostStatus {
+  DRAFT
+  READY
+  POSTED
+}
+
 enum RecurrenceType {
   AD_HOC
   WEEKLY
@@ -125,6 +144,9 @@ model Organization {
   testimonials_text      String?
   privacy_policy_text    String?
   cta_text               String?
+  company_description_text String?
+  about_us_text            String?
+  slogan_text              String?
 
   created_at             DateTime @default(now())
   updated_at             DateTime @updatedAt
@@ -143,12 +165,47 @@ model Organization {
   catalogMedia           CatalogMedia[]
   leads                  Lead[]
   emailInboxes           EmailInbox[]
+  integrationConnections IntegrationConnection[]
+  marketingPosts         MarketingPost[]
   parents                Parent[]
   students               Student[]
+  studentRecords         StudentRecord[]
   scheduleEntries        ScheduleEntry[]
   scheduleConflicts      ScheduleConflict[]
 
   @@index([archived_at])
+}
+
+model MarketingPost {
+  id               String               @id @default(uuid()) @db.Uuid
+  organization_id  String               @db.Uuid
+  organization     Organization         @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  title            String
+  status           MarketingPostStatus  @default(DRAFT)
+  platform_ids     String[]             @default([])
+  template_style   String?
+  layout_preset    String?
+  aspect_ratio     String?
+  copy_text        String?
+  image_url        String?
+  media_selection  Json?
+
+  posted_at        DateTime?
+  last_posted_at   DateTime?
+  views_count      Int?
+  clicks_count     Int?
+
+  created_at       DateTime             @default(now())
+  updated_at       DateTime             @updatedAt
+
+  created_by_user_id String?            @db.Uuid
+  updated_by_user_id String?            @db.Uuid
+  createdBy        User?                @relation("MarketingPostCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy        User?                @relation("MarketingPostUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([status])
 }
 
 model Location {
@@ -274,11 +331,17 @@ model User {
 
   emailInboxesCreated EmailInbox[] @relation("EmailInboxCreatedBy")
   emailInboxesUpdated EmailInbox[] @relation("EmailInboxUpdatedBy")
+  integrationConnectionsCreated IntegrationConnection[] @relation("IntegrationConnectionCreatedBy")
+  integrationConnectionsUpdated IntegrationConnection[] @relation("IntegrationConnectionUpdatedBy")
+  marketingPostsCreated MarketingPost[] @relation("MarketingPostCreatedBy")
+  marketingPostsUpdated MarketingPost[] @relation("MarketingPostUpdatedBy")
 
   parentsCreated  Parent[]  @relation("ParentCreatedBy")
   parentsUpdated  Parent[]  @relation("ParentUpdatedBy")
   studentsCreated Student[] @relation("StudentCreatedBy")
   studentsUpdated Student[] @relation("StudentUpdatedBy")
+  studentRecordsCreated StudentRecord[] @relation("StudentRecordCreatedBy")
+  studentRecordsUpdated StudentRecord[] @relation("StudentRecordUpdatedBy")
   scheduleCreated ScheduleEntry[] @relation("ScheduleCreatedBy")
   scheduleUpdated ScheduleEntry[] @relation("ScheduleUpdatedBy")
   scheduleConflictsCreated ScheduleConflict[] @relation("ScheduleConflictCreatedBy")
@@ -394,6 +457,7 @@ model ServiceOffered {
   unit_length_minutes Int   @default(60)
   display_name     String?
   description_text String?
+  service_logo_url String?
   is_active        Boolean  @default(true)
 
   scheduleEntries  ScheduleEntry[]
@@ -552,6 +616,28 @@ model EmailInbox {
   @@index([archived_at])
 }
 
+model IntegrationConnection {
+  id                   String              @id @default(uuid()) @db.Uuid
+  organization_id      String              @db.Uuid
+  organization         Organization        @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  provider             IntegrationProvider
+  credentials_encrypted String?
+  connected_at         DateTime?
+
+  created_at           DateTime            @default(now())
+  updated_at           DateTime            @updatedAt
+
+  created_by_user_id   String?             @db.Uuid
+  updated_by_user_id   String?             @db.Uuid
+  createdBy            User?               @relation("IntegrationConnectionCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy            User?               @relation("IntegrationConnectionUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@unique([organization_id, provider])
+  @@index([organization_id])
+  @@index([provider])
+}
+
 model Parent {
   id                String      @id @default(uuid()) @db.Uuid
   organization_id   String      @db.Uuid
@@ -625,6 +711,7 @@ model Student {
 
   subjects            StudentSubject[]
   scheduleAttendances ScheduleEntryAttendee[]
+  records             StudentRecord[]
 
   created_at          DateTime   @default(now())
   updated_at          DateTime   @updatedAt
@@ -639,6 +726,28 @@ model Student {
   @@index([parent_id])
   @@index([location_id])
   @@index([archived_at])
+}
+
+model StudentRecord {
+  id                  String      @id @default(uuid()) @db.Uuid
+  organization_id     String      @db.Uuid
+  organization        Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  student_id          String      @db.Uuid
+  student             Student     @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  note_text           String
+
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+
+  created_by_user_id  String?    @db.Uuid
+  updated_by_user_id  String?    @db.Uuid
+  createdBy           User?      @relation("StudentRecordCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
+  updatedBy           User?      @relation("StudentRecordUpdatedBy", fields: [updated_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([student_id])
 }
 
 model StudentSubject {

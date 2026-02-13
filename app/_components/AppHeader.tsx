@@ -111,6 +111,9 @@ export default function AppHeader() {
           <a href="/schedule" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
             Schedule
           </a>
+          <a href="/marketing" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
+            Marketing
+          </a>
           <a href="/settings" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
             {settingsLabel}
           </a>
@@ -161,6 +164,13 @@ export default function AppHeader() {
               onClick={() => setMenuOpen(false)}
             >
               Schedule
+            </a>
+            <a
+              href="/marketing"
+              className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
+              onClick={() => setMenuOpen(false)}
+            >
+              Marketing
             </a>
             <a
               href="/settings"

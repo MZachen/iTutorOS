@@ -152,11 +152,11 @@ export async function POST(req: Request) {
 
       if (location_ids.length) {
         await tx.userLocation.createMany({
-          data: location_ids.map((location_id) => ({ user_id: user.id, location_id })),
+          data: location_ids.map((location_id: string) => ({ user_id: user.id, location_id })),
           skipDuplicates: true,
         });
         await tx.tutorLocation.createMany({
-          data: location_ids.map((location_id) => ({ tutor_id: tutor.id, location_id })),
+          data: location_ids.map((location_id: string) => ({ tutor_id: tutor.id, location_id })),
           skipDuplicates: true,
         });
       }

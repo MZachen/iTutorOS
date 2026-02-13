@@ -22,6 +22,14 @@ export async function POST(req: Request) {
     const subscription_plan = typeof body.subscription_plan === "string" ? body.subscription_plan.trim() : "basic";
     const date_format = typeof body.date_format === "string" ? body.date_format.trim().toLowerCase() : DEFAULT_DATE_FORMAT;
 
+    const company_description_text =
+      typeof body.company_description_text === "string" ? body.company_description_text.trim() || null : null;
+    const about_us_text = typeof body.about_us_text === "string" ? body.about_us_text.trim() || null : null;
+    const slogan_text = typeof body.slogan_text === "string" ? body.slogan_text.trim() || null : null;
+    const mission_text = typeof body.mission_text === "string" ? body.mission_text.trim() || null : null;
+    const tutoring_style_text =
+      typeof body.tutoring_style_text === "string" ? body.tutoring_style_text.trim() || null : null;
+
     const business_phone = typeof body.business_phone === "string" ? body.business_phone.trim() : null;
     const business_address_1 = typeof body.business_address_1 === "string" ? body.business_address_1.trim() : null;
     const business_address_2 =
@@ -60,6 +68,11 @@ export async function POST(req: Request) {
         business_city,
         business_state,
         business_zip,
+        company_description_text,
+        about_us_text,
+        slogan_text,
+        mission_text,
+        tutoring_style_text,
       },
     });
 
@@ -194,6 +207,33 @@ export async function PATCH(req: Request) {
         badRequest("date_format is invalid");
       }
       data.date_format = normalizeDateFormat(date_format);
+    }
+
+    if ("company_description_text" in body) {
+      const company_description_text =
+        typeof body.company_description_text === "string" ? body.company_description_text.trim() || null : null;
+      data.company_description_text = company_description_text;
+    }
+
+    if ("about_us_text" in body) {
+      const about_us_text = typeof body.about_us_text === "string" ? body.about_us_text.trim() || null : null;
+      data.about_us_text = about_us_text;
+    }
+
+    if ("slogan_text" in body) {
+      const slogan_text = typeof body.slogan_text === "string" ? body.slogan_text.trim() || null : null;
+      data.slogan_text = slogan_text;
+    }
+
+    if ("mission_text" in body) {
+      const mission_text = typeof body.mission_text === "string" ? body.mission_text.trim() || null : null;
+      data.mission_text = mission_text;
+    }
+
+    if ("tutoring_style_text" in body) {
+      const tutoring_style_text =
+        typeof body.tutoring_style_text === "string" ? body.tutoring_style_text.trim() || null : null;
+      data.tutoring_style_text = tutoring_style_text;
     }
 
     if (Object.keys(data).length === 0) badRequest("No fields to update");

@@ -257,6 +257,11 @@ body {
     color: #ffffff;
   }
 
+  .itutoros-settings-btn-success {
+    background: #16a34a;
+    color: #ffffff;
+  }
+
   .itutoros-settings-btn-danger {
     background: #ef4444;
     color: #ffffff;
@@ -267,6 +272,10 @@ body {
   }
 
   .itutoros-settings-btn-secondary:not(:disabled):hover {
+    filter: brightness(1.2);
+  }
+
+  .itutoros-settings-btn-success:not(:disabled):hover {
     filter: brightness(1.2);
   }
 

@@ -1,12 +1,25 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type CSSProperties } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type CSSProperties,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useSettingsForm } from "@/lib/useSettingsForm";
 import { makeUniqueServiceCode } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DATE_FORMAT_OPTIONS,
   DEFAULT_DATE_FORMAT,
@@ -29,6 +42,11 @@ import {
   savePipelineSources,
   type PipelineSourceSetting,
 } from "@/lib/pipeline-sources";
+import {
+  CONNECTION_PROVIDERS,
+  getConnectionProvider,
+  type ConnectionProviderId,
+} from "@/lib/connections";
 import { DEFAULT_SERVICE_NAMES, DEFAULT_SUBJECTS } from "@/lib/catalog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,7 +62,9 @@ import {
   Calendar01Icon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
+  Copy01Icon,
   CreditCardIcon,
+  Link01Icon,
   Location01Icon,
   MarketingIcon,
   PackageIcon,
@@ -71,12 +91,22 @@ type Org = {
   business_phone: string | null;
   business_email: string | null;
   date_format?: string | null;
+  created_at?: string | null;
   business_address_1: string | null;
   business_address_2: string | null;
   business_city: string | null;
   business_state: string | null;
   business_zip: string | null;
   subscription_plan?: string | null;
+  company_description_text?: string | null;
+  about_us_text?: string | null;
+  slogan_text?: string | null;
+  headline_text?: string | null;
+  about_text?: string | null;
+  mission_text?: string | null;
+  tutoring_style_text?: string | null;
+  testimonials_text?: string | null;
+  cta_text?: string | null;
 };
 
 type Location = {
@@ -106,7 +136,13 @@ type Parent = {
   parent1_first_name?: string | null;
   parent1_last_name?: string | null;
   archived_at?: string | null;
-  students?: Array<{ id: string; first_name: string; last_name: string; archived_at?: string | null; location_id?: string }>;
+  students?: Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    archived_at?: string | null;
+    location_id?: string;
+  }>;
 };
 
 type Student = {
@@ -147,7 +183,11 @@ type Tutor = {
   id: string;
   color_hex?: string | null;
   archived_at?: string | null;
-  user?: { first_name?: string | null; last_name?: string | null; email?: string | null };
+  user?: {
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+  };
 };
 
 type ServiceOffered = {
@@ -159,6 +199,7 @@ type ServiceOffered = {
   unit_length_minutes?: number | null;
   display_name?: string | null;
   description_text?: string | null;
+  service_logo_url?: string | null;
   is_active: boolean;
 };
 
@@ -198,7 +239,9 @@ type CatalogMedia = {
   archived_at?: string | null;
 };
 
-type MarketingTab = "PRODUCTS" | "SERVICES" | "SUBJECTS" | "TOPICS";
+type MarketingTab = "PRODUCTS" | "SERVICES" | "SUBJECTS" | "TOPICS" | "COMPANY";
+type MarketingSection = "PLATFORMS" | "POST_BUILDER";
+type SocialSourceType = "" | "PRODUCTS" | "SERVICES" | "SUBJECTS" | "TOPICS";
 
 type ProductDraft = {
   id?: string | null;
@@ -209,6 +252,40 @@ type ProductDraft = {
   service_code: string;
   subject_id: string;
   topic_id: string;
+};
+
+type SocialPostDraft = {
+  platform_ids: ConnectionProviderId[];
+  product_id: string;
+  subject_id: string;
+  topic_id: string;
+  service_code: string;
+  template_style: string;
+  layout_preset: string;
+  aspect_ratio: string;
+  headline: string;
+  call_to_action: string;
+  start_date: string;
+  end_date: string;
+  age_range: string;
+  price_detail: string;
+  location_detail: string;
+  enrollment_link: string;
+  company_description: string;
+  about_us: string;
+  slogan: string;
+  hashtags: string;
+  extra_notes: string;
+  generated_copy: string;
+  generated_image_url: string;
+  selected_media_ids: string[];
+  selected_template_id: string;
+};
+
+type SocialTemplateAsset = {
+  id: string;
+  name: string;
+  data_url: string;
 };
 
 type TopicDraft = {
@@ -232,6 +309,19 @@ type PipelineSettings = {
   sources: PipelineSourceSetting[];
 };
 
+type ConnectionFieldSnapshot = {
+  has_value: boolean;
+  value?: string;
+};
+
+type ConnectionSnapshot = {
+  provider: ConnectionProviderId;
+  fields: Record<string, ConnectionFieldSnapshot>;
+  connected: boolean;
+  connected_at: string | null;
+  updated_at: string | null;
+};
+
 type ServiceDraft = {
   key: string;
   id?: string;
@@ -244,7 +334,15 @@ type ServiceDraft = {
   existing?: ServiceOffered | null;
 };
 
-type ArchiveType = "PARENTS" | "STUDENTS" | "LEADS" | "LOCATIONS" | "ROOMS" | "SERVICES" | "SUBJECTS" | "TOPICS";
+type ArchiveType =
+  | "PARENTS"
+  | "STUDENTS"
+  | "LEADS"
+  | "LOCATIONS"
+  | "ROOMS"
+  | "SERVICES"
+  | "SUBJECTS"
+  | "TOPICS";
 
 type ArchiveRow = {
   id: string;
@@ -272,6 +370,7 @@ type SettingsTab =
   | "PRODUCTS"
   | "SCHEDULE"
   | "PIPELINE"
+  | "CONNECTIONS"
   | "MARKETING"
   | "WEBSITE"
   | "ARCHIVE";
@@ -286,6 +385,7 @@ const ALL_TABS: { key: SettingsTab; label: string; icon: any }[] = [
   { key: "SUBJECTS_TOPICS", label: "Subjects/Topics", icon: BookOpen01Icon },
   { key: "SCHEDULE", label: "Schedule", icon: Calendar01Icon },
   { key: "PIPELINE", label: "Pipeline", icon: PipelineIcon },
+  { key: "CONNECTIONS", label: "Connections", icon: Link01Icon },
   { key: "PRODUCTS", label: "Content Studio", icon: PackageIcon },
   { key: "MARKETING", label: "Marketing", icon: MarketingIcon },
   { key: "WEBSITE", label: "Website", icon: WebDesign01Icon },
@@ -309,17 +409,156 @@ const SETTINGS_TAB_ICON_COLORS: Record<SettingsTab, string> = {
   PRODUCTS: "#857046",
   SCHEDULE: "#c00f5e",
   PIPELINE: "#04c1ff",
+  CONNECTIONS: "#d77400",
   MARKETING: "#ffc000",
   WEBSITE: "#c000ff",
   ARCHIVE: "#ff0060",
 };
 
-const MARKETING_TABS: { key: MarketingTab; label: string }[] = [
+const CONTENT_STUDIO_TABS: { key: MarketingTab; label: string }[] = [
   { key: "PRODUCTS", label: "Products" },
   { key: "SERVICES", label: "Services" },
   { key: "SUBJECTS", label: "Subjects" },
   { key: "TOPICS", label: "Topics" },
+  { key: "COMPANY", label: "Company" },
 ];
+const MARKETING_SECTIONS: { key: MarketingSection; label: string }[] = [
+  { key: "PLATFORMS", label: "Marketing Platforms" },
+  { key: "POST_BUILDER", label: "Social Media Post Builder" },
+];
+
+const SOCIAL_DRAFT_STORAGE_KEY = "itutoros:social-post-draft";
+
+const SOCIAL_TEMPLATE_STYLES = [
+  "Class announcement",
+  "Enrollment reminder",
+  "Seasonal promo",
+  "Open house invite",
+  "Success story",
+  "New product launch",
+] as const;
+
+const SOCIAL_LAYOUT_PRESETS = [
+  "Bold headline",
+  "Band rows",
+  "Photo + footer",
+  "Schedule list",
+] as const;
+
+type SocialLayoutPreset = (typeof SOCIAL_LAYOUT_PRESETS)[number];
+
+const SOCIAL_LAYOUT_PRESET_FILE_KEYS: Record<SocialLayoutPreset, string> = {
+  "Bold headline": "bold_headline",
+  "Band rows": "band_rows",
+  "Photo + footer": "photo_footer",
+  "Schedule list": "schedule_list",
+};
+
+const SOCIAL_ASPECT_RATIOS = [
+  { value: "1:1", label: "Square 1:1 (1080x1080)", width: 1080, height: 1080 },
+  {
+    value: "4:5",
+    label: "Portrait 4:5 (1080x1350)",
+    width: 1080,
+    height: 1350,
+  },
+  {
+    value: "16:9",
+    label: "Landscape 16:9 (1600x900)",
+    width: 1600,
+    height: 900,
+  },
+  { value: "9:16", label: "Story 9:16 (1080x1920)", width: 1080, height: 1920 },
+] as const;
+
+type SocialAspectRatioValue = (typeof SOCIAL_ASPECT_RATIOS)[number]["value"];
+
+const SOCIAL_ASPECT_RATIO_FILE_KEYS: Record<SocialAspectRatioValue, string> = {
+  "1:1": "square",
+  "4:5": "portrait",
+  "16:9": "landscape",
+  "9:16": "story",
+};
+
+const SOCIAL_PRESET_CAROUSEL_ITEMS: Array<{
+  id: string;
+  layout_preset: SocialLayoutPreset;
+  aspect_ratio: SocialAspectRatioValue;
+  selected_src: string;
+  unselected_src: string;
+  label: string;
+}> = (
+  Object.keys(SOCIAL_ASPECT_RATIO_FILE_KEYS) as SocialAspectRatioValue[]
+).flatMap((ratio) =>
+  SOCIAL_LAYOUT_PRESETS.map((preset) => {
+    const ratioKey = SOCIAL_ASPECT_RATIO_FILE_KEYS[ratio];
+    const presetKey = SOCIAL_LAYOUT_PRESET_FILE_KEYS[preset];
+    return {
+      id: `${ratio}|${preset}`,
+      layout_preset: preset,
+      aspect_ratio: ratio,
+      selected_src: `/social-template-presets/${ratioKey}_social_template_${presetKey}_selected.png`,
+      unselected_src: `/social-template-presets/${ratioKey}_social_template_${presetKey}_unselected.png`,
+      label: `${ratio} · ${preset}`,
+    };
+  }),
+);
+
+const SOCIAL_PLATFORM_SPECS: Record<
+  ConnectionProviderId,
+  { sizes: string[]; ratios: string[]; notes: string[] }
+> = {
+  facebook: {
+    sizes: ["1080x1080", "1200x630"],
+    ratios: ["1:1", "1.91:1"],
+    notes: ["Feed posts, link shares"],
+  },
+  messenger: {
+    sizes: ["1080x1080"],
+    ratios: ["1:1"],
+    notes: ["Message attachments"],
+  },
+  instagram: {
+    sizes: ["1080x1350", "1080x1080"],
+    ratios: ["4:5", "1:1"],
+    notes: ["Feed, carousel cover"],
+  },
+  tiktok: {
+    sizes: ["1080x1920"],
+    ratios: ["9:16"],
+    notes: ["Vertical video cover"],
+  },
+  x: {
+    sizes: ["1600x900", "1080x1080"],
+    ratios: ["16:9", "1:1"],
+    notes: ["Timeline images"],
+  },
+  linkedin: {
+    sizes: ["1200x627", "1080x1080"],
+    ratios: ["1.91:1", "1:1"],
+    notes: ["Company or personal posts"],
+  },
+  snapchat: {
+    sizes: ["1080x1920"],
+    ratios: ["9:16"],
+    notes: ["Story formats"],
+  },
+  pinterest: {
+    sizes: ["1000x1500"],
+    ratios: ["2:3"],
+    notes: ["Pins"],
+  },
+  youtube: {
+    sizes: ["1280x720", "1080x1920"],
+    ratios: ["16:9", "9:16"],
+    notes: ["Community post, Shorts"],
+  },
+  whatsapp: {
+    sizes: ["1080x1080", "1080x1920"],
+    ratios: ["1:1", "9:16"],
+    notes: ["Broadcasts, status"],
+  },
+};
 
 const EMPTY_PRODUCT_DRAFT: ProductDraft = {
   id: null,
@@ -332,8 +571,36 @@ const EMPTY_PRODUCT_DRAFT: ProductDraft = {
   topic_id: "",
 };
 
+const EMPTY_SOCIAL_DRAFT: SocialPostDraft = {
+  platform_ids: [],
+  product_id: "",
+  subject_id: "",
+  topic_id: "",
+  service_code: "",
+  template_style: SOCIAL_TEMPLATE_STYLES[0],
+  layout_preset: "Bold headline",
+  aspect_ratio: "1:1",
+  headline: "",
+  call_to_action: "",
+  start_date: "",
+  end_date: "",
+  age_range: "",
+  price_detail: "",
+  location_detail: "",
+  enrollment_link: "",
+  company_description: "",
+  about_us: "",
+  slogan: "",
+  hashtags: "",
+  extra_notes: "",
+  generated_copy: "",
+  generated_image_url: "",
+  selected_media_ids: [],
+  selected_template_id: "",
+};
+
 const UNIT_LENGTH_TOOLTIP =
-  "A unit length is not necessarily the full session duration. Example: Private tutoring can be priced at $100 per 45-minute unit. Camps can use a 60-minute unit at $25; an 8-hour day would be 8 units × $25 = $200.";
+  "A unit length is not necessarily the full session duration. Example: Private tutoring can be priced at $100 per 45-minute unit. Camps can use a 60-minute unit at $25; an 8-hour day would be 8 units x $25 = $200.";
 
 const DEFAULT_TUTOR_COLOR = "#7c3aed";
 
@@ -439,6 +706,62 @@ function planTutorLimit(plan: string | null | undefined) {
   return null;
 }
 
+type PlanKey = "basic" | "basic-plus" | "pro" | "enterprise";
+
+const PLAN_ORDER: PlanKey[] = ["basic", "basic-plus", "pro", "enterprise"];
+
+function normalizePlanKey(plan: string | null | undefined): PlanKey {
+  const key = (plan ?? "basic").toLowerCase();
+  if (key === "basic-plus" || key === "pro" || key === "enterprise") return key;
+  return "basic";
+}
+
+function formatPlanLimit(value: number | null) {
+  return value == null ? "Unlimited" : String(value);
+}
+
+function planSpecsFor(plan: PlanKey) {
+  return [
+    { label: "Locations", value: formatPlanLimit(planLocationLimit(plan)) },
+    { label: "Lead capacity", value: formatPlanLimit(planLeadLimit(plan)) },
+    { label: "Tutors", value: formatPlanLimit(planTutorLimit(plan)) },
+  ];
+}
+
+function planCardColor(plan: PlanKey) {
+  if (plan === "basic") return "#ffeaea";
+  if (plan === "basic-plus") return "#fffde3";
+  if (plan === "pro") return "#f0f0ff";
+  return "#e7fee8";
+}
+
+function connectionCardGradient(providerId: ConnectionProviderId) {
+  switch (providerId) {
+    case "facebook":
+      return "linear-gradient(to bottom right, #20a2f0, #006cee)";
+    case "messenger":
+      return "linear-gradient(to bottom right, #1f87f8 0%, #9f3dec 50%, #f05672 100%)";
+    case "instagram":
+      return "linear-gradient(to bottom right, #1c8bf7 0%, #b938db 40%, #fc4061 70%, #f7dd0c 100%)";
+    case "tiktok":
+      return "linear-gradient(to bottom right, #65efe0 0%, #000000 50%, #d73355 100%)";
+    case "x":
+      return "linear-gradient(to bottom right, #000000 0%, #ffffff 50%, #000000 100%)";
+    case "linkedin":
+      return "linear-gradient(to bottom right, #0f63c3 0%, #ffffff 50%, #0f63c3 100%)";
+    case "snapchat":
+      return "linear-gradient(to bottom right, #feff01 0%, #ffffff 50%, #feff01 100%)";
+    case "pinterest":
+      return "linear-gradient(to bottom right, #b8001f 0%, #ffffff 50%, #e60023 100%)";
+    case "youtube":
+      return "linear-gradient(to bottom right, #ff0000 0%, #ffffff 50%, #ff0000 100%)";
+    case "whatsapp":
+      return "linear-gradient(to bottom right, #25d366 0%, #ffffff 50%, #25d366 100%)";
+    default:
+      return "linear-gradient(to bottom right, #ffffff, #ffffff)";
+  }
+}
+
 function centsToDollars(cents: number) {
   return (cents / 100).toFixed(2);
 }
@@ -466,7 +789,10 @@ function normalizeKey(value: string) {
   return value.trim().toLowerCase();
 }
 
-function catalogMediaKey(kind: "product" | "subject" | "topic" | "service", id: string) {
+function catalogMediaKey(
+  kind: "product" | "subject" | "topic" | "service",
+  id: string,
+) {
   return `${kind}:${id}`;
 }
 
@@ -497,21 +823,30 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 function parentDisplayName(parent?: Parent | null) {
-  const name = [parent?.parent1_first_name, parent?.parent1_last_name].filter(Boolean).join(" ");
+  const name = [parent?.parent1_first_name, parent?.parent1_last_name]
+    .filter(Boolean)
+    .join(" ");
   return name || "Parent";
 }
 
 function leadDisplayName(lead?: Lead | null) {
-  const name = [lead?.parent_first_name, lead?.parent_last_name].filter(Boolean).join(" ");
+  const name = [lead?.parent_first_name, lead?.parent_last_name]
+    .filter(Boolean)
+    .join(" ");
   return name || "Lead";
 }
 
 function studentDisplayName(student?: Student | null) {
-  const name = [student?.first_name, student?.last_name].filter(Boolean).join(" ");
+  const name = [student?.first_name, student?.last_name]
+    .filter(Boolean)
+    .join(" ");
   return name || "Student";
 }
 
-function buildSubjectDrafts(existingSubjects: Subject[], topicsBySubject: Record<string, Topic[]>): SubjectDraft[] {
+function buildSubjectDrafts(
+  existingSubjects: Subject[],
+  topicsBySubject: Record<string, Topic[]>,
+): SubjectDraft[] {
   const byName = new Map<string, Subject>();
   existingSubjects.forEach((s) => byName.set(normalizeKey(s.subject_name), s));
   const usedSubjectIds = new Set<string>();
@@ -524,9 +859,11 @@ function buildSubjectDrafts(existingSubjects: Subject[], topicsBySubject: Record
 
     const included = existing ? !existing.archived_at : false;
     const name = existing ? existing.subject_name : catalog.subject_name;
-    const existingTopics = existing ? topicsBySubject[existing.id] ?? [] : [];
+    const existingTopics = existing ? (topicsBySubject[existing.id] ?? []) : [];
     const topicsByName = new Map<string, Topic>();
-    existingTopics.forEach((t) => topicsByName.set(normalizeKey(t.topic_name), t));
+    existingTopics.forEach((t) =>
+      topicsByName.set(normalizeKey(t.topic_name), t),
+    );
     const usedTopicIds = new Set<string>();
 
     const topicDrafts: TopicDraft[] = catalog.topics.map((topicName) => {
@@ -598,8 +935,12 @@ export default function SettingsPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
-  const [roomsByLocation, setRoomsByLocation] = useState<Record<string, Room[]>>({});
-  const [servicesByLocation, setServicesByLocation] = useState<Record<string, ServiceOffered[]>>({});
+  const [roomsByLocation, setRoomsByLocation] = useState<
+    Record<string, Room[]>
+  >({});
+  const [servicesByLocation, setServicesByLocation] = useState<
+    Record<string, ServiceOffered[]>
+  >({});
   const [parents, setParents] = useState<Parent[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -607,20 +948,63 @@ export default function SettingsPage() {
   const [tutorDrafts, setTutorDrafts] = useState<Record<string, string>>({});
   const tutorDraftsInitialRef = useRef<Record<string, string>>({});
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [topicsBySubject, setTopicsBySubject] = useState<Record<string, Topic[]>>({});
+  const [topicsBySubject, setTopicsBySubject] = useState<
+    Record<string, Topic[]>
+  >({});
   const [products, setProducts] = useState<Product[]>([]);
   const [marketingTab, setMarketingTab] = useState<MarketingTab>("PRODUCTS");
-  const [productDraft, setProductDraft] = useState<ProductDraft>({ ...EMPTY_PRODUCT_DRAFT });
-  const [productDraftInitial, setProductDraftInitial] = useState<ProductDraft>({ ...EMPTY_PRODUCT_DRAFT });
+  const [marketingSection, setMarketingSection] =
+    useState<MarketingSection>("PLATFORMS");
+  const [productDraft, setProductDraft] = useState<ProductDraft>({
+    ...EMPTY_PRODUCT_DRAFT,
+  });
+  const [productDraftInitial, setProductDraftInitial] = useState<ProductDraft>({
+    ...EMPTY_PRODUCT_DRAFT,
+  });
   const productAutoSelectedRef = useRef(false);
-  const [catalogMediaByKey, setCatalogMediaByKey] = useState<Record<string, CatalogMedia[]>>({});
-  const [catalogMediaLoading, setCatalogMediaLoading] = useState<Record<string, boolean>>({});
-  const [mediaUrlDrafts, setMediaUrlDrafts] = useState<Record<string, string>>({});
-  const [serviceDescriptionDrafts, setServiceDescriptionDrafts] = useState<Record<string, string>>({});
-  const [subjectDescriptionDrafts, setSubjectDescriptionDrafts] = useState<Record<string, string>>({});
-  const [topicDescriptionDrafts, setTopicDescriptionDrafts] = useState<Record<string, string>>({});
-  const [aiRewrites, setAiRewrites] = useState<Record<string, { previous: string }>>({});
-  const [aiRewriteLoading, setAiRewriteLoading] = useState<Record<string, boolean>>({});
+  const [socialDraft, setSocialDraft] = useState<SocialPostDraft>({
+    ...EMPTY_SOCIAL_DRAFT,
+  });
+  const [socialTemplates, setSocialTemplates] = useState<SocialTemplateAsset[]>(
+    [],
+  );
+  const [socialSourceType, setSocialSourceType] =
+    useState<SocialSourceType>("");
+  const socialPresetRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const socialPresetCarouselRef = useRef<HTMLDivElement | null>(null);
+  const [companyDraft, setCompanyDraft] = useState({
+    company_description_text: "",
+    mission_text: "",
+    tutoring_style_text: "",
+    about_us_text: "",
+  });
+  const [catalogMediaByKey, setCatalogMediaByKey] = useState<
+    Record<string, CatalogMedia[]>
+  >({});
+  const [catalogMediaLoading, setCatalogMediaLoading] = useState<
+    Record<string, boolean>
+  >({});
+  const [mediaUrlDrafts, setMediaUrlDrafts] = useState<Record<string, string>>(
+    {},
+  );
+  const [serviceDescriptionDrafts, setServiceDescriptionDrafts] = useState<
+    Record<string, string>
+  >({});
+  const [serviceLogoDrafts, setServiceLogoDrafts] = useState<
+    Record<string, string>
+  >({});
+  const [subjectDescriptionDrafts, setSubjectDescriptionDrafts] = useState<
+    Record<string, string>
+  >({});
+  const [topicDescriptionDrafts, setTopicDescriptionDrafts] = useState<
+    Record<string, string>
+  >({});
+  const [aiRewrites, setAiRewrites] = useState<
+    Record<string, { previous: string }>
+  >({});
+  const [aiRewriteLoading, setAiRewriteLoading] = useState<
+    Record<string, boolean>
+  >({});
   const [marketingSubjectId, setMarketingSubjectId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [newTutor, setNewTutor] = useState({
@@ -634,7 +1018,9 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
 
   const isTutorOnly = Boolean(me?.isTutor && !me?.isOwner && !me?.isAdmin);
-  const tabs = isTutorOnly ? ALL_TABS.filter((t) => t.key === "ACCOUNT") : ALL_TABS;
+  const tabs = isTutorOnly
+    ? ALL_TABS.filter((t) => t.key === "ACCOUNT")
+    : ALL_TABS;
 
   useEffect(() => {
     if (queryHandledRef.current) return;
@@ -644,20 +1030,93 @@ export default function SettingsPage() {
       setActiveTab(tabParam as SettingsTab);
     }
     const oauth = searchParams.get("oauth");
+    const oauthKind = searchParams.get("kind");
+    const oauthProvider = searchParams.get("provider") ?? "";
     if (oauth === "success") {
-      setStatus("Email account connected.");
+      if (oauthKind === "connections") {
+        const label =
+          getConnectionProvider(oauthProvider)?.label ?? "Connection";
+        setStatus(`${label} connected.`);
+      } else {
+        setStatus("Email account connected.");
+      }
     } else if (oauth === "error") {
       const message = searchParams.get("message");
-      setStatus(`Email connection failed${message ? ` (${message})` : ""}.`);
+      if (oauthKind === "connections") {
+        const label =
+          getConnectionProvider(oauthProvider)?.label ?? "Connection";
+        setStatus(
+          `${label} connection failed${message ? ` (${message})` : ""}.`,
+        );
+      } else {
+        setStatus(`Email connection failed${message ? ` (${message})` : ""}.`);
+      }
     }
     queryHandledRef.current = true;
   }, [loading, searchParams, tabs]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(SOCIAL_DRAFT_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<SocialPostDraft>;
+      setSocialDraft((prev) => ({
+        ...prev,
+        ...parsed,
+        platform_ids: Array.isArray(parsed.platform_ids)
+          ? parsed.platform_ids
+          : prev.platform_ids,
+        selected_media_ids: Array.isArray(parsed.selected_media_ids)
+          ? parsed.selected_media_ids
+          : prev.selected_media_ids,
+      }));
+    } catch {
+      // ignore invalid local storage
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      SOCIAL_DRAFT_STORAGE_KEY,
+      JSON.stringify(socialDraft),
+    );
+  }, [socialDraft]);
+
+  useEffect(() => {
+    if (!org) return;
+    setSocialDraft((prev) => ({
+      ...prev,
+      company_description:
+        prev.company_description || org.company_description_text || "",
+      about_us: prev.about_us || org.about_us_text || org.about_text || "",
+      slogan: prev.slogan || org.slogan_text || org.headline_text || "",
+    }));
+  }, [org?.id]);
+
+  useEffect(() => {
+    if (!org) return;
+    setCompanyDraft({
+      company_description_text: org.company_description_text ?? "",
+      mission_text: org.mission_text ?? "",
+      tutoring_style_text: org.tutoring_style_text ?? "",
+      about_us_text: org.about_us_text ?? org.about_text ?? "",
+    });
+  }, [org?.id]);
+
   const timezones = useMemo(() => {
     const supported =
-      typeof Intl !== "undefined" && typeof (Intl as any).supportedValuesOf === "function"
+      typeof Intl !== "undefined" &&
+      typeof (Intl as any).supportedValuesOf === "function"
         ? ((Intl as any).supportedValuesOf("timeZone") as string[])
-        : ["UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"];
+        : [
+            "UTC",
+            "America/New_York",
+            "America/Chicago",
+            "America/Denver",
+            "America/Los_Angeles",
+          ];
     return Array.from(new Set(supported)).sort((a, b) => a.localeCompare(b));
   }, []);
 
@@ -701,18 +1160,40 @@ export default function SettingsPage() {
     [org?.id, org?.default_buffer_minutes],
   );
   const scheduleForm = useSettingsForm(scheduleInitial);
-  const [bufferDraft, setBufferDraft] = useState(() => String(scheduleInitial.default_buffer_minutes ?? 0));
+  const [bufferDraft, setBufferDraft] = useState(() =>
+    String(scheduleInitial.default_buffer_minutes ?? 0),
+  );
   const dateFormat = useMemo(
-    () => normalizeDateFormat(accountForm.formData.date_format ?? org?.date_format),
+    () =>
+      normalizeDateFormat(accountForm.formData.date_format ?? org?.date_format),
     [accountForm.formData.date_format, org?.date_format],
   );
 
   const [serviceLocationId, setServiceLocationId] = useState("");
   const [serviceEdits, setServiceEdits] = useState<
-    Record<string, { hourly_rate_dollars: string; capacity: string; unit_length_minutes: string; is_active: boolean }>
+    Record<
+      string,
+      {
+        hourly_rate_dollars: string;
+        capacity: string;
+        unit_length_minutes: string;
+        is_active: boolean;
+      }
+    >
   >({});
   const [serviceCatalogDrafts, setServiceCatalogDrafts] = useState<
-    Record<string, Record<string, { hourly_rate_dollars: string; capacity: string; unit_length_minutes: string; is_active: boolean }>>
+    Record<
+      string,
+      Record<
+        string,
+        {
+          hourly_rate_dollars: string;
+          capacity: string;
+          unit_length_minutes: string;
+          is_active: boolean;
+        }
+      >
+    >
   >({});
   const [newService, setNewService] = useState<{
     location_id: string;
@@ -732,7 +1213,9 @@ export default function SettingsPage() {
   const subjectDraftsInitialRef = useRef<SubjectDraft[]>([]);
   const [subjectDraftsInitialKey, setSubjectDraftsInitialKey] = useState("[]");
   const [newSubjectName, setNewSubjectName] = useState("");
-  const [newTopicDrafts, setNewTopicDrafts] = useState<Record<string, string>>({});
+  const [newTopicDrafts, setNewTopicDrafts] = useState<Record<string, string>>(
+    {},
+  );
 
   const [serviceSort, setServiceSort] = useState<{
     key: "active" | "name" | "price" | "capacity" | "unit_length";
@@ -741,16 +1224,24 @@ export default function SettingsPage() {
     key: "active",
     dir: "desc",
   });
-  const [subjectSort, setSubjectSort] = useState<{ key: "included" | "name"; dir: "asc" | "desc" }>({
+  const [subjectSort, setSubjectSort] = useState<{
+    key: "included" | "name";
+    dir: "asc" | "desc";
+  }>({
     key: "included",
     dir: "desc",
   });
   const [archiveType, setArchiveType] = useState<ArchiveType>("PARENTS");
-  const [archiveSort, setArchiveSort] = useState<{ key: "archived" | "name"; dir: "asc" | "desc" }>({
+  const [archiveSort, setArchiveSort] = useState<{
+    key: "archived" | "name";
+    dir: "asc" | "desc";
+  }>({
     key: "name",
     dir: "asc",
   });
-  const [archiveEdits, setArchiveEdits] = useState<Record<ArchiveType, Record<string, boolean>>>(() =>
+  const [archiveEdits, setArchiveEdits] = useState<
+    Record<ArchiveType, Record<string, boolean>>
+  >(() =>
     ARCHIVE_OPTIONS.reduce(
       (acc, option) => {
         acc[option.key] = {};
@@ -778,11 +1269,18 @@ export default function SettingsPage() {
     floor_number: string;
   } | null>(null);
   const [newRoomDrafts, setNewRoomDrafts] = useState<
-    Record<string, { room_name: string; room_number: string; floor_number: string }>
+    Record<
+      string,
+      { room_name: string; room_number: string; floor_number: string }
+    >
   >({});
 
-  const clientsForm = useSettingsForm<ClientFieldPrefs>(defaultClientFieldPrefs());
-  const pipelineForm = useSettingsForm<PipelineSettings>({ sources: defaultPipelineSources() });
+  const clientsForm = useSettingsForm<ClientFieldPrefs>(
+    defaultClientFieldPrefs(),
+  );
+  const pipelineForm = useSettingsForm<PipelineSettings>({
+    sources: defaultPipelineSources(),
+  });
   const [emailInboxes, setEmailInboxes] = useState<EmailInbox[]>([]);
   const [newEmailInbox, setNewEmailInbox] = useState({
     provider: "GMAIL" as EmailInbox["provider"],
@@ -795,10 +1293,78 @@ export default function SettingsPage() {
     daily_scan_enabled: false,
     daily_scan_time: "08:00",
   });
+  const [connections, setConnections] = useState<
+    Record<string, Record<string, string>>
+  >({});
+  const [connectionSnapshots, setConnectionSnapshots] = useState<
+    Record<string, ConnectionSnapshot>
+  >({});
 
-  const subjectDraftsKey = useMemo(() => JSON.stringify(subjectDrafts), [subjectDrafts]);
+  const connectionStatusById = useMemo(() => {
+    const status: Record<string, boolean> = {};
+    CONNECTION_PROVIDERS.forEach((provider) => {
+      const values = connections[provider.id] ?? {};
+      const snapshot = connectionSnapshots[provider.id];
+      const required = provider.fields
+        .filter((field) => field.required)
+        .map((field) => field.key);
+      status[provider.id] = required.every((key) => {
+        if (values[key]?.trim()) return true;
+        return snapshot?.fields?.[key]?.has_value ?? false;
+      });
+    });
+    return status;
+  }, [connections, connectionSnapshots]);
+
+  const connectionStatusLabel = (source: PipelineSourceSetting) => {
+    if (source.type === "EMAIL" && source.id.startsWith("email:")) {
+      const inboxId = source.id.slice("email:".length);
+      const inbox = emailInboxes.find((item) => item.id === inboxId);
+      return inbox?.has_credentials
+        ? "Connected"
+        : "Need to Establish Connection";
+    }
+    if (source.type !== "SOCIAL") return "Connected";
+    const connected = connectionStatusById[source.id] ?? false;
+    return connected ? "Connected" : "Need to Establish Connection";
+  };
+
+  const updateConnectionField = (
+    providerId: string,
+    fieldKey: string,
+    value: string,
+  ) => {
+    setConnections((prev) => ({
+      ...prev,
+      [providerId]: {
+        ...(prev[providerId] ?? {}),
+        [fieldKey]: value,
+      },
+    }));
+  };
+
+  const connectionsDirty = useMemo(
+    () =>
+      Object.values(connections).some((fields) =>
+        Object.values(fields).some(
+          (value) => typeof value === "string" && value.trim().length > 0,
+        ),
+      ),
+    [connections],
+  );
+
+  const subjectDraftsKey = useMemo(
+    () => JSON.stringify(subjectDrafts),
+    [subjectDrafts],
+  );
   const subjectBaselineMap = useMemo(
-    () => new Map(subjectDraftsInitialRef.current.map((subject) => [subject.key, subject])),
+    () =>
+      new Map(
+        subjectDraftsInitialRef.current.map((subject) => [
+          subject.key,
+          subject,
+        ]),
+      ),
     [subjectDraftsInitialKey],
   );
 
@@ -809,24 +1375,216 @@ export default function SettingsPage() {
   const productDirty = useMemo(() => {
     const hasContent = Boolean(
       productDraft.product_name ||
-        productDraft.product_slogan_text ||
-        productDraft.product_description_text ||
-        productDraft.product_logo_url ||
-        productDraft.service_code ||
-        productDraft.subject_id ||
-        productDraft.topic_id,
+      productDraft.product_slogan_text ||
+      productDraft.product_description_text ||
+      productDraft.product_logo_url ||
+      productDraft.service_code ||
+      productDraft.subject_id ||
+      productDraft.topic_id,
     );
     if (!hasContent) return false;
     return JSON.stringify(productDraft) !== JSON.stringify(productDraftInitial);
   }, [productDraft, productDraftInitial]);
 
-  const productMediaKey = productDraft.id ? catalogMediaKey("product", productDraft.id) : "";
-  const productMedia = productMediaKey ? catalogMediaByKey[productMediaKey] ?? [] : [];
-  const productMediaLoading = productMediaKey ? Boolean(catalogMediaLoading[productMediaKey]) : false;
+  const companyDirty = useMemo(() => {
+    if (!org) return false;
+    const baseline = {
+      company_description_text: org.company_description_text ?? "",
+      mission_text: org.mission_text ?? "",
+      tutoring_style_text: org.tutoring_style_text ?? "",
+      about_us_text: org.about_us_text ?? org.about_text ?? "",
+    };
+    return JSON.stringify(companyDraft) !== JSON.stringify(baseline);
+  }, [companyDraft, org?.id]);
+
+  const productMediaKey = productDraft.id
+    ? catalogMediaKey("product", productDraft.id)
+    : "";
+  const productMedia = productMediaKey
+    ? (catalogMediaByKey[productMediaKey] ?? [])
+    : [];
+  const productMediaLoading = productMediaKey
+    ? Boolean(catalogMediaLoading[productMediaKey])
+    : false;
   const productTopicOptions = useMemo(() => {
     if (!productDraft.subject_id) return [];
-    return (topicsBySubject[productDraft.subject_id] ?? []).filter((topic) => !topic.archived_at);
+    return (topicsBySubject[productDraft.subject_id] ?? []).filter(
+      (topic) => !topic.archived_at,
+    );
   }, [productDraft.subject_id, topicsBySubject]);
+
+  const socialTopicOptions = useMemo(() => {
+    return Object.values(topicsBySubject)
+      .flat()
+      .filter((topic) => !topic.archived_at);
+  }, [topicsBySubject]);
+
+  const socialSelectedProduct = useMemo(
+    () =>
+      products.find((product) => product.id === socialDraft.product_id) ?? null,
+    [products, socialDraft.product_id],
+  );
+  const socialSelectedSubject = useMemo(
+    () =>
+      subjects.find((subject) => subject.id === socialDraft.subject_id) ?? null,
+    [subjects, socialDraft.subject_id],
+  );
+  const socialSelectedTopic = useMemo(
+    () =>
+      socialTopicOptions.find((topic) => topic.id === socialDraft.topic_id) ??
+      null,
+    [socialTopicOptions, socialDraft.topic_id],
+  );
+  const socialSelectedService = useMemo(() => {
+    if (!socialDraft.service_code) return null;
+    const byCode = new Map<string, ServiceOffered>();
+    Object.values(servicesByLocation).forEach((list) => {
+      list.forEach((svc) => {
+        if (!svc.is_active) return;
+        if (!byCode.has(svc.service_code)) byCode.set(svc.service_code, svc);
+      });
+    });
+    return byCode.get(socialDraft.service_code) ?? null;
+  }, [servicesByLocation, socialDraft.service_code]);
+
+  const socialMediaOptions = useMemo(() => {
+    const items: Array<{
+      id: string;
+      url: string;
+      type: CatalogMedia["media_type"];
+      label: string;
+    }> = [];
+    if (socialSelectedProduct) {
+      if (socialSelectedProduct.product_logo_url) {
+        items.push({
+          id: `product-logo:${socialSelectedProduct.id}`,
+          url: socialSelectedProduct.product_logo_url,
+          type: "PHOTO",
+          label: `${socialSelectedProduct.product_name} logo`,
+        });
+      }
+      const key = catalogMediaKey("product", socialSelectedProduct.id);
+      (catalogMediaByKey[key] ?? []).forEach((media) =>
+        items.push({
+          id: media.id,
+          url: media.media_url,
+          type: media.media_type,
+          label: `${socialSelectedProduct.product_name} media`,
+        }),
+      );
+    }
+    if (socialSelectedService) {
+      if (socialSelectedService.service_logo_url) {
+        items.push({
+          id: `service-logo:${socialSelectedService.service_code}`,
+          url: socialSelectedService.service_logo_url,
+          type: "PHOTO",
+          label: `${socialSelectedService.display_name ?? socialSelectedService.service_code} logo`,
+        });
+      }
+      const key = catalogMediaKey(
+        "service",
+        socialSelectedService.service_code,
+      );
+      (catalogMediaByKey[key] ?? []).forEach((media) =>
+        items.push({
+          id: media.id,
+          url: media.media_url,
+          type: media.media_type,
+          label: `${socialSelectedService.display_name ?? socialSelectedService.service_code} media`,
+        }),
+      );
+    }
+    if (socialSelectedSubject) {
+      const key = catalogMediaKey("subject", socialSelectedSubject.id);
+      (catalogMediaByKey[key] ?? []).forEach((media) =>
+        items.push({
+          id: media.id,
+          url: media.media_url,
+          type: media.media_type,
+          label: `${socialSelectedSubject.subject_name} media`,
+        }),
+      );
+    }
+    if (socialSelectedTopic) {
+      const key = catalogMediaKey("topic", socialSelectedTopic.id);
+      (catalogMediaByKey[key] ?? []).forEach((media) =>
+        items.push({
+          id: media.id,
+          url: media.media_url,
+          type: media.media_type,
+          label: `${socialSelectedTopic.topic_name} media`,
+        }),
+      );
+    }
+    return items;
+  }, [
+    catalogMediaByKey,
+    socialSelectedProduct,
+    socialSelectedService,
+    socialSelectedSubject,
+    socialSelectedTopic,
+  ]);
+
+  const socialAspect = useMemo(() => {
+    return (
+      SOCIAL_ASPECT_RATIOS.find(
+        (ratio) => ratio.value === socialDraft.aspect_ratio,
+      ) ?? SOCIAL_ASPECT_RATIOS[0]
+    );
+  }, [socialDraft.aspect_ratio]);
+
+  const selectedCarouselPresetId = useMemo(() => {
+    const ratio = SOCIAL_ASPECT_RATIOS.find(
+      (item) => item.value === socialDraft.aspect_ratio,
+    )?.value;
+    const preset = SOCIAL_LAYOUT_PRESETS.find(
+      (item) => item === socialDraft.layout_preset,
+    );
+    if (!ratio || !preset) return "";
+    return `${ratio}|${preset}`;
+  }, [socialDraft.aspect_ratio, socialDraft.layout_preset]);
+
+  const socialSelectedTemplate = useMemo(
+    () =>
+      socialTemplates.find(
+        (item) => item.id === socialDraft.selected_template_id,
+      ) ?? null,
+    [socialTemplates, socialDraft.selected_template_id],
+  );
+
+  const socialPreviewMedia = useMemo(() => {
+    if (socialSelectedTemplate) {
+      return {
+        url: socialSelectedTemplate.data_url,
+        type: "PHOTO" as const,
+        label: socialSelectedTemplate.name,
+      };
+    }
+    if (!socialDraft.selected_media_ids.length) return null;
+    const first = socialDraft.selected_media_ids[0];
+    return socialMediaOptions.find((media) => media.id === first) ?? null;
+  }, [
+    socialSelectedTemplate,
+    socialDraft.selected_media_ids,
+    socialMediaOptions,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== "MARKETING" || marketingSection !== "POST_BUILDER")
+      return;
+    if (!selectedCarouselPresetId) return;
+    const container = socialPresetCarouselRef.current;
+    const node = socialPresetRefs.current[selectedCarouselPresetId];
+    if (!container || !node) return;
+    const containerRect = container.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const targetLeft =
+      container.scrollLeft +
+      (nodeRect.left - containerRect.left) -
+      (container.clientWidth / 2 - node.clientWidth / 2);
+    container.scrollTo({ left: targetLeft, behavior: "smooth" });
+  }, [activeTab, marketingSection, selectedCarouselPresetId]);
 
   useEffect(() => {
     if (productAutoSelectedRef.current) return;
@@ -842,8 +1600,52 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!token) return;
     if (!productDraft.id) return;
-    void loadCatalogMedia({ kind: "product", id: productDraft.id, product_id: productDraft.id });
+    void loadCatalogMedia({
+      kind: "product",
+      id: productDraft.id,
+      product_id: productDraft.id,
+    });
   }, [token, productDraft.id]);
+
+  useEffect(() => {
+    if (!token) return;
+    if (activeTab !== "MARKETING") return;
+    if (socialDraft.product_id) {
+      void loadCatalogMedia({
+        kind: "product",
+        id: socialDraft.product_id,
+        product_id: socialDraft.product_id,
+      });
+    }
+    if (socialDraft.service_code) {
+      void loadCatalogMedia({
+        kind: "service",
+        id: socialDraft.service_code,
+        service_code: socialDraft.service_code,
+      });
+    }
+    if (socialDraft.subject_id) {
+      void loadCatalogMedia({
+        kind: "subject",
+        id: socialDraft.subject_id,
+        subject_id: socialDraft.subject_id,
+      });
+    }
+    if (socialDraft.topic_id) {
+      void loadCatalogMedia({
+        kind: "topic",
+        id: socialDraft.topic_id,
+        topic_id: socialDraft.topic_id,
+      });
+    }
+  }, [
+    token,
+    activeTab,
+    socialDraft.product_id,
+    socialDraft.service_code,
+    socialDraft.subject_id,
+    socialDraft.topic_id,
+  ]);
 
   useEffect(() => {
     if (activeTab === "PRODUCTS") {
@@ -854,12 +1656,19 @@ export default function SettingsPage() {
   const dirtyTabs = useMemo(() => {
     const servicesDirty =
       Object.keys(serviceEdits).length > 0 ||
-      Object.values(serviceCatalogDrafts).some((byLocation) => Object.keys(byLocation).length > 0);
+      Object.values(serviceCatalogDrafts).some(
+        (byLocation) => Object.keys(byLocation).length > 0,
+      );
     const subjectsDirty = subjectDraftsKey !== subjectDraftsInitialKey;
     const tutorsDirty =
-      Object.keys(tutorDrafts).some((id) => tutorDrafts[id] !== tutorDraftsInitialRef.current[id]) ||
-      Boolean(newTutor.email.trim() || newTutor.first_name.trim() || newTutor.last_name.trim());
-    const marketingDirty = marketingTab === "PRODUCTS" ? productDirty : false;
+      Object.keys(tutorDrafts).some(
+        (id) => tutorDrafts[id] !== tutorDraftsInitialRef.current[id],
+      ) ||
+      Boolean(
+        newTutor.email.trim() ||
+        newTutor.first_name.trim() ||
+        newTutor.last_name.trim(),
+      );
     return {
       ACCOUNT: accountForm.hasChanges,
       BUSINESS: businessForm.hasChanges,
@@ -868,10 +1677,11 @@ export default function SettingsPage() {
       TUTORS: tutorsDirty,
       SERVICES: servicesDirty,
       SUBJECTS_TOPICS: subjectsDirty,
-      PRODUCTS: productDirty,
+      PRODUCTS: productDirty || companyDirty,
       SCHEDULE: scheduleForm.hasChanges,
       PIPELINE: pipelineForm.hasChanges,
-      MARKETING: marketingDirty,
+      CONNECTIONS: connectionsDirty,
+      MARKETING: false,
       WEBSITE: false,
       ARCHIVE: false,
     } as Record<SettingsTab, boolean>;
@@ -879,10 +1689,11 @@ export default function SettingsPage() {
     accountForm.hasChanges,
     businessForm.hasChanges,
     clientsForm.hasChanges,
-    marketingTab,
     pipelineForm.hasChanges,
     scheduleForm.hasChanges,
+    connectionsDirty,
     productDirty,
+    companyDirty,
     serviceEdits,
     serviceCatalogDrafts,
     subjectDraftsKey,
@@ -893,21 +1704,38 @@ export default function SettingsPage() {
     newTutor.last_name,
   ]);
 
-  const anyDirty = useMemo(() => Object.values(dirtyTabs).some(Boolean), [dirtyTabs]);
+  const anyDirty = useMemo(
+    () => Object.values(dirtyTabs).some(Boolean),
+    [dirtyTabs],
+  );
   const anyDirtyRef = useRef(anyDirty);
   useEffect(() => {
     anyDirtyRef.current = anyDirty;
   }, [anyDirty]);
 
   const plan = org?.subscription_plan ?? "basic";
-  const checkoutHref = `/checkout?plan=${encodeURIComponent(plan)}${org?.id ? `&org=${encodeURIComponent(org.id)}` : ""}`;
+  const planKey = normalizePlanKey(plan);
+  const checkoutHrefFor = (nextPlan: PlanKey) =>
+    `/checkout?plan=${encodeURIComponent(nextPlan)}${org?.id ? `&org=${encodeURIComponent(org.id)}` : ""}`;
+  const checkoutHref = checkoutHrefFor(planKey);
+  const planSpecs = planSpecsFor(planKey);
+  const otherPlans = PLAN_ORDER.filter((key) => key !== planKey);
   const activeLocations = locations.filter((l) => !l.archived_at);
   const billableLocations = activeLocations.filter((l) => !l.is_system);
   const locLimit = planLocationLimit(plan);
-  const canAddLocation = locLimit === null || billableLocations.length < locLimit;
+  const canAddLocation =
+    locLimit === null || billableLocations.length < locLimit;
   const tutorLimit = planTutorLimit(plan);
   const activeTutorCount = tutors.length;
   const canAddTutor = tutorLimit === null || activeTutorCount < tutorLimit;
+  const leadLimit = planLeadLimit(plan);
+  const activeLeadCount = leads.filter((lead) => !lead.archived_at).length;
+  const usageColorClass = (current: number, limit: number | null) => {
+    if (limit === null) return "text-gray-600";
+    if (current < limit) return "text-emerald-600";
+    if (current === limit) return "text-amber-600";
+    return "text-rose-600";
+  };
 
   const marketingServices = useMemo(() => {
     const byCode = new Map<string, ServiceOffered>();
@@ -928,7 +1756,10 @@ export default function SettingsPage() {
     [marketingServices],
   );
   const selectedProductService = useMemo(
-    () => (productDraft.service_code ? marketingServiceByCode.get(productDraft.service_code) ?? null : null),
+    () =>
+      productDraft.service_code
+        ? (marketingServiceByCode.get(productDraft.service_code) ?? null)
+        : null,
     [productDraft.service_code, marketingServiceByCode],
   );
 
@@ -936,7 +1767,11 @@ export default function SettingsPage() {
     if (!token) return;
     if (marketingTab !== "SERVICES") return;
     marketingServices.forEach((svc) => {
-      void loadCatalogMedia({ kind: "service", id: svc.service_code, service_code: svc.service_code });
+      void loadCatalogMedia({
+        kind: "service",
+        id: svc.service_code,
+        service_code: svc.service_code,
+      });
     });
   }, [marketingTab, marketingServices, token]);
 
@@ -946,7 +1781,11 @@ export default function SettingsPage() {
     subjects
       .filter((subject) => !subject.archived_at)
       .forEach((subject) => {
-        void loadCatalogMedia({ kind: "subject", id: subject.id, subject_id: subject.id });
+        void loadCatalogMedia({
+          kind: "subject",
+          id: subject.id,
+          subject_id: subject.id,
+        });
       });
   }, [marketingTab, subjects, token]);
 
@@ -957,7 +1796,11 @@ export default function SettingsPage() {
     topics
       .filter((topic) => !topic.archived_at)
       .forEach((topic) => {
-        void loadCatalogMedia({ kind: "topic", id: topic.id, topic_id: topic.id });
+        void loadCatalogMedia({
+          kind: "topic",
+          id: topic.id,
+          topic_id: topic.id,
+        });
       });
   }, [marketingTab, marketingSubjectId, topicsBySubject, token]);
 
@@ -965,16 +1808,31 @@ export default function SettingsPage() {
     if (Object.keys(serviceDescriptionDrafts).length) return;
     if (!marketingServices.length) return;
     const next: Record<string, string> = {};
+    const nextLogos: Record<string, string> = {};
     marketingServices.forEach((svc) => {
       next[svc.service_code] = svc.description_text ?? "";
+      nextLogos[svc.service_code] = svc.service_logo_url ?? "";
     });
     setServiceDescriptionDrafts(next);
+    setServiceLogoDrafts(nextLogos);
   }, [marketingServices, serviceDescriptionDrafts]);
+
+  useEffect(() => {
+    if (Object.keys(serviceLogoDrafts).length) return;
+    if (!marketingServices.length) return;
+    const next: Record<string, string> = {};
+    marketingServices.forEach((svc) => {
+      next[svc.service_code] = svc.service_logo_url ?? "";
+    });
+    setServiceLogoDrafts(next);
+  }, [marketingServices, serviceLogoDrafts]);
 
   useEffect(() => {
     if (!subjects.length) return;
     if (!marketingSubjectId) {
-      setMarketingSubjectId(subjects.find((s) => !s.archived_at)?.id ?? subjects[0]?.id ?? "");
+      setMarketingSubjectId(
+        subjects.find((s) => !s.archived_at)?.id ?? subjects[0]?.id ?? "",
+      );
     }
     if (Object.keys(subjectDescriptionDrafts).length) return;
     const next: Record<string, string> = {};
@@ -996,11 +1854,18 @@ export default function SettingsPage() {
     setTopicDescriptionDrafts(next);
   }, [topicsBySubject, marketingSubjectId, topicDescriptionDrafts]);
 
-  const selectedServiceLocationId = serviceLocationId || billableLocations[0]?.id || activeLocations[0]?.id || "";
+  const selectedServiceLocationId =
+    serviceLocationId ||
+    billableLocations[0]?.id ||
+    activeLocations[0]?.id ||
+    "";
 
   useEffect(() => {
     if (!selectedServiceLocationId) return;
-    setNewService((prev) => ({ ...prev, location_id: selectedServiceLocationId }));
+    setNewService((prev) => ({
+      ...prev,
+      location_id: selectedServiceLocationId,
+    }));
   }, [selectedServiceLocationId]);
 
   useEffect(() => {
@@ -1044,7 +1909,10 @@ export default function SettingsPage() {
     return map;
   }, [locations]);
 
-  const activeEmailInboxes = useMemo(() => emailInboxes.filter((inbox) => !inbox.archived_at), [emailInboxes]);
+  const activeEmailInboxes = useMemo(
+    () => emailInboxes.filter((inbox) => !inbox.archived_at),
+    [emailInboxes],
+  );
 
   const subjectNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -1064,7 +1932,9 @@ export default function SettingsPage() {
     return map;
   }, [servicesByLocation]);
 
-  const archiveMaps = useMemo<Record<ArchiveType, Map<string, ArchiveRow>>>(() => {
+  const archiveMaps = useMemo<
+    Record<ArchiveType, Map<string, ArchiveRow>>
+  >(() => {
     const maps: Record<ArchiveType, Map<string, ArchiveRow>> = {
       PARENTS: new Map(),
       STUDENTS: new Map(),
@@ -1086,7 +1956,9 @@ export default function SettingsPage() {
     });
 
     students.forEach((student) => {
-      const parentIsArchived = Boolean(parents.find((p) => p.id === student.parent_id)?.archived_at);
+      const parentIsArchived = Boolean(
+        parents.find((p) => p.id === student.parent_id)?.archived_at,
+      );
       const name = studentDisplayName(student);
       const parentLabel = parentNameById.get(student.parent_id);
       const label = parentLabel ? `${name} (${parentLabel})` : name;
@@ -1118,7 +1990,9 @@ export default function SettingsPage() {
     });
 
     Object.entries(roomsByLocation).forEach(([locationId, rooms]) => {
-      const locationArchived = Boolean(locations.find((l) => l.id === locationId)?.archived_at);
+      const locationArchived = Boolean(
+        locations.find((l) => l.id === locationId)?.archived_at,
+      );
       const locationLabel = locationNameById.get(locationId) || "Location";
       rooms.forEach((room) => {
         const roomName = room.room_name || "Room";
@@ -1135,7 +2009,8 @@ export default function SettingsPage() {
     Object.entries(servicesByLocation).forEach(([locationId, services]) => {
       const locationLabel = locationNameById.get(locationId) || "Location";
       services.forEach((service) => {
-        const serviceName = service.display_name || service.service_code || "Service";
+        const serviceName =
+          service.display_name || service.service_code || "Service";
         maps.SERVICES.set(service.id, {
           id: service.id,
           label: `${serviceName} (${locationLabel})`,
@@ -1155,7 +2030,9 @@ export default function SettingsPage() {
     });
 
     Object.entries(topicsBySubject).forEach(([subjectId, topics]) => {
-      const subjectArchived = Boolean(subjects.find((s) => s.id === subjectId)?.archived_at);
+      const subjectArchived = Boolean(
+        subjects.find((s) => s.id === subjectId)?.archived_at,
+      );
       const subjectLabel = subjectNameById.get(subjectId) || "Subject";
       topics.forEach((topic) => {
         const topicName = topic.topic_name || "Topic";
@@ -1184,7 +2061,10 @@ export default function SettingsPage() {
     subjectNameById,
   ]);
 
-  const archiveRows = useMemo(() => Array.from(archiveMaps[archiveType].values()), [archiveMaps, archiveType]);
+  const archiveRows = useMemo(
+    () => Array.from(archiveMaps[archiveType].values()),
+    [archiveMaps, archiveType],
+  );
 
   const sortedArchiveRows = useMemo(() => {
     const rows = [...archiveRows];
@@ -1225,8 +2105,15 @@ export default function SettingsPage() {
             capacity: String(match.capacity ?? 1),
             unit_length_minutes: String(match.unit_length_minutes ?? 60),
           }
-        : { is_active: false, hourly_rate_dollars: "", capacity: "1", unit_length_minutes: "60" };
-      const draft = match ? serviceEdits[match.id] ?? base : catalogDrafts[name] ?? base;
+        : {
+            is_active: false,
+            hourly_rate_dollars: "",
+            capacity: "1",
+            unit_length_minutes: "60",
+          };
+      const draft = match
+        ? (serviceEdits[match.id] ?? base)
+        : (catalogDrafts[name] ?? base);
       return {
         key: match?.id ?? `catalog:${normalizeKey(name)}`,
         id: match?.id,
@@ -1264,7 +2151,12 @@ export default function SettingsPage() {
       });
 
     return [...rows, ...customRows];
-  }, [selectedServiceLocationId, servicesByLocation, serviceEdits, serviceCatalogDrafts]);
+  }, [
+    selectedServiceLocationId,
+    servicesByLocation,
+    serviceEdits,
+    serviceCatalogDrafts,
+  ]);
 
   const sortedServiceRows = useMemo(() => {
     const rows = [...serviceRows];
@@ -1277,15 +2169,18 @@ export default function SettingsPage() {
       } else if (serviceSort.key === "capacity") {
         const aCap = Number.parseInt(a.capacity || "0", 10) || 0;
         const bCap = Number.parseInt(b.capacity || "0", 10) || 0;
-        if (aCap !== bCap) return serviceSort.dir === "asc" ? aCap - bCap : bCap - aCap;
+        if (aCap !== bCap)
+          return serviceSort.dir === "asc" ? aCap - bCap : bCap - aCap;
       } else if (serviceSort.key === "unit_length") {
         const aLen = Number.parseInt(a.unit_length_minutes || "0", 10) || 0;
         const bLen = Number.parseInt(b.unit_length_minutes || "0", 10) || 0;
-        if (aLen !== bLen) return serviceSort.dir === "asc" ? aLen - bLen : bLen - aLen;
+        if (aLen !== bLen)
+          return serviceSort.dir === "asc" ? aLen - bLen : bLen - aLen;
       } else if (serviceSort.key === "price") {
         const aPrice = Number.parseFloat(a.hourly_rate_dollars || "0") || 0;
         const bPrice = Number.parseFloat(b.hourly_rate_dollars || "0") || 0;
-        if (aPrice !== bPrice) return serviceSort.dir === "asc" ? aPrice - bPrice : bPrice - aPrice;
+        if (aPrice !== bPrice)
+          return serviceSort.dir === "asc" ? aPrice - bPrice : bPrice - aPrice;
       } else {
         const diff = a.name.localeCompare(b.name);
         if (diff !== 0) return serviceSort.dir === "asc" ? diff : -diff;
@@ -1295,7 +2190,9 @@ export default function SettingsPage() {
     return rows;
   }, [serviceRows, serviceSort]);
 
-  function toggleServiceSort(key: "active" | "name" | "price" | "capacity" | "unit_length") {
+  function toggleServiceSort(
+    key: "active" | "name" | "price" | "capacity" | "unit_length",
+  ) {
     setServiceSort((prev) => {
       if (prev.key === key) {
         return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
@@ -1325,11 +2222,23 @@ export default function SettingsPage() {
   const renderSortIcons = (active: boolean, dir: "asc" | "desc") => (
     <span className="ml-2 inline-flex flex-col items-center gap-0">
       {active ? (
-        <HugeiconsIcon icon={dir === "asc" ? ArrowUp01Icon : ArrowDown01Icon} size={14} className="text-[#ff9df9]" />
+        <HugeiconsIcon
+          icon={dir === "asc" ? ArrowUp01Icon : ArrowDown01Icon}
+          size={14}
+          className="text-[#ff9df9]"
+        />
       ) : (
         <>
-          <HugeiconsIcon icon={ArrowUp01Icon} size={12} className="text-gray-400" />
-          <HugeiconsIcon icon={ArrowDown01Icon} size={12} className="text-gray-400" />
+          <HugeiconsIcon
+            icon={ArrowUp01Icon}
+            size={12}
+            className="text-gray-400"
+          />
+          <HugeiconsIcon
+            icon={ArrowDown01Icon}
+            size={12}
+            className="text-gray-400"
+          />
         </>
       )}
     </span>
@@ -1337,7 +2246,12 @@ export default function SettingsPage() {
 
   function updateServiceDraft(
     row: ServiceDraft,
-    updates: { is_active?: boolean; hourly_rate_dollars?: string; capacity?: string; unit_length_minutes?: string },
+    updates: {
+      is_active?: boolean;
+      hourly_rate_dollars?: string;
+      capacity?: string;
+      unit_length_minutes?: string;
+    },
   ) {
     if (row.id) {
       const id = row.id;
@@ -1351,9 +2265,11 @@ export default function SettingsPage() {
         return {
           ...prev,
           [id]: {
-            hourly_rate_dollars: updates.hourly_rate_dollars ?? existing.hourly_rate_dollars,
+            hourly_rate_dollars:
+              updates.hourly_rate_dollars ?? existing.hourly_rate_dollars,
             capacity: updates.capacity ?? existing.capacity,
-            unit_length_minutes: updates.unit_length_minutes ?? existing.unit_length_minutes,
+            unit_length_minutes:
+              updates.unit_length_minutes ?? existing.unit_length_minutes,
             is_active: updates.is_active ?? existing.is_active,
           },
         };
@@ -1374,9 +2290,11 @@ export default function SettingsPage() {
         [selectedServiceLocationId]: {
           ...byLocation,
           [row.name]: {
-            hourly_rate_dollars: updates.hourly_rate_dollars ?? existing.hourly_rate_dollars,
+            hourly_rate_dollars:
+              updates.hourly_rate_dollars ?? existing.hourly_rate_dollars,
             capacity: updates.capacity ?? existing.capacity,
-            unit_length_minutes: updates.unit_length_minutes ?? existing.unit_length_minutes,
+            unit_length_minutes:
+              updates.unit_length_minutes ?? existing.unit_length_minutes,
             is_active: updates.is_active ?? existing.is_active,
           },
         },
@@ -1397,7 +2315,9 @@ export default function SettingsPage() {
     });
   }
 
-  const childPromptResolverRef = useRef<((value: string[] | null) => void) | null>(null);
+  const childPromptResolverRef = useRef<
+    ((value: string[] | null) => void) | null
+  >(null);
   const [childPrompt, setChildPrompt] = useState<{
     parentId: string;
     parentLabel: string;
@@ -1405,8 +2325,12 @@ export default function SettingsPage() {
     items: Array<{ id: string; label: string; archived: boolean }>;
     selectedIds: string[];
   } | null>(null);
-  const passwordPromptResolverRef = useRef<((value: string | null) => void) | null>(null);
-  const [passwordPrompt, setPasswordPrompt] = useState<{ actionLabel: string } | null>(null);
+  const passwordPromptResolverRef = useRef<
+    ((value: string | null) => void) | null
+  >(null);
+  const [passwordPrompt, setPasswordPrompt] = useState<{
+    actionLabel: string;
+  } | null>(null);
   const [passwordDraft, setPasswordDraft] = useState("");
 
   function openChildUnarchivePrompt(
@@ -1422,7 +2346,9 @@ export default function SettingsPage() {
         parentLabel,
         childTypeLabel,
         items,
-        selectedIds: items.filter((item) => item.archived).map((item) => item.id),
+        selectedIds: items
+          .filter((item) => item.archived)
+          .map((item) => item.id),
       });
     });
   }
@@ -1457,8 +2383,12 @@ export default function SettingsPage() {
       if (subjectSort.key === "included") {
         const aBaseline = subjectBaselineMap.get(a.key);
         const bBaseline = subjectBaselineMap.get(b.key);
-        const aIncluded = (aBaseline?.included ?? false) || (aBaseline?.topics ?? []).some((t) => t.included);
-        const bIncluded = (bBaseline?.included ?? false) || (bBaseline?.topics ?? []).some((t) => t.included);
+        const aIncluded =
+          (aBaseline?.included ?? false) ||
+          (aBaseline?.topics ?? []).some((t) => t.included);
+        const bIncluded =
+          (bBaseline?.included ?? false) ||
+          (bBaseline?.topics ?? []).some((t) => t.included);
         const diff = Number(aIncluded) - Number(bIncluded);
         if (diff !== 0) return diff * dir;
       }
@@ -1476,12 +2406,16 @@ export default function SettingsPage() {
       setStatus(null);
       setLoading(true);
       try {
-        const meRes = await fetch("/api/me", { headers: { Authorization: `Bearer ${accessToken}` } });
+        const meRes = await fetch("/api/me", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
         const meJson = meRes.ok ? ((await meRes.json()) as Me) : null;
         if (cancelled) return;
         setMe(meJson);
 
-        const orgRes = await fetch("/organizations", { headers: { Authorization: `Bearer ${accessToken}` } });
+        const orgRes = await fetch("/organizations", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
         if (!orgRes.ok) {
           setStatus(`Failed to load organization (${orgRes.status})`);
           return;
@@ -1495,7 +2429,9 @@ export default function SettingsPage() {
         if (cancelled) return;
         setOrg(org0);
 
-        const locRes = await fetch("/locations?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } });
+        const locRes = await fetch("/locations?archived=all", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
         const locs = locRes.ok ? ((await locRes.json()) as Location[]) : [];
         if (cancelled) return;
         const locList = Array.isArray(locs) ? locs : [];
@@ -1519,15 +2455,24 @@ export default function SettingsPage() {
           await Promise.all(
             locList.map(async (loc) => {
               const [roomRes, svcRes] = await Promise.all([
-                fetch(`/rooms?location_id=${encodeURIComponent(loc.id)}&archived=all`, {
-                  headers: { Authorization: `Bearer ${accessToken}` },
-                }),
-                fetch(`/services-offered?location_id=${encodeURIComponent(loc.id)}`, {
-                  headers: { Authorization: `Bearer ${accessToken}` },
-                }),
+                fetch(
+                  `/rooms?location_id=${encodeURIComponent(loc.id)}&archived=all`,
+                  {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  },
+                ),
+                fetch(
+                  `/services-offered?location_id=${encodeURIComponent(loc.id)}`,
+                  {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  },
+                ),
               ]);
-              if (roomRes.ok) roomsNext[loc.id] = (await roomRes.json()) as Room[];
-              if (svcRes.ok) servicesNext[loc.id] = (await svcRes.json()) as ServiceOffered[];
+              if (roomRes.ok)
+                roomsNext[loc.id] = (await roomRes.json()) as Room[];
+              if (svcRes.ok)
+                servicesNext[loc.id] =
+                  (await svcRes.json()) as ServiceOffered[];
             }),
           );
           if (cancelled) return;
@@ -1536,8 +2481,12 @@ export default function SettingsPage() {
         };
 
         const loadSubjectsAndTopics = async () => {
-          const subjRes = await fetch("/subjects?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } });
-          const subjList = subjRes.ok ? ((await subjRes.json()) as Subject[]) : [];
+          const subjRes = await fetch("/subjects?archived=all", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          const subjList = subjRes.ok
+            ? ((await subjRes.json()) as Subject[])
+            : [];
           if (cancelled) return;
           const subj = Array.isArray(subjList) ? subjList : [];
           setSubjects(subj);
@@ -1545,9 +2494,12 @@ export default function SettingsPage() {
           const topicsNext: Record<string, Topic[]> = {};
           await Promise.all(
             subj.map(async (s) => {
-              const tRes = await fetch(`/topics?subject_id=${encodeURIComponent(s.id)}&archived=all`, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              });
+              const tRes = await fetch(
+                `/topics?subject_id=${encodeURIComponent(s.id)}&archived=all`,
+                {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                },
+              );
               if (tRes.ok) topicsNext[s.id] = (await tRes.json()) as Topic[];
             }),
           );
@@ -1561,7 +2513,9 @@ export default function SettingsPage() {
         };
 
         const loadProducts = async () => {
-          const prodRes = await fetch("/products", { headers: { Authorization: `Bearer ${accessToken}` } });
+          const prodRes = await fetch("/products", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
           if (cancelled) return;
           if (prodRes.ok) {
             const prodList = (await prodRes.json()) as Product[];
@@ -1571,9 +2525,15 @@ export default function SettingsPage() {
 
         const loadClients = async () => {
           const [parentRes, studentRes, leadRes] = await Promise.all([
-            fetch("/parents?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
-            fetch("/students?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
-            fetch("/leads?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } }),
+            fetch("/parents?archived=all", {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }),
+            fetch("/students?archived=all", {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }),
+            fetch("/leads?archived=all", {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }),
           ]);
           if (cancelled) return;
           if (parentRes.ok) {
@@ -1591,11 +2551,15 @@ export default function SettingsPage() {
         };
 
         const loadTutors = async () => {
-          const tutorRes = await fetch("/tutors?archived=all", { headers: { Authorization: `Bearer ${accessToken}` } });
+          const tutorRes = await fetch("/tutors?archived=all", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
           if (cancelled) return;
           if (tutorRes.ok) {
             const tutorList = (await tutorRes.json()) as Tutor[];
-            const activeTutors = Array.isArray(tutorList) ? tutorList.filter((t) => !t.archived_at) : [];
+            const activeTutors = Array.isArray(tutorList)
+              ? tutorList.filter((t) => !t.archived_at)
+              : [];
             setTutors(activeTutors);
             const draftMap: Record<string, string> = {};
             activeTutors.forEach((t) => {
@@ -1615,9 +2579,27 @@ export default function SettingsPage() {
             const inboxList = (await inboxRes.json()) as EmailInbox[];
             const inboxes = Array.isArray(inboxList) ? inboxList : [];
             setEmailInboxes(inboxes);
-            const mergedSources = mergeEmailInboxSources(loadPipelineSources(), inboxes);
+            const mergedSources = mergeEmailInboxSources(
+              loadPipelineSources(),
+              inboxes,
+            );
             pipelineForm.commit({ sources: mergedSources });
             savePipelineSources(mergedSources);
+          }
+        };
+
+        const loadConnections = async () => {
+          const res = await fetch("/connections", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (cancelled) return;
+          if (res.ok) {
+            const list = (await res.json()) as ConnectionSnapshot[];
+            const next: Record<string, ConnectionSnapshot> = {};
+            list.forEach((entry) => {
+              next[entry.provider] = entry;
+            });
+            setConnectionSnapshots(next);
           }
         };
 
@@ -1627,6 +2609,7 @@ export default function SettingsPage() {
         void loadClients();
         void loadTutors();
         void loadEmailInboxes();
+        void loadConnections();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1669,7 +2652,11 @@ export default function SettingsPage() {
       if (!anchor) return;
       const href = anchor.getAttribute("href") ?? "";
       if (!href.startsWith("/") || href.startsWith("/settings")) return;
-      if (!window.confirm("You have unsaved changes. Leave Settings without saving?")) {
+      if (
+        !window.confirm(
+          "You have unsaved changes. Leave Settings without saving?",
+        )
+      ) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -1709,28 +2696,49 @@ export default function SettingsPage() {
         daily_scan_time: "08:00",
       });
     }
+    if (activeTab === "CONNECTIONS") {
+      setConnections({});
+    }
     if (activeTab === "TUTORS") {
       setTutorDrafts(tutorDraftsInitialRef.current);
-      setNewTutor({ first_name: "", last_name: "", email: "", color_hex: DEFAULT_TUTOR_COLOR });
+      setNewTutor({
+        first_name: "",
+        last_name: "",
+        email: "",
+        color_hex: DEFAULT_TUTOR_COLOR,
+      });
     }
-    if (activeTab === "PRODUCTS" || (activeTab === "MARKETING" && marketingTab === "PRODUCTS")) {
+    if (activeTab === "PRODUCTS" && marketingTab === "PRODUCTS") {
       setProductDraft(productDraftInitial);
     }
-    if (activeTab === "MARKETING" && marketingTab === "SERVICES") {
+    if (activeTab === "PRODUCTS" && marketingTab === "COMPANY") {
+      if (org) {
+        setCompanyDraft({
+          company_description_text: org.company_description_text ?? "",
+          mission_text: org.mission_text ?? "",
+          tutoring_style_text: org.tutoring_style_text ?? "",
+          about_us_text: org.about_us_text ?? org.about_text ?? "",
+        });
+      }
+    }
+    if (activeTab === "PRODUCTS" && marketingTab === "SERVICES") {
       const next: Record<string, string> = {};
+      const nextLogos: Record<string, string> = {};
       marketingServices.forEach((svc) => {
         next[svc.service_code] = svc.description_text ?? "";
+        nextLogos[svc.service_code] = svc.service_logo_url ?? "";
       });
       setServiceDescriptionDrafts(next);
+      setServiceLogoDrafts(nextLogos);
     }
-    if (activeTab === "MARKETING" && marketingTab === "SUBJECTS") {
+    if (activeTab === "PRODUCTS" && marketingTab === "SUBJECTS") {
       const next: Record<string, string> = {};
       subjects.forEach((subject) => {
         next[subject.id] = subject.description_text ?? "";
       });
       setSubjectDescriptionDrafts(next);
     }
-    if (activeTab === "MARKETING" && marketingTab === "TOPICS") {
+    if (activeTab === "PRODUCTS" && marketingTab === "TOPICS") {
       const topics = topicsBySubject[marketingSubjectId] ?? [];
       const next: Record<string, string> = {};
       topics.forEach((topic) => {
@@ -1744,7 +2752,9 @@ export default function SettingsPage() {
     if (next === activeTab) return;
     let shouldDiscard = false;
     if (dirtyTabs[activeTab]) {
-      const ok = window.confirm("You have unsaved changes. Discard them and switch tabs?");
+      const ok = window.confirm(
+        "You have unsaved changes. Discard them and switch tabs?",
+      );
       if (!ok) return;
       shouldDiscard = true;
     }
@@ -1763,7 +2773,9 @@ export default function SettingsPage() {
     if (!userEmail) return;
     setStatus(null);
     const redirectTo = `${window.location.origin}/reset-password`;
-    const { error } = await supabase.auth.resetPasswordForEmail(userEmail, { redirectTo });
+    const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
+      redirectTo,
+    });
     if (error) {
       setStatus(error.message);
       return;
@@ -1777,11 +2789,18 @@ export default function SettingsPage() {
     const res = await fetch("/api/stripe/create-billing-portal", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: userEmail, returnUrl: `${window.location.origin}/settings` }),
+      body: JSON.stringify({
+        email: userEmail,
+        returnUrl: `${window.location.origin}/settings`,
+      }),
     });
     const json = (await res.json()) as any;
     if (!res.ok || !json?.url) {
-      setStatus(json?.error ? String(json.error) : `Billing portal failed (${res.status})`);
+      setStatus(
+        json?.error
+          ? String(json.error)
+          : `Billing portal failed (${res.status})`,
+      );
       return;
     }
     window.location.href = json.url;
@@ -1793,7 +2812,10 @@ export default function SettingsPage() {
     const date_format = normalizeDateFormat(accountForm.formData.date_format);
     const res = await fetch("/organizations", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ date_format }),
     });
     if (!res.ok) {
@@ -1802,7 +2824,9 @@ export default function SettingsPage() {
     }
     const updated = (await res.json()) as Org;
     setOrg((prev) => (prev ? { ...prev, ...updated } : updated));
-    accountForm.commit({ date_format: normalizeDateFormat(updated.date_format) });
+    accountForm.commit({
+      date_format: normalizeDateFormat(updated.date_format),
+    });
     setStatus("Saved.");
   }
 
@@ -1811,7 +2835,10 @@ export default function SettingsPage() {
     setStatus(null);
     const res = await fetch("/organizations", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         business_name: businessForm.formData.business_name,
         timezone: businessForm.formData.timezone,
@@ -1847,14 +2874,20 @@ export default function SettingsPage() {
   async function saveSchedule() {
     if (!token) return;
     setStatus(null);
-    const normalizedBuffer = parseNonNegativeInt(bufferDraft, scheduleForm.formData.default_buffer_minutes ?? 0);
+    const normalizedBuffer = parseNonNegativeInt(
+      bufferDraft,
+      scheduleForm.formData.default_buffer_minutes ?? 0,
+    );
     if (String(normalizedBuffer) !== bufferDraft.trim()) {
       setBufferDraft(String(normalizedBuffer));
     }
     scheduleForm.updateField("default_buffer_minutes", normalizedBuffer);
     const res = await fetch("/organizations", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ default_buffer_minutes: normalizedBuffer }),
     });
     if (!res.ok) {
@@ -1863,7 +2896,9 @@ export default function SettingsPage() {
     }
     const updated = (await res.json()) as Org;
     setOrg((prev) => (prev ? { ...prev, ...updated } : updated));
-    scheduleForm.commit({ default_buffer_minutes: updated.default_buffer_minutes ?? 15 });
+    scheduleForm.commit({
+      default_buffer_minutes: updated.default_buffer_minutes ?? 15,
+    });
     setStatus("Saved.");
   }
 
@@ -1890,7 +2925,9 @@ export default function SettingsPage() {
       const locationLabel = locationNameById.get(locId) ?? "Location";
       const existingServices = servicesByLocation[locId] ?? [];
       const existingById = new Map(existingServices.map((s) => [s.id, s]));
-      const existingCodes = new Set(existingServices.map((s) => s.service_code));
+      const existingCodes = new Set(
+        existingServices.map((s) => s.service_code),
+      );
 
       const editsForLocation = Object.entries(serviceEdits).filter(([id]) => {
         const svc = serviceById.get(id);
@@ -1907,25 +2944,36 @@ export default function SettingsPage() {
 
         if (desiredActive) {
           if (cents == null) {
-            setStatus(`${locationLabel}: please enter a valid unit price (e.g. 99.95).`);
+            setStatus(
+              `${locationLabel}: please enter a valid unit price (e.g. 99.95).`,
+            );
             return;
           }
           if (!Number.isInteger(capacity) || capacity < 1) {
-            setStatus(`${locationLabel}: please enter a valid capacity (>= 1).`);
+            setStatus(
+              `${locationLabel}: please enter a valid capacity (>= 1).`,
+            );
             return;
           }
           if (!Number.isInteger(unitLength) || unitLength < 1) {
-            setStatus(`${locationLabel}: please enter a valid unit length in minutes (>= 1).`);
+            setStatus(
+              `${locationLabel}: please enter a valid unit length in minutes (>= 1).`,
+            );
             return;
           }
         } else {
           if (cents == null) cents = svc.hourly_rate_cents;
-          if (!Number.isInteger(capacity) || capacity < 1) capacity = svc.capacity ?? 1;
-          if (!Number.isInteger(unitLength) || unitLength < 1) unitLength = svc.unit_length_minutes ?? 60;
+          if (!Number.isInteger(capacity) || capacity < 1)
+            capacity = svc.capacity ?? 1;
+          if (!Number.isInteger(unitLength) || unitLength < 1)
+            unitLength = svc.unit_length_minutes ?? 60;
         }
         const res = await fetch("/services-offered", {
           method: "PATCH",
-          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             service_offered_id: id,
             display_name: svc.display_name ?? svc.service_code,
@@ -1943,8 +2991,13 @@ export default function SettingsPage() {
           } catch {
             message = "";
           }
-          const cleaned = message && message.length < 160 ? message : "Please check your inputs and try again.";
-          setStatus(`Service save failed for ${locationLabel} (${res.status}). ${cleaned}`);
+          const cleaned =
+            message && message.length < 160
+              ? message
+              : "Please check your inputs and try again.";
+          setStatus(
+            `Service save failed for ${locationLabel} (${res.status}). ${cleaned}`,
+          );
           return;
         }
       }
@@ -1953,12 +3006,16 @@ export default function SettingsPage() {
       for (const [name, patch] of Object.entries(catalogDrafts)) {
         if (!patch.is_active) continue;
         const exists = existingServices.find(
-          (s) => normalizeKey(s.display_name ?? s.service_code) === normalizeKey(name),
+          (s) =>
+            normalizeKey(s.display_name ?? s.service_code) ===
+            normalizeKey(name),
         );
         if (exists) continue;
         const cents = dollarsToCents(patch.hourly_rate_dollars);
         if (cents == null) {
-          setStatus(`${locationLabel}: please enter a valid unit price (e.g. 99.95).`);
+          setStatus(
+            `${locationLabel}: please enter a valid unit price (e.g. 99.95).`,
+          );
           return;
         }
         const capacity = Number.parseInt(patch.capacity || "0", 10);
@@ -1966,16 +3023,24 @@ export default function SettingsPage() {
           setStatus(`${locationLabel}: please enter a valid capacity (>= 1).`);
           return;
         }
-        const unitLength = Number.parseInt(patch.unit_length_minutes || "0", 10);
+        const unitLength = Number.parseInt(
+          patch.unit_length_minutes || "0",
+          10,
+        );
         if (!Number.isInteger(unitLength) || unitLength < 1) {
-          setStatus(`${locationLabel}: please enter a valid unit length in minutes (>= 1).`);
+          setStatus(
+            `${locationLabel}: please enter a valid unit length in minutes (>= 1).`,
+          );
           return;
         }
         const service_code = makeUniqueServiceCode(name, existingCodes);
         existingCodes.add(service_code);
         const res = await fetch("/services-offered", {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             location_id: locId,
             service_code,
@@ -1994,15 +3059,23 @@ export default function SettingsPage() {
           } catch {
             message = "";
           }
-          const cleaned = message && message.length < 160 ? message : "Please check your inputs and try again.";
-          setStatus(`Add service failed for ${locationLabel} (${res.status}). ${cleaned}`);
+          const cleaned =
+            message && message.length < 160
+              ? message
+              : "Please check your inputs and try again.";
+          setStatus(
+            `Add service failed for ${locationLabel} (${res.status}). ${cleaned}`,
+          );
           return;
         }
       }
 
-      const refreshRes = await fetch(`/services-offered?location_id=${encodeURIComponent(locId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const refreshRes = await fetch(
+        `/services-offered?location_id=${encodeURIComponent(locId)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       if (refreshRes.ok) {
         const refreshed = (await refreshRes.json()) as ServiceOffered[];
         setServicesByLocation((prev) => ({ ...prev, [locId]: refreshed }));
@@ -2058,7 +3131,11 @@ export default function SettingsPage() {
       topics: s.topics.map((t) => ({ ...t })),
     }));
     const baselineMap = subjectBaselineMap;
-    const requestOrThrow = async (input: string, init: RequestInit, label: string) => {
+    const requestOrThrow = async (
+      input: string,
+      init: RequestInit,
+      label: string,
+    ) => {
       const res = await fetch(input, init);
       if (!res.ok) {
         const message = await res.text();
@@ -2069,7 +3146,9 @@ export default function SettingsPage() {
 
     try {
       const newSubjects = nextDrafts.filter(
-        (subject) => !subject.id && (subject.included || subject.topics.some((t) => t.included)),
+        (subject) =>
+          !subject.id &&
+          (subject.included || subject.topics.some((t) => t.included)),
       );
       await Promise.all(
         newSubjects.map(async (subject) => {
@@ -2077,7 +3156,10 @@ export default function SettingsPage() {
             "/subjects",
             {
               method: "POST",
-              headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "content-type": "application/json",
+              },
               body: JSON.stringify({ subject_name: subject.name }),
             },
             "Add subject failed",
@@ -2101,7 +3183,10 @@ export default function SettingsPage() {
               "/subjects",
               {
                 method: "PATCH",
-                headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  "content-type": "application/json",
+                },
                 body: JSON.stringify({
                   subject_id: subject.id,
                   subject_name: subject.name,
@@ -2118,7 +3203,9 @@ export default function SettingsPage() {
       nextDrafts.forEach((subject) => {
         if (!subject.id) return;
         const baselineSubject = baselineMap.get(subject.key);
-        const baselineTopicsByKey = new Map((baselineSubject?.topics ?? []).map((topic) => [topic.key, topic]));
+        const baselineTopicsByKey = new Map(
+          (baselineSubject?.topics ?? []).map((topic) => [topic.key, topic]),
+        );
         subject.topics.forEach((topic) => {
           const baselineTopic = baselineTopicsByKey.get(topic.key);
           if (!topic.id) {
@@ -2129,8 +3216,14 @@ export default function SettingsPage() {
                   "/topics",
                   {
                     method: "POST",
-                    headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-                    body: JSON.stringify({ subject_id: subject.id, topic_name: topic.name }),
+                    headers: {
+                      Authorization: `Bearer ${accessToken}`,
+                      "content-type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      subject_id: subject.id,
+                      topic_name: topic.name,
+                    }),
                   },
                   "Add topic failed",
                 );
@@ -2140,7 +3233,8 @@ export default function SettingsPage() {
             );
             return;
           }
-          const includedChanged = (baselineTopic?.included ?? false) !== topic.included;
+          const includedChanged =
+            (baselineTopic?.included ?? false) !== topic.included;
           const nameChanged = (baselineTopic?.name ?? "") !== topic.name;
           if (!includedChanged && !nameChanged) return;
           topicOps.push(
@@ -2149,7 +3243,10 @@ export default function SettingsPage() {
                 "/topics",
                 {
                   method: "PATCH",
-                  headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "content-type": "application/json",
+                  },
                   body: JSON.stringify({
                     topic_id: topic.id,
                     topic_name: topic.name,
@@ -2175,7 +3272,11 @@ export default function SettingsPage() {
     setStatus("Saved.");
   }
 
-  function updateClientField(group: "parents" | "students", key: string, value: boolean) {
+  function updateClientField(
+    group: "parents" | "students",
+    key: string,
+    value: boolean,
+  ) {
     clientsForm.setFormData((prev) => ({
       ...prev,
       [group]: {
@@ -2191,10 +3292,75 @@ export default function SettingsPage() {
     setStatus("Client fields saved.");
   }
 
-  function updatePipelineSource(id: string, updates: Partial<PipelineSourceSetting>) {
+  async function saveConnection(
+    providerId: ConnectionProviderId,
+    opts?: { silent?: boolean },
+  ) {
+    if (!token) return;
+    const fields = connections[providerId] ?? {};
+    const res = await fetch(`/connections/${providerId}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ fields }),
+    });
+    if (!res.ok) {
+      const message = await res.text();
+      setStatus(`Connection save failed (${res.status}): ${message}`);
+      return;
+    }
+    const snapshot = (await res.json()) as ConnectionSnapshot;
+    setConnectionSnapshots((prev) => ({ ...prev, [providerId]: snapshot }));
+    setConnections((prev) => ({ ...prev, [providerId]: {} }));
+    if (!opts?.silent) {
+      const label = getConnectionProvider(providerId)?.label ?? "Connection";
+      setStatus(`${label} saved.`);
+    }
+  }
+
+  async function saveAllConnections() {
+    const dirtyProviders = CONNECTION_PROVIDERS.filter((provider) =>
+      Object.values(connections[provider.id] ?? {}).some(
+        (value) => value.trim().length > 0,
+      ),
+    );
+    if (dirtyProviders.length === 0) {
+      setStatus("No connection changes to save.");
+      return;
+    }
+    for (const provider of dirtyProviders) {
+      await saveConnection(provider.id, { silent: true });
+    }
+    setStatus("Connections saved.");
+  }
+
+  async function startConnectionOAuth(providerId: ConnectionProviderId) {
+    if (!token) return;
+    const res = await fetch(`/connections/${providerId}/oauth/start`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const message = await res.text();
+      setStatus(`OAuth start failed (${res.status}): ${message}`);
+      return;
+    }
+    const json = (await res.json()) as { url?: string };
+    if (json?.url && typeof window !== "undefined") {
+      window.location.href = json.url;
+    }
+  }
+
+  function updatePipelineSource(
+    id: string,
+    updates: Partial<PipelineSourceSetting>,
+  ) {
     pipelineForm.setFormData((prev) => ({
       ...prev,
-      sources: prev.sources.map((source) => (source.id === id ? { ...source, ...updates } : source)),
+      sources: prev.sources.map((source) =>
+        source.id === id ? { ...source, ...updates } : source,
+      ),
     }));
 
     if (id.startsWith("email:") && typeof updates.enabled === "boolean") {
@@ -2215,13 +3381,23 @@ export default function SettingsPage() {
     }
   }
 
-  function mergeEmailInboxSources(sources: PipelineSourceSetting[], inboxes: EmailInbox[]) {
-    const baseSources = sources.filter((source) => !source.id.startsWith("email:"));
+  function mergeEmailInboxSources(
+    sources: PipelineSourceSetting[],
+    inboxes: EmailInbox[],
+  ) {
+    const baseSources = sources.filter(
+      (source) => !source.id.startsWith("email:"),
+    );
     const emailSources = inboxes
       .filter((inbox) => !inbox.archived_at)
       .map((inbox) => {
         const label = inbox.label ?? "";
-        const source = makeEmailSource(label, inbox.address, undefined, inbox.id);
+        const source = makeEmailSource(
+          label,
+          inbox.address,
+          undefined,
+          inbox.id,
+        );
         return { ...source, enabled: inbox.enabled, address: inbox.address };
       });
     return [...baseSources, ...emailSources];
@@ -2260,12 +3436,18 @@ export default function SettingsPage() {
       payload.imap_host = host;
       payload.imap_port = port;
       payload.imap_secure = newEmailInbox.imap_secure;
-      payload.credentials = { username: address, password: newEmailInbox.password.trim() };
+      payload.credentials = {
+        username: address,
+        password: newEmailInbox.password.trim(),
+      };
     }
 
     const res = await fetch("/email-inboxes", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -2276,7 +3458,10 @@ export default function SettingsPage() {
     const nextInboxes = [created, ...emailInboxes];
     setEmailInboxes(nextInboxes);
 
-    const merged = mergeEmailInboxSources(pipelineForm.formData.sources, nextInboxes);
+    const merged = mergeEmailInboxSources(
+      pipelineForm.formData.sources,
+      nextInboxes,
+    );
     pipelineForm.setFormData((prev) => ({ ...prev, sources: merged }));
     savePipelineSources(merged);
     pipelineForm.commit({ sources: merged });
@@ -2295,23 +3480,37 @@ export default function SettingsPage() {
     setStatus("Email inbox added.");
   }
 
-  async function patchEmailInbox(id: string, updates: Partial<EmailInbox> & { credentials?: any }) {
+  async function patchEmailInbox(
+    id: string,
+    updates: Partial<EmailInbox> & { credentials?: any },
+  ) {
     if (!token) return;
     const res = await fetch(`/email-inboxes/${id}`, {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify(updates),
     });
     if (!res.ok) {
-      setStatus(`Email inbox update failed (${res.status}): ${await res.text()}`);
+      setStatus(
+        `Email inbox update failed (${res.status}): ${await res.text()}`,
+      );
       return;
     }
     const updated = (await res.json()) as EmailInbox;
-    setEmailInboxes((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+    setEmailInboxes((prev) =>
+      prev.map((item) =>
+        item.id === updated.id ? { ...item, ...updated } : item,
+      ),
+    );
     if (typeof updates.enabled === "boolean") {
       const sourceId = `email:${updated.id}`;
       const nextSources = pipelineForm.formData.sources.map((source) =>
-        source.id === sourceId ? { ...source, enabled: updates.enabled ?? source.enabled } : source,
+        source.id === sourceId
+          ? { ...source, enabled: updates.enabled ?? source.enabled }
+          : source,
       );
       pipelineForm.setFormData((prev) => ({ ...prev, sources: nextSources }));
       savePipelineSources(nextSources);
@@ -2323,16 +3522,23 @@ export default function SettingsPage() {
     if (!token) return;
     const res = await fetch(`/email-inboxes/${id}`, {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ archived: true }),
     });
     if (!res.ok) {
-      setStatus(`Email inbox archive failed (${res.status}): ${await res.text()}`);
+      setStatus(
+        `Email inbox archive failed (${res.status}): ${await res.text()}`,
+      );
       return;
     }
     setEmailInboxes((prev) => prev.filter((item) => item.id !== id));
     const sourceId = `email:${id}`;
-    const nextSources = pipelineForm.formData.sources.filter((source) => source.id !== sourceId);
+    const nextSources = pipelineForm.formData.sources.filter(
+      (source) => source.id !== sourceId,
+    );
     pipelineForm.setFormData((prev) => ({ ...prev, sources: nextSources }));
     savePipelineSources(nextSources);
     pipelineForm.commit({ sources: nextSources });
@@ -2367,7 +3573,10 @@ export default function SettingsPage() {
     setStatus(null);
     const res = await fetch("/tutors", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ tutor_id: id, archived: true }),
     });
     if (!res.ok) {
@@ -2415,7 +3624,10 @@ export default function SettingsPage() {
     const method = productDraft.id ? "PATCH" : "POST";
     const res = await fetch("/products", {
       method,
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -2427,7 +3639,10 @@ export default function SettingsPage() {
     const saved = (await res.json()) as Product;
     setProducts((prev) => {
       const exists = prev.find((p) => p.id === saved.id);
-      if (!exists) return [...prev, saved].sort((a, b) => a.product_name.localeCompare(b.product_name));
+      if (!exists)
+        return [...prev, saved].sort((a, b) =>
+          a.product_name.localeCompare(b.product_name),
+        );
       return prev.map((p) => (p.id === saved.id ? saved : p));
     });
     const draft = buildProductDraft(saved);
@@ -2438,17 +3653,25 @@ export default function SettingsPage() {
 
   function selectProduct(product: Product | null) {
     productAutoSelectedRef.current = true;
-    const draft = product ? buildProductDraft(product) : { ...EMPTY_PRODUCT_DRAFT };
+    const draft = product
+      ? buildProductDraft(product)
+      : { ...EMPTY_PRODUCT_DRAFT };
     setProductDraft(draft);
     setProductDraftInitial(draft);
     if (product?.id) {
-      void loadCatalogMedia({ kind: "product", id: product.id, product_id: product.id });
+      void loadCatalogMedia({
+        kind: "product",
+        id: product.id,
+        product_id: product.id,
+      });
     }
   }
 
   async function saveServiceDescription(service_code: string) {
     if (!token) return;
     const description_text = serviceDescriptionDrafts[service_code] ?? "";
+    const service_logo_url =
+      (serviceLogoDrafts[service_code] ?? "").trim() || null;
     const serviceIds = Object.values(servicesByLocation)
       .flat()
       .filter((svc) => svc.service_code === service_code)
@@ -2457,11 +3680,20 @@ export default function SettingsPage() {
     for (const id of serviceIds) {
       const res = await fetch("/services-offered", {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({ service_offered_id: id, description_text }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          service_offered_id: id,
+          description_text,
+          service_logo_url,
+        }),
       });
       if (!res.ok) {
-        setStatus(`Service description save failed (${res.status}): ${await res.text()}`);
+        setStatus(
+          `Service description save failed (${res.status}): ${await res.text()}`,
+        );
         return;
       }
     }
@@ -2469,7 +3701,9 @@ export default function SettingsPage() {
       const next: Record<string, ServiceOffered[]> = {};
       Object.entries(prev).forEach(([locId, list]) => {
         next[locId] = list.map((svc) =>
-          svc.service_code === service_code ? { ...svc, description_text } : svc,
+          svc.service_code === service_code
+            ? { ...svc, description_text, service_logo_url }
+            : svc,
         );
       });
       return next;
@@ -2482,11 +3716,16 @@ export default function SettingsPage() {
     const description_text = subjectDescriptionDrafts[subject_id] ?? "";
     const res = await fetch("/subjects", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ subject_id, description_text }),
     });
     if (!res.ok) {
-      setStatus(`Subject description save failed (${res.status}): ${await res.text()}`);
+      setStatus(
+        `Subject description save failed (${res.status}): ${await res.text()}`,
+      );
       return;
     }
     setSubjects((prev) =>
@@ -2502,11 +3741,16 @@ export default function SettingsPage() {
     const description_text = topicDescriptionDrafts[topic_id] ?? "";
     const res = await fetch("/topics", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ topic_id, description_text }),
     });
     if (!res.ok) {
-      setStatus(`Topic description save failed (${res.status}): ${await res.text()}`);
+      setStatus(
+        `Topic description save failed (${res.status}): ${await res.text()}`,
+      );
       return;
     }
     setTopicsBySubject((prev) => {
@@ -2532,7 +3776,10 @@ export default function SettingsPage() {
     for (const [id, color_hex] of updates) {
       const res = await fetch("/tutors", {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ tutor_id: id, color_hex }),
       });
       if (!res.ok) {
@@ -2545,7 +3792,10 @@ export default function SettingsPage() {
     if (email) {
       const res = await fetch("/tutors", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           email,
           first_name: newTutor.first_name.trim() || null,
@@ -2559,10 +3809,14 @@ export default function SettingsPage() {
       }
     }
 
-    const tutorRes = await fetch("/tutors?archived=all", { headers: { Authorization: `Bearer ${token}` } });
+    const tutorRes = await fetch("/tutors?archived=all", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (tutorRes.ok) {
       const tutorList = (await tutorRes.json()) as Tutor[];
-      const activeTutors = Array.isArray(tutorList) ? tutorList.filter((t) => !t.archived_at) : [];
+      const activeTutors = Array.isArray(tutorList)
+        ? tutorList.filter((t) => !t.archived_at)
+        : [];
       setTutors(activeTutors);
       const draftMap: Record<string, string> = {};
       activeTutors.forEach((t) => {
@@ -2572,7 +3826,12 @@ export default function SettingsPage() {
       tutorDraftsInitialRef.current = draftMap;
     }
 
-    setNewTutor({ first_name: "", last_name: "", email: "", color_hex: DEFAULT_TUTOR_COLOR });
+    setNewTutor({
+      first_name: "",
+      last_name: "",
+      email: "",
+      color_hex: DEFAULT_TUTOR_COLOR,
+    });
     setStatus("Tutors saved.");
   }
 
@@ -2609,7 +3868,9 @@ export default function SettingsPage() {
             });
           } else {
             const allChildren = studentsByParentId.get(parentId) ?? [];
-            const hasArchived = allChildren.some((student) => student.archived_at);
+            const hasArchived = allChildren.some(
+              (student) => student.archived_at,
+            );
             if (hasArchived) {
               const items = allChildren.map((student) => ({
                 id: student.id,
@@ -2715,7 +3976,12 @@ export default function SettingsPage() {
         if (projected > limit) {
           const needed = projected - limit;
           const candidates = leads
-            .filter((lead) => !lead.archived_at && !archiveIds.has(lead.id) && !unarchiveIds.has(lead.id))
+            .filter(
+              (lead) =>
+                !lead.archived_at &&
+                !archiveIds.has(lead.id) &&
+                !unarchiveIds.has(lead.id),
+            )
             .sort((a, b) => {
               const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
               const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -2746,13 +4012,18 @@ export default function SettingsPage() {
 
     const toArchive = ops.filter((op) => op.archived);
     const toUnarchive = ops.filter((op) => !op.archived);
-    const formatLine = (op: ArchiveOp) => `${ARCHIVE_LABELS[op.type]}: ${op.label}`;
+    const formatLine = (op: ArchiveOp) =>
+      `${ARCHIVE_LABELS[op.type]}: ${op.label}`;
     const summary = [
       `Archive (${toArchive.length}):`,
-      toArchive.length ? toArchive.map((op) => `- ${formatLine(op)}`).join("\n") : "- None",
+      toArchive.length
+        ? toArchive.map((op) => `- ${formatLine(op)}`).join("\n")
+        : "- None",
       "",
       `Unarchive (${toUnarchive.length}):`,
-      toUnarchive.length ? toUnarchive.map((op) => `- ${formatLine(op)}`).join("\n") : "- None",
+      toUnarchive.length
+        ? toUnarchive.map((op) => `- ${formatLine(op)}`).join("\n")
+        : "- None",
     ].join("\n");
 
     const confirmed = window.confirm(summary);
@@ -2760,7 +4031,10 @@ export default function SettingsPage() {
 
     const accessToken = (await confirmWithPassword()) ?? token;
     if (!accessToken) return;
-    const headers = { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" };
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json",
+    };
 
     const updatedByType = new Map<ArchiveType, Map<string, boolean>>();
     const recordUpdate = (type: ArchiveType, id: string, archived: boolean) => {
@@ -2833,7 +4107,9 @@ export default function SettingsPage() {
 
       if (!res || !res.ok) {
         const detail = res ? await res.text() : "Unknown error";
-        setStatus(`Archive update failed for ${ARCHIVE_LABELS[op.type]} (${res?.status ?? "?"}): ${detail}`);
+        setStatus(
+          `Archive update failed for ${ARCHIVE_LABELS[op.type]} (${res?.status ?? "?"}): ${detail}`,
+        );
         return;
       }
 
@@ -2848,7 +4124,10 @@ export default function SettingsPage() {
       setParents((prev) =>
         prev.map((parent) => {
           const archived = updates.get(parent.id);
-          const nextParent = archived === undefined ? parent : { ...parent, archived_at: archived ? now : null };
+          const nextParent =
+            archived === undefined
+              ? parent
+              : { ...parent, archived_at: archived ? now : null };
           if (!nextParent.students || !studentUpdates) return nextParent;
           return {
             ...nextParent,
@@ -2868,7 +4147,9 @@ export default function SettingsPage() {
       setStudents((prev) =>
         prev.map((student) => {
           const archived = updates.get(student.id);
-          return archived === undefined ? student : { ...student, archived_at: archived ? now : null };
+          return archived === undefined
+            ? student
+            : { ...student, archived_at: archived ? now : null };
         }),
       );
     }
@@ -2878,7 +4159,9 @@ export default function SettingsPage() {
       setLeads((prev) =>
         prev.map((lead) => {
           const archived = updates.get(lead.id);
-          return archived === undefined ? lead : { ...lead, archived_at: archived ? now : null };
+          return archived === undefined
+            ? lead
+            : { ...lead, archived_at: archived ? now : null };
         }),
       );
     }
@@ -2888,7 +4171,9 @@ export default function SettingsPage() {
       setLocations((prev) =>
         prev.map((location) => {
           const archived = updates.get(location.id);
-          return archived === undefined ? location : { ...location, archived_at: archived ? now : null };
+          return archived === undefined
+            ? location
+            : { ...location, archived_at: archived ? now : null };
         }),
       );
     }
@@ -2900,7 +4185,9 @@ export default function SettingsPage() {
         Object.entries(prev).forEach(([locationId, rooms]) => {
           next[locationId] = rooms.map((room) => {
             const archived = updates.get(room.id);
-            return archived === undefined ? room : { ...room, archived_at: archived ? now : null };
+            return archived === undefined
+              ? room
+              : { ...room, archived_at: archived ? now : null };
           });
         });
         return next;
@@ -2914,7 +4201,9 @@ export default function SettingsPage() {
         Object.entries(prev).forEach(([locationId, services]) => {
           next[locationId] = services.map((service) => {
             const archived = updates.get(service.id);
-            return archived === undefined ? service : { ...service, is_active: !archived };
+            return archived === undefined
+              ? service
+              : { ...service, is_active: !archived };
           });
         });
         return next;
@@ -2928,7 +4217,9 @@ export default function SettingsPage() {
       const updates = updatedByType.get("SUBJECTS")!;
       nextSubjects = subjects.map((subject) => {
         const archived = updates.get(subject.id);
-        return archived === undefined ? subject : { ...subject, archived_at: archived ? now : null };
+        return archived === undefined
+          ? subject
+          : { ...subject, archived_at: archived ? now : null };
       });
       setSubjects(nextSubjects);
     }
@@ -2939,7 +4230,9 @@ export default function SettingsPage() {
       Object.entries(topicsBySubject).forEach(([subjectId, topics]) => {
         updatedTopics[subjectId] = topics.map((topic) => {
           const archived = updates.get(topic.id);
-          return archived === undefined ? topic : { ...topic, archived_at: archived ? now : null };
+          return archived === undefined
+            ? topic
+            : { ...topic, archived_at: archived ? now : null };
         });
       });
       nextTopics = updatedTopics;
@@ -2971,10 +4264,23 @@ export default function SettingsPage() {
     if (activeTab === "SERVICES") return saveServices();
     if (activeTab === "SUBJECTS_TOPICS") return saveSubjectsTopics();
     if (activeTab === "CLIENTS") return saveClientFields();
+    if (activeTab === "CONNECTIONS") {
+      return saveAllConnections();
+    }
     if (activeTab === "PIPELINE") return savePipelineSettings();
     if (activeTab === "TUTORS") return saveTutors();
-    if (activeTab === "PRODUCTS") return saveProducts();
-    if (activeTab === "MARKETING" && marketingTab === "PRODUCTS") return saveProducts();
+    if (activeTab === "PRODUCTS") {
+      if (marketingTab === "COMPANY") return saveCompanyContent();
+      if (
+        marketingTab === "SERVICES" ||
+        marketingTab === "SUBJECTS" ||
+        marketingTab === "TOPICS"
+      ) {
+        setStatus("Use the Save button on each card in this tab.");
+        return;
+      }
+      return saveProducts();
+    }
   }
 
   async function loadCatalogMedia(params: {
@@ -3024,7 +4330,10 @@ export default function SettingsPage() {
     if (params.service_code) payload.service_code = params.service_code;
     const res = await fetch("/catalog-media", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -3057,7 +4366,10 @@ export default function SettingsPage() {
     if (!token) return;
     const res = await fetch("/catalog-media", {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ id }),
     });
     if (!res.ok) {
@@ -3072,7 +4384,10 @@ export default function SettingsPage() {
     if (!token) return current;
     const res = await fetch("/api/ai-rewrite", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ prompt, current }),
     });
     if (!res.ok) {
@@ -3115,6 +4430,391 @@ export default function SettingsPage() {
     });
   }
 
+  const toggleSocialPlatform = (providerId: ConnectionProviderId) => {
+    setSocialDraft((prev) => {
+      const has = prev.platform_ids.includes(providerId);
+      return {
+        ...prev,
+        platform_ids: has
+          ? prev.platform_ids.filter((id) => id !== providerId)
+          : [...prev.platform_ids, providerId],
+      };
+    });
+  };
+
+  const toggleSocialMedia = (mediaId: string) => {
+    setSocialDraft((prev) => {
+      const has = prev.selected_media_ids.includes(mediaId);
+      return {
+        ...prev,
+        selected_media_ids: has
+          ? prev.selected_media_ids.filter((id) => id !== mediaId)
+          : [...prev.selected_media_ids, mediaId],
+      };
+    });
+  };
+
+  function setSocialSourceTypeSelection(next: SocialSourceType) {
+    setSocialSourceType(next);
+    setSocialDraft((prev) => ({
+      ...prev,
+      product_id: "",
+      service_code: "",
+      subject_id: "",
+      topic_id: "",
+      selected_media_ids: [],
+      selected_template_id: "",
+    }));
+  }
+
+  async function handleSocialTemplateUpload(file: File) {
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setSocialTemplates((prev) => [
+        ...prev,
+        {
+          id: `template-${Date.now()}-${file.name}`,
+          name: file.name,
+          data_url: dataUrl,
+        },
+      ]);
+    } catch (err) {
+      setStatus(
+        err instanceof Error ? err.message : "Unable to read template file.",
+      );
+    }
+  }
+
+  function removeSocialTemplate(templateId: string) {
+    setSocialTemplates((prev) => prev.filter((item) => item.id !== templateId));
+  }
+
+  async function generateSocialCopy() {
+    const platforms = socialDraft.platform_ids
+      .map((id) => getConnectionProvider(id)?.label ?? id)
+      .filter(Boolean);
+    if (!platforms.length) {
+      setStatus("Select at least one connected platform to generate copy.");
+      return;
+    }
+    const serviceDescription =
+      (socialDraft.service_code
+        ? serviceDescriptionDrafts[socialDraft.service_code]
+        : null) ??
+      socialSelectedService?.description_text ??
+      "";
+    const companyDescription =
+      org?.company_description_text?.trim() || socialDraft.company_description;
+    const aboutUs =
+      org?.about_us_text?.trim() ||
+      org?.about_text?.trim() ||
+      socialDraft.about_us;
+    const slogan =
+      org?.slogan_text?.trim() ||
+      org?.headline_text?.trim() ||
+      socialDraft.slogan;
+    const subjectDescription = socialDraft.subject_id
+      ? (subjectDescriptionDrafts[socialDraft.subject_id] ?? "")
+      : "";
+    const topicDescription = socialDraft.topic_id
+      ? (topicDescriptionDrafts[socialDraft.topic_id] ?? "")
+      : "";
+    const promptLines = [
+      "Create platform-specific social media post copy for a tutoring business.",
+      `Platforms: ${platforms.join(", ")}.`,
+      socialDraft.template_style
+        ? `Template style: ${socialDraft.template_style}.`
+        : "",
+      socialSelectedProduct?.product_name
+        ? `Product: ${socialSelectedProduct.product_name}.`
+        : "",
+      socialSelectedProduct?.product_slogan_text
+        ? `Product slogan: ${socialSelectedProduct.product_slogan_text}.`
+        : "",
+      socialSelectedProduct?.product_description_text
+        ? `Product description: ${socialSelectedProduct.product_description_text}.`
+        : "",
+      socialSelectedService
+        ? `Service type: ${socialSelectedService.display_name ?? socialSelectedService.service_code}.`
+        : "",
+      serviceDescription ? `Service description: ${serviceDescription}.` : "",
+      socialSelectedSubject
+        ? `Subject: ${socialSelectedSubject.subject_name}.`
+        : "",
+      subjectDescription ? `Subject description: ${subjectDescription}.` : "",
+      socialSelectedTopic ? `Topic: ${socialSelectedTopic.topic_name}.` : "",
+      topicDescription ? `Topic description: ${topicDescription}.` : "",
+      companyDescription ? `Company description: ${companyDescription}.` : "",
+      aboutUs ? `About us: ${aboutUs}.` : "",
+      slogan ? `Company slogan: ${slogan}.` : "",
+      org?.mission_text ? `Mission: ${org.mission_text}.` : "",
+      org?.tutoring_style_text
+        ? `Tutoring style: ${org.tutoring_style_text}.`
+        : "",
+      org?.testimonials_text ? `Testimonials: ${org.testimonials_text}.` : "",
+      org?.cta_text ? `Default CTA: ${org.cta_text}.` : "",
+      socialDraft.start_date || socialDraft.end_date
+        ? `Dates: ${socialDraft.start_date || "TBD"} to ${socialDraft.end_date || "TBD"}.`
+        : "",
+      socialDraft.age_range ? `Age range: ${socialDraft.age_range}.` : "",
+      socialDraft.price_detail ? `Price: ${socialDraft.price_detail}.` : "",
+      socialDraft.location_detail
+        ? `Location: ${socialDraft.location_detail}.`
+        : "",
+      socialDraft.enrollment_link
+        ? `Enrollment link: ${socialDraft.enrollment_link}.`
+        : "",
+      socialDraft.headline ? `Headline: ${socialDraft.headline}.` : "",
+      socialDraft.call_to_action
+        ? `Call to action: ${socialDraft.call_to_action}.`
+        : "",
+      socialDraft.hashtags
+        ? `Suggested hashtags: ${socialDraft.hashtags}.`
+        : "",
+      socialDraft.extra_notes
+        ? `Additional notes: ${socialDraft.extra_notes}.`
+        : "",
+      "Output requirements:",
+      "- Provide one section per platform with a heading 'Platform: <name>'.",
+      "- Keep length appropriate for each platform; keep X under 240 characters.",
+      "- Include a clear CTA if provided.",
+      "- Use friendly, confident tone for parents and students.",
+    ].filter(Boolean);
+
+    const aiKey = "social:copy";
+    setAiLoading(aiKey, true);
+    try {
+      const previous = socialDraft.generated_copy;
+      const next = await rewriteWithAi(promptLines.join("\n"), previous);
+      setSocialDraft((prev) => ({ ...prev, generated_copy: next }));
+      setAiRewrite(aiKey, previous, next);
+    } finally {
+      setAiLoading(aiKey, false);
+    }
+  }
+
+  async function generateSocialImage() {
+    const width = socialAspect.width;
+    const height = socialAspect.height;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const loadImage = (src: string) =>
+      new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Unable to load image"));
+        img.src = src;
+      });
+
+    const drawCover = (img: HTMLImageElement) => {
+      const scale = Math.max(width / img.width, height / img.height);
+      const drawWidth = img.width * scale;
+      const drawHeight = img.height * scale;
+      const offsetX = (width - drawWidth) / 2;
+      const offsetY = (height - drawHeight) / 2;
+      ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+    };
+
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(0, 0, width, height);
+
+    if (socialPreviewMedia?.url) {
+      try {
+        const img = await loadImage(socialPreviewMedia.url);
+        drawCover(img);
+      } catch {
+        // ignore image load failure
+      }
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(0, 0, width, height);
+
+    const wrapText = (
+      text: string,
+      x: number,
+      y: number,
+      maxWidth: number,
+      lineHeight: number,
+    ) => {
+      const words = text.split(" ");
+      let line = "";
+      let cursorY = y;
+      words.forEach((word, idx) => {
+        const test = line ? `${line} ${word}` : word;
+        const metrics = ctx.measureText(test);
+        if (metrics.width > maxWidth && line) {
+          ctx.fillText(line, x, cursorY);
+          line = word;
+          cursorY += lineHeight;
+        } else {
+          line = test;
+        }
+        if (idx === words.length - 1) {
+          ctx.fillText(line, x, cursorY);
+        }
+      });
+      return cursorY;
+    };
+
+    const headline =
+      socialDraft.headline ||
+      socialSelectedProduct?.product_name ||
+      socialSelectedSubject?.subject_name ||
+      "Program";
+
+    if (socialDraft.layout_preset === "Bold headline") {
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `800 ${Math.round(height * 0.1)}px "Century Gothic", "Trebuchet MS", sans-serif`;
+      wrapText(headline, width / 2, height * 0.45, width * 0.8, height * 0.12);
+      ctx.font = `600 ${Math.round(height * 0.04)}px "Century Gothic", "Trebuchet MS", sans-serif`;
+      ctx.fillText(
+        socialDraft.call_to_action || "Enroll today",
+        width / 2,
+        height * 0.7,
+      );
+    } else if (socialDraft.layout_preset === "Band rows") {
+      const bands = 4;
+      const bandHeight = height / (bands + 1);
+      const lines = [
+        headline,
+        socialDraft.start_date || "Dates",
+        socialDraft.age_range || "Age range",
+        socialDraft.call_to_action || "Call to action",
+      ];
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      lines.forEach((line, idx) => {
+        const y = bandHeight * (idx + 1);
+        ctx.fillStyle = "rgba(255,157,249,0.7)";
+        ctx.fillRect(
+          width * 0.05,
+          y - bandHeight * 0.4,
+          width * 0.9,
+          bandHeight * 0.8,
+        );
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `700 ${Math.round(height * 0.05)}px "Century Gothic", "Trebuchet MS", sans-serif`;
+        wrapText(line, width * 0.08, y, width * 0.84, height * 0.06);
+      });
+    } else if (socialDraft.layout_preset === "Photo + footer") {
+      ctx.fillStyle = "rgba(11,31,95,0.85)";
+      ctx.fillRect(0, height * 0.72, width, height * 0.28);
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.font = `800 ${Math.round(height * 0.07)}px "Century Gothic", "Trebuchet MS", sans-serif`;
+      ctx.fillText(headline, width * 0.06, height * 0.76);
+      ctx.font = `600 ${Math.round(height * 0.04)}px "Century Gothic", "Trebuchet MS", sans-serif`;
+      wrapText(
+        socialDraft.call_to_action || socialDraft.location_detail || "Join us",
+        width * 0.06,
+        height * 0.86,
+        width * 0.88,
+        height * 0.05,
+      );
+    } else if (socialDraft.layout_preset === "Schedule list") {
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(0, 0, width, height * 0.2);
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.font = `700 ${Math.round(height * 0.05)}px "Century Gothic", "Trebuchet MS", sans-serif`;
+      ctx.fillText(
+        socialDraft.start_date
+          ? `Dates: ${socialDraft.start_date}${socialDraft.end_date ? ` - ${socialDraft.end_date}` : ""}`
+          : "Dates / schedule",
+        width * 0.05,
+        height * 0.1,
+      );
+      const lines = (
+        socialDraft.extra_notes ||
+        "Monday: Activity\nTuesday: Activity\nWednesday: Activity"
+      )
+        .split("\n")
+        .slice(0, 5);
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(width * 0.05, height * 0.25, width * 0.9, height * 0.55);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `500 ${Math.round(height * 0.04)}px "Century Gothic", "Trebuchet MS", sans-serif`;
+      let y = height * 0.32;
+      lines.forEach((line) => {
+        ctx.fillText(line, width * 0.08, y);
+        y += height * 0.08;
+      });
+    }
+
+    const dataUrl = canvas.toDataURL("image/png");
+    setSocialDraft((prev) => ({ ...prev, generated_image_url: dataUrl }));
+  }
+
+  async function saveSocialPost(status: "DRAFT" | "READY" = "READY") {
+    if (!token) return;
+    const title =
+      socialDraft.headline ||
+      socialSelectedProduct?.product_name ||
+      socialSelectedSubject?.subject_name ||
+      socialSelectedTopic?.topic_name ||
+      "Social post";
+    setStatus(null);
+    const res = await fetch("/marketing-posts", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        title,
+        status,
+        platform_ids: socialDraft.platform_ids,
+        template_style: socialDraft.template_style,
+        layout_preset: socialDraft.layout_preset,
+        aspect_ratio: socialDraft.aspect_ratio,
+        copy_text: socialDraft.generated_copy,
+        image_url: socialDraft.generated_image_url || null,
+        media_selection: {
+          selected_media_ids: socialDraft.selected_media_ids,
+          selected_template_id: socialDraft.selected_template_id,
+          product_id: socialDraft.product_id,
+          subject_id: socialDraft.subject_id,
+          topic_id: socialDraft.topic_id,
+          service_code: socialDraft.service_code,
+        },
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      setStatus(`Save post failed (${res.status}): ${text}`);
+      return;
+    }
+    setStatus(
+      status === "DRAFT"
+        ? "Draft saved to Marketing list."
+        : "Post saved to Marketing list.",
+    );
+  }
+
+  function discardSocialCopy() {
+    setSocialDraft((prev) => ({ ...prev, generated_copy: "" }));
+    clearAiRewrite("social:copy");
+    setStatus("Copy discarded.");
+  }
+
+  function clearSocialBuilder() {
+    setSocialDraft({ ...EMPTY_SOCIAL_DRAFT });
+    setSocialTemplates([]);
+    setSocialSourceType("");
+    clearAiRewrite("social:copy");
+    setStatus("Post builder discarded.");
+  }
+
   async function addService(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -3123,19 +4823,30 @@ export default function SettingsPage() {
     const name = newService.name.trim();
     const cents = dollarsToCents(newService.price);
     const capacity = Number.parseInt(newService.capacity || "0", 10);
-    const unitLength = Number.parseInt(newService.unit_length_minutes || "0", 10);
+    const unitLength = Number.parseInt(
+      newService.unit_length_minutes || "0",
+      10,
+    );
     if (!locId) return setStatus("Choose a location.");
     if (!name) return setStatus("Enter a service name.");
-    if (cents == null) return setStatus("Enter a valid unit price (e.g. 99.95).");
-    if (!Number.isInteger(capacity) || capacity < 1) return setStatus("Enter a valid capacity (>= 1).");
-    if (!Number.isInteger(unitLength) || unitLength < 1) return setStatus("Enter a valid unit length in minutes (>= 1).");
+    if (cents == null)
+      return setStatus("Enter a valid unit price (e.g. 99.95).");
+    if (!Number.isInteger(capacity) || capacity < 1)
+      return setStatus("Enter a valid capacity (>= 1).");
+    if (!Number.isInteger(unitLength) || unitLength < 1)
+      return setStatus("Enter a valid unit length in minutes (>= 1).");
 
-    const existingCodes = new Set((servicesByLocation[locId] ?? []).map((s) => s.service_code));
+    const existingCodes = new Set(
+      (servicesByLocation[locId] ?? []).map((s) => s.service_code),
+    );
     const service_code = makeUniqueServiceCode(name, existingCodes);
 
     const res = await fetch("/services-offered", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         location_id: locId,
         service_code,
@@ -3151,9 +4862,44 @@ export default function SettingsPage() {
       return;
     }
     const created = (await res.json()) as ServiceOffered;
-    setServicesByLocation((prev) => ({ ...prev, [locId]: [...(prev[locId] ?? []), created] }));
-    setNewService({ location_id: locId, name: "", price: "", capacity: "1", unit_length_minutes: "60" });
+    setServicesByLocation((prev) => ({
+      ...prev,
+      [locId]: [...(prev[locId] ?? []), created],
+    }));
+    setNewService({
+      location_id: locId,
+      name: "",
+      price: "",
+      capacity: "1",
+      unit_length_minutes: "60",
+    });
     setStatus("Service added.");
+  }
+
+  async function saveCompanyContent() {
+    if (!token) return;
+    setStatus(null);
+    const res = await fetch("/organizations", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        company_description_text: companyDraft.company_description_text,
+        mission_text: companyDraft.mission_text,
+        tutoring_style_text: companyDraft.tutoring_style_text,
+        about_us_text: companyDraft.about_us_text,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      setStatus(`Company content save failed (${res.status}): ${text}`);
+      return;
+    }
+    const updated = (await res.json()) as Org;
+    setOrg(updated);
+    setStatus("Company content saved.");
   }
 
   async function addSubject(e: FormEvent) {
@@ -3164,7 +4910,13 @@ export default function SettingsPage() {
     const newKey = `custom:${normalizeKey(subject_name)}:${Date.now()}`;
     setSubjectDrafts((prev) => [
       ...prev,
-      { key: newKey, name: subject_name, included: true, topics: [], is_catalog: false },
+      {
+        key: newKey,
+        name: subject_name,
+        included: true,
+        topics: [],
+        is_catalog: false,
+      },
     ]);
     setNewSubjectName("");
     setStatus("Subject added. Remember to Save.");
@@ -3197,7 +4949,10 @@ export default function SettingsPage() {
     }
     const password = await openPasswordPrompt("confirm this action");
     if (!password) return null;
-    const { error } = await supabase.auth.signInWithPassword({ email: userEmail, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password,
+    });
     if (error) {
       setStatus("Password is incorrect.");
       return null;
@@ -3231,12 +4986,29 @@ export default function SettingsPage() {
   }
 
   function getNewRoomDraft(locationId: string) {
-    return newRoomDrafts[locationId] ?? { room_name: "", room_number: "", floor_number: "" };
+    return (
+      newRoomDrafts[locationId] ?? {
+        room_name: "",
+        room_number: "",
+        floor_number: "",
+      }
+    );
   }
 
-  function updateNewRoomDraft(locationId: string, updates: Partial<{ room_name: string; room_number: string; floor_number: string }>) {
+  function updateNewRoomDraft(
+    locationId: string,
+    updates: Partial<{
+      room_name: string;
+      room_number: string;
+      floor_number: string;
+    }>,
+  ) {
     setNewRoomDrafts((prev) => {
-      const existing = prev[locationId] ?? { room_name: "", room_number: "", floor_number: "" };
+      const existing = prev[locationId] ?? {
+        room_name: "",
+        room_number: "",
+        floor_number: "",
+      };
       return { ...prev, [locationId]: { ...existing, ...updates } };
     });
   }
@@ -3262,7 +5034,10 @@ export default function SettingsPage() {
     }
     const res = await fetch("/locations", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -3270,7 +5045,9 @@ export default function SettingsPage() {
       return;
     }
     const updated = (await res.json()) as Location;
-    setLocations((prev) => prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
+    setLocations((prev) =>
+      prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)),
+    );
     cancelEditLocation();
     setStatus("Location updated.");
   }
@@ -3284,7 +5061,10 @@ export default function SettingsPage() {
     }
     const res = await fetch("/rooms", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         location_id: locationId,
         room_name: draft.room_name.trim(),
@@ -3300,7 +5080,8 @@ export default function SettingsPage() {
       } catch {
         message = "";
       }
-      const cleaned = message && message.length < 140 ? message : "Please try again.";
+      const cleaned =
+        message && message.length < 140 ? message : "Please try again.";
       setStatus(`Room add failed (${res.status}). ${cleaned}`);
       return;
     }
@@ -3309,7 +5090,10 @@ export default function SettingsPage() {
       ...prev,
       [locationId]: [created, ...(prev[locationId] ?? [])],
     }));
-    setNewRoomDrafts((prev) => ({ ...prev, [locationId]: { room_name: "", room_number: "", floor_number: "" } }));
+    setNewRoomDrafts((prev) => ({
+      ...prev,
+      [locationId]: { room_name: "", room_number: "", floor_number: "" },
+    }));
     setStatus("Room added.");
   }
 
@@ -3318,7 +5102,10 @@ export default function SettingsPage() {
     if (!accessToken) return;
     const res = await fetch("/locations", {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ location_id: locId }),
     });
     if (!res.ok) {
@@ -3329,11 +5116,16 @@ export default function SettingsPage() {
       } catch {
         message = "";
       }
-      const cleaned = message && message.length < 140 ? message : "Please try again.";
+      const cleaned =
+        message && message.length < 140 ? message : "Please try again.";
       setStatus(`Archive failed (${res.status}). ${cleaned}`);
       return;
     }
-    setLocations((prev) => prev.map((l) => (l.id === locId ? { ...l, archived_at: new Date().toISOString() } : l)));
+    setLocations((prev) =>
+      prev.map((l) =>
+        l.id === locId ? { ...l, archived_at: new Date().toISOString() } : l,
+      ),
+    );
     setStatus("Location archived.");
   }
 
@@ -3358,7 +5150,10 @@ export default function SettingsPage() {
     setStatus(null);
     const res = await fetch("/rooms", {
       method: "PATCH",
-      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         room_id: editRoomId,
         room_name: editRoomDraft.room_name,
@@ -3373,7 +5168,9 @@ export default function SettingsPage() {
     const updated = (await res.json()) as Room;
     setRoomsByLocation((prev) => ({
       ...prev,
-      [updated.location_id]: (prev[updated.location_id] ?? []).map((r) => (r.id === updated.id ? { ...r, ...updated } : r)),
+      [updated.location_id]: (prev[updated.location_id] ?? []).map((r) =>
+        r.id === updated.id ? { ...r, ...updated } : r,
+      ),
     }));
     cancelEditRoom();
     setStatus("Room updated.");
@@ -3384,7 +5181,10 @@ export default function SettingsPage() {
     if (!accessToken) return;
     const res = await fetch("/rooms", {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ room_id: room.id }),
     });
     if (!res.ok) {
@@ -3395,7 +5195,8 @@ export default function SettingsPage() {
       } catch {
         message = "";
       }
-      const cleaned = message && message.length < 140 ? message : "Please try again.";
+      const cleaned =
+        message && message.length < 140 ? message : "Please try again.";
       setStatus(`Archive failed (${res.status}). ${cleaned}`);
       return;
     }
@@ -3421,14 +5222,22 @@ export default function SettingsPage() {
               <nav className="grid gap-1 p-2">
                 {tabs.map((t) => (
                   <Fragment key={t.key}>
-                    {TAB_DIVIDERS.has(t.key) ? <div className="my-2 h-px bg-gray-200" /> : null}
+                    {TAB_DIVIDERS.has(t.key) ? (
+                      <div className="my-2 h-px bg-gray-200" />
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => void switchTab(t.key)}
-                      style={{ "--tab-icon-color": SETTINGS_TAB_ICON_COLORS[t.key] } as CSSProperties}
+                      style={
+                        {
+                          "--tab-icon-color": SETTINGS_TAB_ICON_COLORS[t.key],
+                        } as CSSProperties
+                      }
                       className={[
                         "group w-full rounded-lg px-3 py-2 text-left text-sm transition",
-                        t.key === activeTab ? "bg-gray-100 font-semibold" : "hover:bg-gray-50",
+                        t.key === activeTab
+                          ? "bg-gray-100 font-semibold"
+                          : "hover:bg-gray-50",
                       ].join(" ")}
                     >
                       <span className="flex items-center justify-between gap-2">
@@ -3445,7 +5254,11 @@ export default function SettingsPage() {
                           />
                           <span>{t.label}</span>
                         </span>
-                        {dirtyTabs[t.key] ? <span className="text-xs text-purple-700">(unsaved)</span> : null}
+                        {dirtyTabs[t.key] ? (
+                          <span className="text-xs text-purple-700">
+                            (unsaved)
+                          </span>
+                        ) : null}
                       </span>
                     </button>
                   </Fragment>
@@ -3458,97 +5271,234 @@ export default function SettingsPage() {
             <div className="flex flex-col gap-3 border-b border-gray-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div>
                 <h1 className="m-0 text-xl font-bold">
-                  {TAB_HEADINGS[activeTab] ?? tabs.find((t) => t.key === activeTab)?.label ?? "Settings"}
+                  {TAB_HEADINGS[activeTab] ??
+                    tabs.find((t) => t.key === activeTab)?.label ??
+                    "Settings"}
                 </h1>
-                <p className="mt-1 text-sm text-gray-600">Save or discard changes before switching sections.</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  {activeTab === "MARKETING"
+                    ? "Build AI powered social posts and generate content for manual or direct posting."
+                    : "Save or discard changes before switching sections."}
+                </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                  disabled={!dirtyTabs[activeTab]}
-                  onClick={() => discardActive()}
-                >
-                  Discard
-                </button>
-                <button
-                  type="button"
-                  className="itutoros-settings-btn itutoros-settings-btn-primary"
-                  disabled={!dirtyTabs[activeTab]}
-                  onClick={() => onSave()}
-                >
-                  Save
-                </button>
-              </div>
+              {activeTab !== "MARKETING" ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                    disabled={!dirtyTabs[activeTab]}
+                    onClick={() => discardActive()}
+                  >
+                    Discard
+                  </button>
+                  <button
+                    type="button"
+                    className="itutoros-settings-btn itutoros-settings-btn-primary"
+                    disabled={!dirtyTabs[activeTab]}
+                    onClick={() => onSave()}
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="px-4 py-6 sm:px-6">
               {loading ? <p>Loading…</p> : null}
-              {status ? <p className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">{status}</p> : null}
+              {status ? (
+                <p className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+                  {status}
+                </p>
+              ) : null}
 
               {!loading && activeTab === "ACCOUNT" ? (
                 <div className="grid gap-6">
-                  <div className="grid gap-1">
-                    <div className="text-sm text-gray-600">Logged in as</div>
-                    <div className="text-base font-semibold">{userEmail ?? "—"}</div>
-                  </div>
-
-                  {!isTutorOnly ? (
+                  <div className="grid gap-4 sm:grid-cols-3">
                     <div className="grid gap-1">
-                      <div className="text-sm text-gray-600">Plan</div>
-                      <div className="flex items-center gap-3 text-base font-semibold">
-                        {planLabel(org?.subscription_plan)}
-                        <a
-                          href={checkoutHref}
-                          className="text-sm font-semibold text-[#7200dc] transition-colors hover:text-[#00c5dc]"
-                          onClick={async (e) => {
-                            e.preventDefault();
-                            const accessToken = await confirmWithPassword();
-                            if (!accessToken) return;
-                            window.location.href = checkoutHref;
+                      <div className="text-sm text-gray-600">Logged in as</div>
+                      <div className="text-base font-semibold">
+                        {userEmail ?? "—"}
+                      </div>
+                    </div>
+                    <div className="grid gap-1">
+                      <div className="text-sm text-gray-600">
+                        Organization ID
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <div className="font-mono text-sm text-gray-500">
+                          {org?.id ?? "—"}
+                        </div>
+                        <button
+                          type="button"
+                          className="flex w-fit items-center gap-2 rounded-full border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-gray-300 hover:text-gray-700"
+                          disabled={!org?.id}
+                          aria-label="Copy organization id"
+                          onClick={() => {
+                            if (!org?.id) return;
+                            void navigator.clipboard?.writeText(org.id);
+                            setStatus("Organization ID copied.");
                           }}
                         >
-                          Change plan
-                        </a>
+                          <HugeiconsIcon icon={Copy01Icon} size={14} />
+                          Copy ID
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid gap-1">
+                      <div className="text-sm text-gray-600">
+                        iTutorOS member since
+                      </div>
+                      <div className="text-base font-semibold">
+                        {org?.created_at
+                          ? formatDateWithPattern(org.created_at, dateFormat)
+                          : "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-gray-200" />
+
+                  {!isTutorOnly ? (
+                    <div className="grid gap-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-gray-700">
+                          Plan
+                        </div>
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                          onClick={() => openBillingPortal()}
+                        >
+                          Manage billing
+                        </button>
+                      </div>
+                      <div
+                        className="rounded-2xl border border-gray-200 p-4 shadow-sm"
+                        style={{ backgroundColor: planCardColor(planKey) }}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                              Current plan
+                            </div>
+                            <div className="text-lg font-semibold text-[#0b1f5f]">
+                              {planLabel(planKey)}
+                            </div>
+                          </div>
+                          <span className="rounded-full bg-[#eef2ff] px-3 py-1 text-xs font-semibold text-[#0b1f5f]">
+                            Active
+                          </span>
+                        </div>
+                        <div className="mt-4 grid gap-2 text-sm text-gray-700 sm:grid-cols-3">
+                          {planSpecs.map((spec) => (
+                            <div
+                              key={spec.label}
+                              className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
+                            >
+                              <div className="text-xs uppercase text-gray-400">
+                                {spec.label}
+                              </div>
+                              <div className="text-base font-semibold text-gray-800">
+                                {spec.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3">
+                        <div className="text-sm font-semibold text-gray-700">
+                          Change Plan
+                        </div>
+                        <div className="itutoros-carousel">
+                          {otherPlans.map((key) => {
+                            const specs = planSpecsFor(key);
+                            return (
+                              <div
+                                key={key}
+                                className="itutoros-card-1 itutoros-carousel-card"
+                                style={{ backgroundColor: planCardColor(key) }}
+                              >
+                                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                  Plan
+                                </div>
+                                <div className="text-lg font-semibold text-[#0b1f5f]">
+                                  {planLabel(key)}
+                                </div>
+                                <div className="mt-3 grid gap-2 text-sm text-gray-700">
+                                  {specs.map((spec) => (
+                                    <div
+                                      key={spec.label}
+                                      className="flex items-center justify-between gap-2"
+                                    >
+                                      <span className="text-gray-500">
+                                        {spec.label}
+                                      </span>
+                                      <span className="font-semibold text-gray-800">
+                                        {spec.value}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="mt-4 w-full rounded-full border border-[#0b1f5f] px-3 py-2 text-sm font-semibold text-[#0b1f5f] transition hover:bg-[#0b1f5f] hover:text-white"
+                                  onClick={async () => {
+                                    const accessToken =
+                                      await confirmWithPassword();
+                                    if (!accessToken) return;
+                                    window.location.href = checkoutHrefFor(key);
+                                  }}
+                                >
+                                  Choose {planLabel(key)}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   ) : null}
 
-                  <div className="grid max-w-[360px] gap-2">
-                    <Label htmlFor="date-format">Date format</Label>
-                    <select
-                      id="date-format"
-                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                      value={accountForm.formData.date_format}
-                      onChange={(e) => accountForm.updateField("date_format", e.target.value)}
-                    >
-                      {DATE_FORMAT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="text-xs text-gray-500">Applies across the entire app.</div>
-                  </div>
+                  <div className="h-px bg-gray-200" />
 
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                      onClick={() => sendResetEmail()}
-                    >
-                      Reset password
-                    </button>
-                    {!isTutorOnly ? (
+                  <div className="grid gap-4">
+                    <div className="text-sm font-semibold text-gray-700">
+                      Account settings
+                    </div>
+                    <div className="grid max-w-[360px] gap-2">
+                      <Label htmlFor="date-format">Date format</Label>
+                      <select
+                        id="date-format"
+                        className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                        value={accountForm.formData.date_format}
+                        onChange={(e) =>
+                          accountForm.updateField(
+                            "date_format",
+                            normalizeDateFormat(e.target.value),
+                          )
+                        }
+                      >
+                        {DATE_FORMAT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="text-xs text-gray-500">
+                        Applies across the entire app.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        className="itutoros-settings-btn itutoros-settings-btn-primary"
-                        onClick={() => openBillingPortal()}
+                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                        onClick={() => sendResetEmail()}
                       >
-                        Manage billing
+                        Reset password
                       </button>
-                    ) : null}
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -3566,7 +5516,12 @@ export default function SettingsPage() {
                     <Input
                       id="business_name"
                       value={businessForm.formData.business_name}
-                      onChange={(e) => businessForm.updateField("business_name", e.target.value)}
+                      onChange={(e) =>
+                        businessForm.updateField(
+                          "business_name",
+                          e.target.value,
+                        )
+                      }
                     />
                   </div>
 
@@ -3576,7 +5531,9 @@ export default function SettingsPage() {
                       id="timezone"
                       className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                       value={businessForm.formData.timezone}
-                      onChange={(e) => businessForm.updateField("timezone", e.target.value)}
+                      onChange={(e) =>
+                        businessForm.updateField("timezone", e.target.value)
+                      }
                     >
                       {timezones.map((tz) => (
                         <option key={tz} value={tz}>
@@ -3588,11 +5545,18 @@ export default function SettingsPage() {
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="grid gap-2">
-                      <Label htmlFor="business_phone">Business phone number</Label>
+                      <Label htmlFor="business_phone">
+                        Business phone number
+                      </Label>
                       <Input
                         id="business_phone"
                         value={businessForm.formData.business_phone}
-                        onChange={(e) => businessForm.updateField("business_phone", e.target.value)}
+                        onChange={(e) =>
+                          businessForm.updateField(
+                            "business_phone",
+                            e.target.value,
+                          )
+                        }
                       />
                     </div>
                     <div className="grid gap-2">
@@ -3601,7 +5565,12 @@ export default function SettingsPage() {
                         id="business_email"
                         type="email"
                         value={businessForm.formData.business_email}
-                        onChange={(e) => businessForm.updateField("business_email", e.target.value)}
+                        onChange={(e) =>
+                          businessForm.updateField(
+                            "business_email",
+                            e.target.value,
+                          )
+                        }
                       />
                     </div>
                   </div>
@@ -3611,7 +5580,12 @@ export default function SettingsPage() {
                     <Input
                       id="addr1"
                       value={businessForm.formData.business_address_1}
-                      onChange={(e) => businessForm.updateField("business_address_1", e.target.value)}
+                      onChange={(e) =>
+                        businessForm.updateField(
+                          "business_address_1",
+                          e.target.value,
+                        )
+                      }
                     />
                   </div>
                   <div className="grid gap-2">
@@ -3619,7 +5593,12 @@ export default function SettingsPage() {
                     <Input
                       id="addr2"
                       value={businessForm.formData.business_address_2}
-                      onChange={(e) => businessForm.updateField("business_address_2", e.target.value)}
+                      onChange={(e) =>
+                        businessForm.updateField(
+                          "business_address_2",
+                          e.target.value,
+                        )
+                      }
                     />
                   </div>
 
@@ -3629,7 +5608,12 @@ export default function SettingsPage() {
                       <Input
                         id="city"
                         value={businessForm.formData.business_city}
-                        onChange={(e) => businessForm.updateField("business_city", e.target.value)}
+                        onChange={(e) =>
+                          businessForm.updateField(
+                            "business_city",
+                            e.target.value,
+                          )
+                        }
                       />
                     </div>
                     <div className="grid gap-2">
@@ -3638,7 +5622,12 @@ export default function SettingsPage() {
                         id="state"
                         className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                         value={businessForm.formData.business_state}
-                        onChange={(e) => businessForm.updateField("business_state", e.target.value)}
+                        onChange={(e) =>
+                          businessForm.updateField(
+                            "business_state",
+                            e.target.value,
+                          )
+                        }
                       >
                         <option value="">—</option>
                         {US_STATES.map((s) => (
@@ -3655,7 +5644,9 @@ export default function SettingsPage() {
                     <Input
                       id="zip"
                       value={businessForm.formData.business_zip}
-                      onChange={(e) => businessForm.updateField("business_zip", e.target.value)}
+                      onChange={(e) =>
+                        businessForm.updateField("business_zip", e.target.value)
+                      }
                     />
                   </div>
                 </form>
@@ -3663,44 +5654,74 @@ export default function SettingsPage() {
 
               {!loading && activeTab === "LOCATIONS" ? (
                 <div className="grid gap-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">Locations</div>
-                      <div className="text-xs text-gray-600">
-                        Plan limit: {locLimit === null ? "Unlimited" : `${locLimit}`} · Current: {billableLocations.length}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="grid gap-2">
+                      <div className="text-sm font-semibold">
+                        Active Location Capacity
                       </div>
+                      <div className="text-xs text-gray-600">
+                        Plan limit:{" "}
+                        {locLimit === null ? "Unlimited" : `${locLimit}`} ·{" "}
+                        <span
+                          className={usageColorClass(
+                            billableLocations.length,
+                            locLimit,
+                          )}
+                        >
+                          Current: {billableLocations.length}
+                        </span>
+                      </div>
+                      {!canAddLocation ? (
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-success w-fit"
+                          onClick={() => switchTab("ACCOUNT")}
+                        >
+                          Change Plan
+                        </button>
+                      ) : null}
                     </div>
-                    <a
-                      href={canAddLocation ? "/setup" : "#"}
-                      onClick={(e) => {
-                        if (!canAddLocation) e.preventDefault();
-                      }}
-                      className={[
-                        "itutoros-settings-btn itutoros-settings-btn-primary inline-flex items-center justify-center no-underline",
-                        canAddLocation ? "" : "pointer-events-none opacity-50",
-                      ].join(" ")}
-                    >
-                      Add location (opens Setup)
-                    </a>
+                    {canAddLocation ? (
+                      <a
+                        href="/setup"
+                        className="itutoros-settings-btn itutoros-settings-btn-primary inline-flex items-center justify-center no-underline"
+                      >
+                        Add location (opens Setup)
+                      </a>
+                    ) : null}
                   </div>
 
                   <div className="grid gap-4">
-                    {billableLocations.length === 0 ? <p className="text-sm text-gray-600">No locations yet.</p> : null}
+                    {billableLocations.length === 0 ? (
+                      <p className="text-sm text-gray-600">No locations yet.</p>
+                    ) : null}
                     {activeLocations
                       .filter((loc) => !loc.is_system)
                       .map((loc) => {
                         const rooms = roomsByLocation[loc.id] ?? [];
-                        const isEditing = editLocationId === loc.id && editLocationDraft;
-                        const locationIsVirtual = isEditing ? editLocationDraft.is_virtual : loc.is_virtual;
+                        const isEditing =
+                          editLocationId === loc.id && editLocationDraft;
+                        const locationIsVirtual = isEditing
+                          ? editLocationDraft.is_virtual
+                          : loc.is_virtual;
                         return (
-                          <div key={loc.id} className="rounded-xl border border-gray-200 p-4">
+                          <div
+                            key={loc.id}
+                            className="rounded-xl border border-gray-200 p-4"
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <div className="text-sm font-semibold">
                                   {loc.location_name}{" "}
-                                  {loc.archived_at ? <span className="text-xs text-gray-500">(archived)</span> : null}
+                                  {loc.archived_at ? (
+                                    <span className="text-xs text-gray-500">
+                                      (archived)
+                                    </span>
+                                  ) : null}
                                 </div>
-                                <div className="text-xs text-gray-600">{loc.is_virtual ? "Virtual" : "In-person"}</div>
+                                <div className="text-xs text-gray-600">
+                                  {loc.is_virtual ? "Virtual" : "In-person"}
+                                </div>
                               </div>
                               {!loc.archived_at ? (
                                 <div className="flex items-center gap-2">
@@ -3729,7 +5750,14 @@ export default function SettingsPage() {
                                   <Input
                                     value={editLocationDraft.location_name}
                                     onChange={(e) =>
-                                      setEditLocationDraft((prev) => (prev ? { ...prev, location_name: e.target.value } : prev))
+                                      setEditLocationDraft((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              location_name: e.target.value,
+                                            }
+                                          : prev,
+                                      )
                                     }
                                   />
                                 </div>
@@ -3738,19 +5766,36 @@ export default function SettingsPage() {
                                     type="checkbox"
                                     checked={editLocationDraft.is_virtual}
                                     onChange={(e) =>
-                                      setEditLocationDraft((prev) => (prev ? { ...prev, is_virtual: e.target.checked } : prev))
+                                      setEditLocationDraft((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              is_virtual: e.target.checked,
+                                            }
+                                          : prev,
+                                      )
                                     }
                                   />
                                   This is a virtual / online location
                                 </label>
                                 {editLocationDraft.is_virtual ? (
                                   <div className="grid gap-2">
-                                    <Label>Virtual location link (Zoom/Meet/etc.)</Label>
+                                    <Label>
+                                      Virtual location link (Zoom/Meet/etc.)
+                                    </Label>
                                     <Input
-                                      value={editLocationDraft.location_address_1}
+                                      value={
+                                        editLocationDraft.location_address_1
+                                      }
                                       onChange={(e) =>
                                         setEditLocationDraft((prev) =>
-                                          prev ? { ...prev, location_address_1: e.target.value } : prev,
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                location_address_1:
+                                                  e.target.value,
+                                              }
+                                            : prev,
                                         )
                                       }
                                       placeholder="https://zoom.us/j/..."
@@ -3761,10 +5806,18 @@ export default function SettingsPage() {
                                     <div className="grid gap-2">
                                       <Label>Address line 1</Label>
                                       <Input
-                                        value={editLocationDraft.location_address_1}
+                                        value={
+                                          editLocationDraft.location_address_1
+                                        }
                                         onChange={(e) =>
                                           setEditLocationDraft((prev) =>
-                                            prev ? { ...prev, location_address_1: e.target.value } : prev,
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  location_address_1:
+                                                    e.target.value,
+                                                }
+                                              : prev,
                                           )
                                         }
                                       />
@@ -3772,10 +5825,18 @@ export default function SettingsPage() {
                                     <div className="grid gap-2">
                                       <Label>Address line 2</Label>
                                       <Input
-                                        value={editLocationDraft.location_address_2}
+                                        value={
+                                          editLocationDraft.location_address_2
+                                        }
                                         onChange={(e) =>
                                           setEditLocationDraft((prev) =>
-                                            prev ? { ...prev, location_address_2: e.target.value } : prev,
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  location_address_2:
+                                                    e.target.value,
+                                                }
+                                              : prev,
                                           )
                                         }
                                       />
@@ -3784,10 +5845,18 @@ export default function SettingsPage() {
                                       <div className="grid gap-2 sm:col-span-2">
                                         <Label>City</Label>
                                         <Input
-                                          value={editLocationDraft.location_city}
+                                          value={
+                                            editLocationDraft.location_city
+                                          }
                                           onChange={(e) =>
                                             setEditLocationDraft((prev) =>
-                                              prev ? { ...prev, location_city: e.target.value } : prev,
+                                              prev
+                                                ? {
+                                                    ...prev,
+                                                    location_city:
+                                                      e.target.value,
+                                                  }
+                                                : prev,
                                             )
                                           }
                                         />
@@ -3796,10 +5865,18 @@ export default function SettingsPage() {
                                         <Label>State</Label>
                                         <select
                                           className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                          value={editLocationDraft.location_state}
+                                          value={
+                                            editLocationDraft.location_state
+                                          }
                                           onChange={(e) =>
                                             setEditLocationDraft((prev) =>
-                                              prev ? { ...prev, location_state: e.target.value } : prev,
+                                              prev
+                                                ? {
+                                                    ...prev,
+                                                    location_state:
+                                                      e.target.value,
+                                                  }
+                                                : prev,
                                             )
                                           }
                                         >
@@ -3818,7 +5895,12 @@ export default function SettingsPage() {
                                         value={editLocationDraft.location_zip}
                                         onChange={(e) =>
                                           setEditLocationDraft((prev) =>
-                                            prev ? { ...prev, location_zip: e.target.value } : prev,
+                                            prev
+                                              ? {
+                                                  ...prev,
+                                                  location_zip: e.target.value,
+                                                }
+                                              : prev,
                                           )
                                         }
                                       />
@@ -3845,31 +5927,57 @@ export default function SettingsPage() {
                             ) : null}
 
                             <div className="mt-4">
-                              <div className="text-xs font-semibold text-gray-600">Rooms</div>
+                              <div className="text-xs font-semibold text-gray-600">
+                                Rooms
+                              </div>
                               {locationIsVirtual ? (
                                 <div className="mt-2 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
-                                  Virtual locations don't use rooms. Any existing rooms will be archived.
+                                  Virtual locations don't use rooms. Any
+                                  existing rooms will be archived.
                                 </div>
                               ) : (
                                 <>
-                                  {rooms.length === 0 ? <div className="text-sm text-gray-600">No rooms.</div> : null}
+                                  {rooms.length === 0 ? (
+                                    <div className="text-sm text-gray-600">
+                                      No rooms.
+                                    </div>
+                                  ) : null}
                                   <ul className="mt-2 grid gap-2">
                                     {rooms
                                       .slice()
-                                      .sort((a, b) => Number(Boolean(a.archived_at)) - Number(Boolean(b.archived_at)))
+                                      .sort(
+                                        (a, b) =>
+                                          Number(Boolean(a.archived_at)) -
+                                          Number(Boolean(b.archived_at)),
+                                      )
                                       .map((room) => {
-                                        const roomEditing = editRoomId === room.id && editRoomDraft;
+                                        const roomEditing =
+                                          editRoomId === room.id &&
+                                          editRoomDraft;
                                         return (
-                                          <li key={room.id} className="rounded-lg border border-gray-100 p-2">
+                                          <li
+                                            key={room.id}
+                                            className="rounded-lg border border-gray-100 p-2"
+                                          >
                                             {roomEditing ? (
                                               <div className="grid gap-2 sm:grid-cols-4 sm:items-end">
                                                 <div className="grid gap-1 sm:col-span-2">
                                                   <Label>Room name</Label>
                                                   <Input
-                                                    value={editRoomDraft.room_name}
+                                                    value={
+                                                      editRoomDraft.room_name
+                                                    }
                                                     onChange={(e) =>
-                                                      setEditRoomDraft((prev) =>
-                                                        prev ? { ...prev, room_name: e.target.value } : prev,
+                                                      setEditRoomDraft(
+                                                        (prev) =>
+                                                          prev
+                                                            ? {
+                                                                ...prev,
+                                                                room_name:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            : prev,
                                                       )
                                                     }
                                                   />
@@ -3877,10 +5985,20 @@ export default function SettingsPage() {
                                                 <div className="grid gap-1">
                                                   <Label>Room #</Label>
                                                   <Input
-                                                    value={editRoomDraft.room_number}
+                                                    value={
+                                                      editRoomDraft.room_number
+                                                    }
                                                     onChange={(e) =>
-                                                      setEditRoomDraft((prev) =>
-                                                        prev ? { ...prev, room_number: e.target.value } : prev,
+                                                      setEditRoomDraft(
+                                                        (prev) =>
+                                                          prev
+                                                            ? {
+                                                                ...prev,
+                                                                room_number:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            : prev,
                                                       )
                                                     }
                                                   />
@@ -3888,10 +6006,20 @@ export default function SettingsPage() {
                                                 <div className="grid gap-1">
                                                   <Label>Floor</Label>
                                                   <Input
-                                                    value={editRoomDraft.floor_number}
+                                                    value={
+                                                      editRoomDraft.floor_number
+                                                    }
                                                     onChange={(e) =>
-                                                      setEditRoomDraft((prev) =>
-                                                        prev ? { ...prev, floor_number: e.target.value } : prev,
+                                                      setEditRoomDraft(
+                                                        (prev) =>
+                                                          prev
+                                                            ? {
+                                                                ...prev,
+                                                                floor_number:
+                                                                  e.target
+                                                                    .value,
+                                                              }
+                                                            : prev,
                                                       )
                                                     }
                                                   />
@@ -3900,14 +6028,18 @@ export default function SettingsPage() {
                                                   <button
                                                     type="button"
                                                     className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                                    onClick={() => saveEditRoom()}
+                                                    onClick={() =>
+                                                      saveEditRoom()
+                                                    }
                                                   >
                                                     Save room
                                                   </button>
                                                   <button
                                                     type="button"
                                                     className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                                    onClick={() => cancelEditRoom()}
+                                                    onClick={() =>
+                                                      cancelEditRoom()
+                                                    }
                                                   >
                                                     Cancel
                                                   </button>
@@ -3918,7 +6050,9 @@ export default function SettingsPage() {
                                                 <div className="text-sm">
                                                   {room.room_name}{" "}
                                                   {room.archived_at ? (
-                                                    <span className="text-xs text-gray-500">(archived)</span>
+                                                    <span className="text-xs text-gray-500">
+                                                      (archived)
+                                                    </span>
                                                   ) : null}
                                                 </div>
                                                 {!room.archived_at ? (
@@ -3926,14 +6060,18 @@ export default function SettingsPage() {
                                                     <button
                                                       type="button"
                                                       className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                                      onClick={() => startEditRoom(room)}
+                                                      onClick={() =>
+                                                        startEditRoom(room)
+                                                      }
                                                     >
                                                       Edit
                                                     </button>
                                                     <button
                                                       type="button"
                                                       className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                                      onClick={() => archiveRoom(room)}
+                                                      onClick={() =>
+                                                        archiveRoom(room)
+                                                      }
                                                     >
                                                       Archive
                                                     </button>
@@ -3947,27 +6085,49 @@ export default function SettingsPage() {
                                   </ul>
                                   {!loc.archived_at ? (
                                     <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                      <div className="text-xs font-semibold text-gray-600">Add room</div>
+                                      <div className="text-xs font-semibold text-gray-600">
+                                        Add room
+                                      </div>
                                       <div className="mt-2 grid gap-2 sm:grid-cols-4 sm:items-end">
                                         <div className="grid gap-1 sm:col-span-2">
                                           <Label>Room name</Label>
                                           <Input
-                                            value={getNewRoomDraft(loc.id).room_name}
-                                            onChange={(e) => updateNewRoomDraft(loc.id, { room_name: e.target.value })}
+                                            value={
+                                              getNewRoomDraft(loc.id).room_name
+                                            }
+                                            onChange={(e) =>
+                                              updateNewRoomDraft(loc.id, {
+                                                room_name: e.target.value,
+                                              })
+                                            }
                                           />
                                         </div>
                                         <div className="grid gap-1">
                                           <Label>Room #</Label>
                                           <Input
-                                            value={getNewRoomDraft(loc.id).room_number}
-                                            onChange={(e) => updateNewRoomDraft(loc.id, { room_number: e.target.value })}
+                                            value={
+                                              getNewRoomDraft(loc.id)
+                                                .room_number
+                                            }
+                                            onChange={(e) =>
+                                              updateNewRoomDraft(loc.id, {
+                                                room_number: e.target.value,
+                                              })
+                                            }
                                           />
                                         </div>
                                         <div className="grid gap-1">
                                           <Label>Floor</Label>
                                           <Input
-                                            value={getNewRoomDraft(loc.id).floor_number}
-                                            onChange={(e) => updateNewRoomDraft(loc.id, { floor_number: e.target.value })}
+                                            value={
+                                              getNewRoomDraft(loc.id)
+                                                .floor_number
+                                            }
+                                            onChange={(e) =>
+                                              updateNewRoomDraft(loc.id, {
+                                                floor_number: e.target.value,
+                                              })
+                                            }
                                           />
                                         </div>
                                         <div className="flex gap-2 sm:col-span-4">
@@ -3995,18 +6155,28 @@ export default function SettingsPage() {
               {!loading && activeTab === "CLIENTS" ? (
                 <div className="grid gap-6">
                   <div className="text-sm text-gray-600">
-                    Choose which fields appear in the Clients page grids. Save or discard changes before switching sections.
+                    Choose which fields appear in the Clients page grids. Save
+                    or discard changes before switching sections.
                   </div>
                   <div className="grid gap-6 md:grid-cols-2">
                     <div>
                       <div className="text-sm font-semibold">Parent fields</div>
                       <div className="mt-3 grid gap-2">
                         {PARENT_FIELDS.map((field) => (
-                          <label key={field.key} className="flex items-center gap-2 text-sm">
+                          <label
+                            key={field.key}
+                            className="flex items-center gap-2 text-sm"
+                          >
                             <input
                               type="checkbox"
                               checked={clientsForm.formData.parents[field.key]}
-                              onChange={(e) => updateClientField("parents", field.key, e.target.checked)}
+                              onChange={(e) =>
+                                updateClientField(
+                                  "parents",
+                                  field.key,
+                                  e.target.checked,
+                                )
+                              }
                             />
                             {field.label}
                           </label>
@@ -4014,14 +6184,25 @@ export default function SettingsPage() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm font-semibold">Student fields</div>
+                      <div className="text-sm font-semibold">
+                        Student fields
+                      </div>
                       <div className="mt-3 grid gap-2">
                         {STUDENT_FIELDS.map((field) => (
-                          <label key={field.key} className="flex items-center gap-2 text-sm">
+                          <label
+                            key={field.key}
+                            className="flex items-center gap-2 text-sm"
+                          >
                             <input
                               type="checkbox"
                               checked={clientsForm.formData.students[field.key]}
-                              onChange={(e) => updateClientField("students", field.key, e.target.checked)}
+                              onChange={(e) =>
+                                updateClientField(
+                                  "students",
+                                  field.key,
+                                  e.target.checked,
+                                )
+                              }
                             />
                             {field.label}
                           </label>
@@ -4034,15 +6215,33 @@ export default function SettingsPage() {
 
               {!loading && activeTab === "TUTORS" ? (
                 <div className="grid gap-6">
-                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <h2 className="text-lg font-semibold text-[#0b1f5f]">Tutors</h2>
-                        <div className="text-xs text-gray-500">
-                          Plan limit: {tutorLimit ?? "Unlimited"} · Current: {activeTutorCount}
-                        </div>
-                      </div>
+                  <div className="grid gap-2">
+                    <div className="text-sm font-semibold">
+                      Active Tutor Capacity
                     </div>
+                    <div className="text-xs text-gray-600">
+                      Plan limit: {tutorLimit ?? "Unlimited"} ·{" "}
+                      <span
+                        className={usageColorClass(
+                          activeTutorCount,
+                          tutorLimit ?? null,
+                        )}
+                      >
+                        Current: {activeTutorCount}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-success w-fit"
+                      onClick={() => switchTab("ACCOUNT")}
+                    >
+                      Change Plan
+                    </button>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <h2 className="text-lg font-semibold text-[#0b1f5f]">
+                      Active Tutors
+                    </h2>
                     <div className="mt-4 grid gap-3">
                       {tutors.length === 0 ? (
                         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
@@ -4050,7 +6249,12 @@ export default function SettingsPage() {
                         </div>
                       ) : (
                         tutors.map((tutor) => {
-                          const name = [tutor.user?.first_name, tutor.user?.last_name].filter(Boolean).join(" ");
+                          const name = [
+                            tutor.user?.first_name,
+                            tutor.user?.last_name,
+                          ]
+                            .filter(Boolean)
+                            .join(" ");
                           const label = name || tutor.user?.email || "Tutor";
                           return (
                             <div
@@ -4058,19 +6262,31 @@ export default function SettingsPage() {
                               className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
                             >
                               <div>
-                                <div className="text-sm font-semibold text-gray-900">{label}</div>
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {label}
+                                </div>
                                 {tutor.user?.email ? (
-                                  <div className="text-xs text-gray-500">{tutor.user.email}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {tutor.user.email}
+                                  </div>
                                 ) : null}
                               </div>
                               <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs font-semibold text-gray-600">Color</span>
+                                  <span className="text-xs font-semibold text-gray-600">
+                                    Color
+                                  </span>
                                   <input
                                     type="color"
-                                    value={tutorDrafts[tutor.id] ?? DEFAULT_TUTOR_COLOR}
+                                    value={
+                                      tutorDrafts[tutor.id] ??
+                                      DEFAULT_TUTOR_COLOR
+                                    }
                                     onChange={(e) =>
-                                      setTutorDrafts((prev) => ({ ...prev, [tutor.id]: e.target.value }))
+                                      setTutorDrafts((prev) => ({
+                                        ...prev,
+                                        [tutor.id]: e.target.value,
+                                      }))
                                     }
                                     className="h-9 w-9 cursor-pointer rounded-md border border-gray-200 bg-white"
                                   />
@@ -4091,11 +6307,18 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <h2 className="text-lg font-semibold text-[#0b1f5f]">Add tutor</h2>
-                    <p className="mt-1 text-sm text-gray-600">Add a tutor profile and assign a calendar color.</p>
+                    <h2 className="text-lg font-semibold text-[#0b1f5f]">
+                      Add tutor
+                    </h2>
+                    <p className="mt-1 text-sm text-gray-600">
+                      Add a tutor profile and assign a calendar color.
+                    </p>
                     {!canAddTutor ? (
-                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                        Your plan is at the tutor limit. Upgrade to add more tutors.
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                        <span>
+                          Your plan is at the tutor limit. Upgrade to add more
+                          tutors.
+                        </span>
                       </div>
                     ) : null}
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -4104,7 +6327,12 @@ export default function SettingsPage() {
                         <Input
                           id="new-tutor-first"
                           value={newTutor.first_name}
-                          onChange={(e) => setNewTutor((prev) => ({ ...prev, first_name: e.target.value }))}
+                          onChange={(e) =>
+                            setNewTutor((prev) => ({
+                              ...prev,
+                              first_name: e.target.value,
+                            }))
+                          }
                           disabled={!canAddTutor}
                         />
                       </div>
@@ -4113,7 +6341,12 @@ export default function SettingsPage() {
                         <Input
                           id="new-tutor-last"
                           value={newTutor.last_name}
-                          onChange={(e) => setNewTutor((prev) => ({ ...prev, last_name: e.target.value }))}
+                          onChange={(e) =>
+                            setNewTutor((prev) => ({
+                              ...prev,
+                              last_name: e.target.value,
+                            }))
+                          }
                           disabled={!canAddTutor}
                         />
                       </div>
@@ -4124,7 +6357,12 @@ export default function SettingsPage() {
                           type="email"
                           placeholder="tutor@yourbusiness.com"
                           value={newTutor.email}
-                          onChange={(e) => setNewTutor((prev) => ({ ...prev, email: e.target.value }))}
+                          onChange={(e) =>
+                            setNewTutor((prev) => ({
+                              ...prev,
+                              email: e.target.value,
+                            }))
+                          }
                           disabled={!canAddTutor}
                         />
                       </div>
@@ -4134,13 +6372,20 @@ export default function SettingsPage() {
                           id="new-tutor-color"
                           type="color"
                           value={newTutor.color_hex}
-                          onChange={(e) => setNewTutor((prev) => ({ ...prev, color_hex: e.target.value }))}
+                          onChange={(e) =>
+                            setNewTutor((prev) => ({
+                              ...prev,
+                              color_hex: e.target.value,
+                            }))
+                          }
                           className="h-10 w-16 cursor-pointer rounded-md border border-gray-200 bg-white"
                           disabled={!canAddTutor}
                         />
                       </div>
                     </div>
-                    <div className="mt-4 text-xs text-gray-500">Click Save to add the tutor.</div>
+                    <div className="mt-4 text-xs text-gray-500">
+                      Click Save to add the tutor.
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -4148,7 +6393,8 @@ export default function SettingsPage() {
               {!loading && activeTab === "SERVICES" ? (
                 <div className="grid gap-6">
                   <div className="text-sm text-gray-600">
-                    Active services appear first. Check a service to include it and set an hourly price.
+                    Active services appear first. Check a service to include it
+                    and set an hourly price.
                   </div>
 
                   <div className="flex flex-wrap items-end gap-4">
@@ -4159,10 +6405,15 @@ export default function SettingsPage() {
                         value={selectedServiceLocationId}
                         onChange={(e) => {
                           setServiceLocationId(e.target.value);
-                          setNewService((prev) => ({ ...prev, location_id: e.target.value }));
+                          setNewService((prev) => ({
+                            ...prev,
+                            location_id: e.target.value,
+                          }));
                         }}
                       >
-                        {activeLocations.length === 0 ? <option value="">—</option> : null}
+                        {activeLocations.length === 0 ? (
+                          <option value="">—</option>
+                        ) : null}
                         {activeLocations.map((l) => (
                           <option key={l.id} value={l.id}>
                             {l.location_name}
@@ -4176,123 +6427,169 @@ export default function SettingsPage() {
                     <div className="max-h-[520px] overflow-y-auto">
                       <table className="min-w-[720px] border-collapse text-sm md:min-w-[900px]">
                         <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                        <tr>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">
-                            <button
-                              type="button"
-                              className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "name" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                              onClick={() => toggleServiceSort("name")}
-                            >
-                              Service
-                              {renderSortIcons(serviceSort.key === "name", serviceSort.dir)}
-                            </button>
-                          </th>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">
-                            <button
-                              type="button"
-                              className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "active" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                              onClick={() => toggleServiceSort("active")}
-                            >
-                              Included
-                              {renderSortIcons(serviceSort.key === "active", serviceSort.dir)}
-                            </button>
-                          </th>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">
-                            <button
-                              type="button"
-                              className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "price" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                              onClick={() => toggleServiceSort("price")}
-                            >
-                              Unit price ($)
-                              {renderSortIcons(serviceSort.key === "price", serviceSort.dir)}
-                            </button>
-                          </th>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">
-                            <button
-                              type="button"
-                              className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "unit_length" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                              onClick={() => toggleServiceSort("unit_length")}
-                            >
-                              <span>Unit length (min)</span>
-                              <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600">
-                                      i
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent>{UNIT_LENGTH_TOOLTIP}</TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                              {renderSortIcons(serviceSort.key === "unit_length", serviceSort.dir)}
-                            </button>
-                          </th>
-                          <th className="px-3 py-2 text-left whitespace-nowrap">
-                            <button
-                              type="button"
-                              className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "capacity" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                              onClick={() => toggleServiceSort("capacity")}
-                            >
-                              Capacity
-                              {renderSortIcons(serviceSort.key === "capacity", serviceSort.dir)}
-                            </button>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedServiceRows.map((row) => (
-                          <tr key={row.key} className="border-t border-gray-100">
-                            <td className="px-3 py-2 font-medium">
-                              <ClampedCell text={row.name} />
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 accent-[#0b1f5f]"
-                                checked={row.is_active}
-                                onChange={(e) => updateServiceDraft(row, { is_active: e.target.checked })}
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  inputMode="decimal"
-                                  value={row.hourly_rate_dollars}
-                                  onChange={(e) => updateServiceDraft(row, { hourly_rate_dollars: e.target.value })}
-                                />
-                              </div>
-                            </td>
-                            <td className="px-3 py-2">
-                              <Input
-                                inputMode="numeric"
-                                value={row.unit_length_minutes}
-                                onChange={(e) => updateServiceDraft(row, { unit_length_minutes: e.target.value })}
-                              />
-                            </td>
-                            <td className="px-3 py-2">
-                              <Input
-                                type="number"
-                                min={1}
-                                value={row.capacity}
-                                onChange={(e) => updateServiceDraft(row, { capacity: e.target.value })}
-                              />
-                            </td>
+                          <tr>
+                            <th className="px-3 py-2 text-left whitespace-nowrap">
+                              <button
+                                type="button"
+                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "name" ? "text-[#ff9df9]" : "text-gray-900"}`}
+                                onClick={() => toggleServiceSort("name")}
+                              >
+                                Service
+                                {renderSortIcons(
+                                  serviceSort.key === "name",
+                                  serviceSort.dir,
+                                )}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap">
+                              <button
+                                type="button"
+                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "active" ? "text-[#ff9df9]" : "text-gray-900"}`}
+                                onClick={() => toggleServiceSort("active")}
+                              >
+                                Included
+                                {renderSortIcons(
+                                  serviceSort.key === "active",
+                                  serviceSort.dir,
+                                )}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap">
+                              <button
+                                type="button"
+                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "price" ? "text-[#ff9df9]" : "text-gray-900"}`}
+                                onClick={() => toggleServiceSort("price")}
+                              >
+                                Unit price ($)
+                                {renderSortIcons(
+                                  serviceSort.key === "price",
+                                  serviceSort.dir,
+                                )}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap">
+                              <button
+                                type="button"
+                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "unit_length" ? "text-[#ff9df9]" : "text-gray-900"}`}
+                                onClick={() => toggleServiceSort("unit_length")}
+                              >
+                                <span>Unit length (min)</span>
+                                <TooltipProvider delayDuration={200}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600">
+                                        i
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {UNIT_LENGTH_TOOLTIP}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {renderSortIcons(
+                                  serviceSort.key === "unit_length",
+                                  serviceSort.dir,
+                                )}
+                              </button>
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap">
+                              <button
+                                type="button"
+                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "capacity" ? "text-[#ff9df9]" : "text-gray-900"}`}
+                                onClick={() => toggleServiceSort("capacity")}
+                              >
+                                Capacity
+                                {renderSortIcons(
+                                  serviceSort.key === "capacity",
+                                  serviceSort.dir,
+                                )}
+                              </button>
+                            </th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {sortedServiceRows.map((row) => (
+                            <tr
+                              key={row.key}
+                              className="border-t border-gray-100"
+                            >
+                              <td className="px-3 py-2 font-medium">
+                                <ClampedCell text={row.name} />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 accent-[#0b1f5f]"
+                                  checked={row.is_active}
+                                  onChange={(e) =>
+                                    updateServiceDraft(row, {
+                                      is_active: e.target.checked,
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    inputMode="decimal"
+                                    value={row.hourly_rate_dollars}
+                                    onChange={(e) =>
+                                      updateServiceDraft(row, {
+                                        hourly_rate_dollars: e.target.value,
+                                      })
+                                    }
+                                  />
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  inputMode="numeric"
+                                  value={row.unit_length_minutes}
+                                  onChange={(e) =>
+                                    updateServiceDraft(row, {
+                                      unit_length_minutes: e.target.value,
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={row.capacity}
+                                  onChange={(e) =>
+                                    updateServiceDraft(row, {
+                                      capacity: e.target.value,
+                                    })
+                                  }
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
-                  <form onSubmit={addService} className="grid w-full max-w-[720px] gap-3 rounded-xl border border-gray-200 p-4">
-                    <div className="text-sm font-semibold">Add a new service</div>
+                  <form
+                    onSubmit={addService}
+                    className="grid w-full max-w-[720px] gap-3 rounded-xl border border-gray-200 p-4"
+                  >
+                    <div className="text-sm font-semibold">
+                      Add a new service
+                    </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div className="grid gap-2">
                         <Label>Location</Label>
                         <select
                           className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                           value={newService.location_id}
-                          onChange={(e) => setNewService((prev) => ({ ...prev, location_id: e.target.value }))}
+                          onChange={(e) =>
+                            setNewService((prev) => ({
+                              ...prev,
+                              location_id: e.target.value,
+                            }))
+                          }
                         >
                           <option value="">—</option>
                           {activeLocations.map((l) => (
@@ -4306,7 +6603,12 @@ export default function SettingsPage() {
                         <Label>Service name</Label>
                         <Input
                           value={newService.name}
-                          onChange={(e) => setNewService((prev) => ({ ...prev, name: e.target.value }))}
+                          onChange={(e) =>
+                            setNewService((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                     </div>
@@ -4316,7 +6618,12 @@ export default function SettingsPage() {
                         <Input
                           inputMode="decimal"
                           value={newService.price}
-                          onChange={(e) => setNewService((prev) => ({ ...prev, price: e.target.value }))}
+                          onChange={(e) =>
+                            setNewService((prev) => ({
+                              ...prev,
+                              price: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                       <div className="grid gap-2">
@@ -4329,14 +6636,21 @@ export default function SettingsPage() {
                                   i
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent>{UNIT_LENGTH_TOOLTIP}</TooltipContent>
+                              <TooltipContent>
+                                {UNIT_LENGTH_TOOLTIP}
+                              </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
                         </Label>
                         <Input
                           inputMode="numeric"
                           value={newService.unit_length_minutes}
-                          onChange={(e) => setNewService((prev) => ({ ...prev, unit_length_minutes: e.target.value }))}
+                          onChange={(e) =>
+                            setNewService((prev) => ({
+                              ...prev,
+                              unit_length_minutes: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                       <div className="grid gap-2">
@@ -4345,11 +6659,19 @@ export default function SettingsPage() {
                           type="number"
                           min={1}
                           value={newService.capacity}
-                          onChange={(e) => setNewService((prev) => ({ ...prev, capacity: e.target.value }))}
+                          onChange={(e) =>
+                            setNewService((prev) => ({
+                              ...prev,
+                              capacity: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                       <div className="flex items-end">
-                        <button type="submit" className="itutoros-settings-btn itutoros-settings-btn-primary">
+                        <button
+                          type="submit"
+                          className="itutoros-settings-btn itutoros-settings-btn-success"
+                        >
                           Add service
                         </button>
                       </div>
@@ -4361,152 +6683,205 @@ export default function SettingsPage() {
               {!loading && activeTab === "SUBJECTS_TOPICS" ? (
                 <div className="grid gap-6">
                   <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                    <span>Checkboxes control whether a subject/topic is included.</span>
+                    <span>
+                      Checkboxes control whether a subject/topic is included.
+                    </span>
                     <div className="ml-auto flex items-center gap-3">
                       <button
                         type="button"
                         onClick={() => toggleSubjectSort("included")}
                         className={`flex items-center gap-1 whitespace-nowrap text-xs font-semibold uppercase tracking-wide ${
-                          subjectSort.key === "included" ? "text-[#ff9df9]" : "text-gray-600"
+                          subjectSort.key === "included"
+                            ? "text-[#ff9df9]"
+                            : "text-gray-600"
                         }`}
                       >
-                        Included {renderSortIcons(subjectSort.key === "included", subjectSort.dir)}
+                        Included{" "}
+                        {renderSortIcons(
+                          subjectSort.key === "included",
+                          subjectSort.dir,
+                        )}
                       </button>
                       <button
                         type="button"
                         onClick={() => toggleSubjectSort("name")}
                         className={`flex items-center gap-1 whitespace-nowrap text-xs font-semibold uppercase tracking-wide ${
-                          subjectSort.key === "name" ? "text-[#ff9df9]" : "text-gray-600"
+                          subjectSort.key === "name"
+                            ? "text-[#ff9df9]"
+                            : "text-gray-600"
                         }`}
                       >
-                        Subject {renderSortIcons(subjectSort.key === "name", subjectSort.dir)}
+                        Subject{" "}
+                        {renderSortIcons(
+                          subjectSort.key === "name",
+                          subjectSort.dir,
+                        )}
                       </button>
                     </div>
                   </div>
 
                   <div className="grid gap-4">
                     {sortedSubjectDrafts.map((subject) => {
-                      const subjectIncluded = subject.included || subject.topics.some((t) => t.included);
-                      const baselineSubject = subjectBaselineMap.get(subject.key);
+                      const subjectIncluded =
+                        subject.included ||
+                        subject.topics.some((t) => t.included);
+                      const baselineSubject = subjectBaselineMap.get(
+                        subject.key,
+                      );
                       const baselineTopicsByKey = new Map(
-                        (baselineSubject?.topics ?? []).map((topic) => [topic.key, topic]),
+                        (baselineSubject?.topics ?? []).map((topic) => [
+                          topic.key,
+                          topic,
+                        ]),
                       );
                       const sortedTopics = [...subject.topics].sort((a, b) => {
-                        const aIncluded = baselineTopicsByKey.get(a.key)?.included ?? false;
-                        const bIncluded = baselineTopicsByKey.get(b.key)?.included ?? false;
+                        const aIncluded =
+                          baselineTopicsByKey.get(a.key)?.included ?? false;
+                        const bIncluded =
+                          baselineTopicsByKey.get(b.key)?.included ?? false;
                         const diff = Number(bIncluded) - Number(aIncluded);
                         if (diff !== 0) return diff;
                         return a.name.localeCompare(b.name);
                       });
                       return (
-                        <div key={subject.key} className="rounded-xl border border-gray-200 p-4">
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                              <div className="grid gap-2">
-                                <Label>Subject</Label>
-                                <Input
-                                  value={subject.name}
-                                  onChange={(e) =>
-                                    setSubjectDrafts((prev) =>
-                                      prev.map((s) => (s.key === subject.key ? { ...s, name: e.target.value } : s)),
-                                    )
-                                  }
-                                />
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Label className="text-sm">Included</Label>
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 accent-[#0b1f5f]"
-                                  checked={subjectIncluded}
-                                  onChange={(e) =>
-                                    setSubjectDrafts((prev) =>
-                                      prev.map((s) => {
-                                        if (s.key !== subject.key) return s;
-                                        const included = e.target.checked;
-                                        return {
-                                          ...s,
-                                          included,
-                                          topics: included ? s.topics : s.topics.map((t) => ({ ...t, included: false })),
-                                        };
-                                      }),
-                                    )
-                                  }
-                                />
-                              </div>
+                        <div
+                          key={subject.key}
+                          className="rounded-xl border border-gray-200 p-4"
+                        >
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                            <div className="grid gap-2">
+                              <Label>Subject</Label>
+                              <Input
+                                value={subject.name}
+                                onChange={(e) =>
+                                  setSubjectDrafts((prev) =>
+                                    prev.map((s) =>
+                                      s.key === subject.key
+                                        ? { ...s, name: e.target.value }
+                                        : s,
+                                    ),
+                                  )
+                                }
+                              />
                             </div>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-sm">Included</Label>
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-[#0b1f5f]"
+                                checked={subjectIncluded}
+                                onChange={(e) =>
+                                  setSubjectDrafts((prev) =>
+                                    prev.map((s) => {
+                                      if (s.key !== subject.key) return s;
+                                      const included = e.target.checked;
+                                      return {
+                                        ...s,
+                                        included,
+                                        topics: included
+                                          ? s.topics
+                                          : s.topics.map((t) => ({
+                                              ...t,
+                                              included: false,
+                                            })),
+                                      };
+                                    }),
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
 
-                            <div className="mt-4 grid gap-2">
-                              <div className="text-xs font-semibold text-gray-600">Topics</div>
-                              <div className="grid gap-2">
-                                {sortedTopics.map((topic) => (
-                                  <div key={topic.key} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                                    <Input
-                                      value={topic.name}
+                          <div className="mt-4 grid gap-2">
+                            <div className="text-xs font-semibold text-gray-600">
+                              Topics
+                            </div>
+                            <div className="grid gap-2">
+                              {sortedTopics.map((topic) => (
+                                <div
+                                  key={topic.key}
+                                  className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center"
+                                >
+                                  <Input
+                                    value={topic.name}
+                                    onChange={(e) =>
+                                      setSubjectDrafts((prev) =>
+                                        prev.map((s) => {
+                                          if (s.key !== subject.key) return s;
+                                          return {
+                                            ...s,
+                                            topics: s.topics.map((t) =>
+                                              t.key === topic.key
+                                                ? { ...t, name: e.target.value }
+                                                : t,
+                                            ),
+                                          };
+                                        }),
+                                      )
+                                    }
+                                    disabled={!subjectIncluded}
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <Label className="text-sm">Included</Label>
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 accent-[#0b1f5f]"
+                                      checked={topic.included}
+                                      disabled={!subjectIncluded}
                                       onChange={(e) =>
                                         setSubjectDrafts((prev) =>
                                           prev.map((s) => {
                                             if (s.key !== subject.key) return s;
                                             return {
                                               ...s,
+                                              included: e.target.checked
+                                                ? true
+                                                : s.included,
                                               topics: s.topics.map((t) =>
-                                                t.key === topic.key ? { ...t, name: e.target.value } : t,
+                                                t.key === topic.key
+                                                  ? {
+                                                      ...t,
+                                                      included:
+                                                        e.target.checked,
+                                                    }
+                                                  : t,
                                               ),
                                             };
                                           }),
                                         )
                                       }
-                                      disabled={!subjectIncluded}
                                     />
-                                    <div className="flex items-center gap-2">
-                                      <Label className="text-sm">Included</Label>
-                                    <input
-                                      type="checkbox"
-                                      className="h-4 w-4 accent-[#0b1f5f]"
-                                      checked={topic.included}
-                                      disabled={!subjectIncluded}
-                                        onChange={(e) =>
-                                          setSubjectDrafts((prev) =>
-                                            prev.map((s) => {
-                                              if (s.key !== subject.key) return s;
-                                              return {
-                                                ...s,
-                                                included: e.target.checked ? true : s.included,
-                                                topics: s.topics.map((t) =>
-                                                  t.key === topic.key ? { ...t, included: e.target.checked } : t,
-                                                ),
-                                              };
-                                            }),
-                                          )
-                                        }
-                                      />
-                                    </div>
                                   </div>
-                                ))}
-                              </div>
+                                </div>
+                              ))}
+                            </div>
 
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <Input
-                                  placeholder="Add a topic…"
-                                  value={newTopicDrafts[subject.key] ?? ""}
-                                  onChange={(e) =>
-                                    setNewTopicDrafts((prev) => ({ ...prev, [subject.key]: e.target.value }))
-                                  }
-                                  disabled={!subjectIncluded}
-                                  className="max-w-[420px]"
-                                />
-                                <button
-                                  type="button"
-                                  className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                  onClick={() => addTopic(subject.key)}
-                                  disabled={!subjectIncluded}
-                                >
-                                  Add topic
-                                </button>
-                              </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Input
+                                placeholder="Add a topic…"
+                                value={newTopicDrafts[subject.key] ?? ""}
+                                onChange={(e) =>
+                                  setNewTopicDrafts((prev) => ({
+                                    ...prev,
+                                    [subject.key]: e.target.value,
+                                  }))
+                                }
+                                disabled={!subjectIncluded}
+                                className="max-w-[420px]"
+                              />
+                              <button
+                                type="button"
+                                className="itutoros-settings-btn itutoros-settings-btn-primary"
+                                onClick={() => addTopic(subject.key)}
+                                disabled={!subjectIncluded}
+                              >
+                                Add topic
+                              </button>
                             </div>
                           </div>
-                        );
-                      })}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <form onSubmit={addSubject} className="flex flex-wrap gap-2">
@@ -4516,7 +6891,10 @@ export default function SettingsPage() {
                       onChange={(e) => setNewSubjectName(e.target.value)}
                       className="max-w-[420px]"
                     />
-                    <button type="submit" className="itutoros-settings-btn itutoros-settings-btn-primary">
+                    <button
+                      type="submit"
+                      className="itutoros-settings-btn itutoros-settings-btn-primary"
+                    >
                       Add subject
                     </button>
                   </form>
@@ -4526,8 +6904,9 @@ export default function SettingsPage() {
               {!loading && activeTab === "ARCHIVE" ? (
                 <div className="grid gap-6">
                   <div className="text-sm text-gray-600">
-                    Check items to archive them. Uncheck to restore. Archiving parents, locations, or subjects will also
-                    archive their related records.
+                    Check items to archive them. Uncheck to restore. Archiving
+                    parents, locations, or subjects will also archive their
+                    related records.
                   </div>
 
                   <div className="flex flex-wrap items-end gap-4">
@@ -4536,7 +6915,9 @@ export default function SettingsPage() {
                       <select
                         className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                         value={archiveType}
-                        onChange={(e) => setArchiveType(e.target.value as ArchiveType)}
+                        onChange={(e) =>
+                          setArchiveType(e.target.value as ArchiveType)
+                        }
                       >
                         {ARCHIVE_OPTIONS.map((option) => (
                           <option key={option.key} value={option.key}>
@@ -4567,7 +6948,10 @@ export default function SettingsPage() {
                                 onClick={() => toggleArchiveSort("name")}
                               >
                                 Item
-                                {renderSortIcons(archiveSort.key === "name", archiveSort.dir)}
+                                {renderSortIcons(
+                                  archiveSort.key === "name",
+                                  archiveSort.dir,
+                                )}
                               </button>
                             </th>
                             <th className="px-3 py-2 text-left whitespace-nowrap">
@@ -4577,7 +6961,10 @@ export default function SettingsPage() {
                                 onClick={() => toggleArchiveSort("archived")}
                               >
                                 Archived
-                                {renderSortIcons(archiveSort.key === "archived", archiveSort.dir)}
+                                {renderSortIcons(
+                                  archiveSort.key === "archived",
+                                  archiveSort.dir,
+                                )}
                               </button>
                             </th>
                           </tr>
@@ -4585,13 +6972,19 @@ export default function SettingsPage() {
                         <tbody>
                           {sortedArchiveRows.length === 0 ? (
                             <tr>
-                              <td colSpan={2} className="px-3 py-6 text-center text-sm text-gray-500">
+                              <td
+                                colSpan={2}
+                                className="px-3 py-6 text-center text-sm text-gray-500"
+                              >
                                 No records found.
                               </td>
                             </tr>
                           ) : (
                             sortedArchiveRows.map((row) => (
-                              <tr key={row.id} className="border-t border-gray-100">
+                              <tr
+                                key={row.id}
+                                className="border-t border-gray-100"
+                              >
                                 <td className="px-3 py-2 font-medium">
                                   <ClampedCell text={row.label} />
                                 </td>
@@ -4599,9 +6992,14 @@ export default function SettingsPage() {
                                   <input
                                     type="checkbox"
                                     className="h-4 w-4 accent-[#ff9df9]"
-                                    checked={archiveEditsForType[row.id] ?? row.archived}
+                                    checked={
+                                      archiveEditsForType[row.id] ??
+                                      row.archived
+                                    }
                                     disabled={row.locked}
-                                    onChange={(e) => updateArchiveDraft(row, e.target.checked)}
+                                    onChange={(e) =>
+                                      updateArchiveDraft(row, e.target.checked)
+                                    }
                                   />
                                 </td>
                               </tr>
@@ -4616,7 +7014,9 @@ export default function SettingsPage() {
 
               {!loading && activeTab === "SCHEDULE" ? (
                 <div className="grid max-w-[520px] gap-2">
-                  <Label htmlFor="buffer">Default schedule buffer (minutes)</Label>
+                  <Label htmlFor="buffer">
+                    Default schedule buffer (minutes)
+                  </Label>
                   <Input
                     id="buffer"
                     type="number"
@@ -4628,7 +7028,10 @@ export default function SettingsPage() {
                       if (!next.trim()) return;
                       const parsed = Number.parseInt(next, 10);
                       if (!Number.isNaN(parsed)) {
-                        scheduleForm.updateField("default_buffer_minutes", Math.max(0, parsed));
+                        scheduleForm.updateField(
+                          "default_buffer_minutes",
+                          Math.max(0, parsed),
+                        );
                       }
                     }}
                     onBlur={() => {
@@ -4637,7 +7040,10 @@ export default function SettingsPage() {
                         scheduleForm.formData.default_buffer_minutes ?? 0,
                       );
                       setBufferDraft(String(normalized));
-                      scheduleForm.updateField("default_buffer_minutes", normalized);
+                      scheduleForm.updateField(
+                        "default_buffer_minutes",
+                        normalized,
+                      );
                     }}
                   />
                 </div>
@@ -4646,77 +7052,98 @@ export default function SettingsPage() {
               {!loading && activeTab === "PIPELINE" ? (
                 <div className="grid gap-6">
                   <div className="grid gap-2">
-                    <div className="text-sm text-gray-600">Lead pipeline capacity</div>
-                    <div className="text-2xl font-extrabold">
-                      {planLeadLimit(plan) === null ? "Unlimited" : String(planLeadLimit(plan))}
+                    <div className="text-sm font-semibold text-gray-900">
+                      Lead pipeline capacity
                     </div>
+                    <div className="text-xs text-gray-600">
+                      Plan limit:{" "}
+                      {leadLimit === null ? "Unlimited" : String(leadLimit)} ·{" "}
+                      <span
+                        className={usageColorClass(activeLeadCount, leadLimit)}
+                      >
+                        Current: {activeLeadCount}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-success w-fit"
+                      onClick={() => switchTab("ACCOUNT")}
+                    >
+                      Change Plan
+                    </button>
                   </div>
 
                   <div className="grid gap-3">
                     <div>
-                      <div className="text-base font-semibold text-gray-900">Lead sources</div>
-                      <div className="text-sm text-gray-600">Choose which sources to include for imports.</div>
+                      <div className="text-base font-semibold text-gray-900">
+                        Lead sources
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Choose which sources to include for imports.
+                      </div>
                     </div>
                     <div className="overflow-x-auto rounded-xl border border-gray-200">
-                      <table className="min-w-[840px] border-collapse text-sm">
+                      <table className="min-w-[640px] border-collapse text-sm">
                         <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
                           <tr>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Include</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Source</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Address / Handle</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Credentials</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Actions</th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Include
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Source
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Connected
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
-                          {pipelineForm.formData.sources.map((source) => (
-                            <tr key={source.id} className="border-t border-gray-100">
-                              <td className="px-3 py-2">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 accent-[#ff9df9]"
-                                  checked={source.enabled}
-                                  onChange={(e) => updatePipelineSource(source.id, { enabled: e.target.checked })}
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <ClampedCell text={`${source.label} ${source.type}`}>
-                                  <span className="font-semibold text-gray-900">{source.label}</span>
-                                  <br />
-                                  <span className="text-xs uppercase tracking-wide text-gray-500">{source.type}</span>
-                                </ClampedCell>
-                              </td>
-                                                            <td className="px-3 py-2">
-                                <Input
-                                  value={source.address ?? ""}
-                                  onChange={(e) => updatePipelineSource(source.id, { address: e.target.value })}
-                                  className="h-9"
-                                  placeholder="facebook.com/yourbusiness"
-                                  readOnly={source.type === "EMAIL"}
-                                />
-                              </td>
-                                                            <td className="px-3 py-2">
-                                {source.type === "EMAIL" ? (
-                                  <span className="text-xs text-gray-500">Managed in Email inboxes below</span>
-                                ) : (
-                                  <span className="text-xs text-gray-400">—</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2">
-                                {source.id.startsWith("email:") ? (
-                                  <button
-                                    type="button"
-                                    className="text-xs font-semibold text-rose-500"
-                                    onClick={() => removePipelineSource(source.id)}
+                          {pipelineForm.formData.sources.map((source) => {
+                            const status = connectionStatusLabel(source);
+                            const statusTone =
+                              status === "Connected"
+                                ? "text-emerald-600"
+                                : "text-amber-600";
+                            return (
+                              <tr
+                                key={source.id}
+                                className="border-t border-gray-100"
+                              >
+                                <td className="px-3 py-2">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 accent-[#ff9df9]"
+                                    checked={source.enabled}
+                                    onChange={(e) =>
+                                      updatePipelineSource(source.id, {
+                                        enabled: e.target.checked,
+                                      })
+                                    }
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <ClampedCell
+                                    text={`${source.label} ${source.type}`}
                                   >
-                                    Remove
-                                  </button>
-                                ) : (
-                                  <span className="text-xs text-gray-400">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                                    <span className="font-semibold text-gray-900">
+                                      {source.label}
+                                    </span>
+                                    <br />
+                                    <span className="text-xs uppercase tracking-wide text-gray-500">
+                                      {source.type}
+                                    </span>
+                                  </ClampedCell>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <span
+                                    className={`text-xs font-semibold ${statusTone}`}
+                                  >
+                                    {status}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -4724,46 +7151,77 @@ export default function SettingsPage() {
 
                   <div className="grid gap-3">
                     <div>
-                      <div className="text-base font-semibold text-gray-900">Email inboxes</div>
+                      <div className="text-base font-semibold text-gray-900">
+                        Email inboxes
+                      </div>
                       <div className="text-sm text-gray-600">
-                        Connect Gmail, Outlook, or IMAP and enable a daily scan to auto-stage leads. Use Pipeline → Import New Leads to
-                        stage with a custom date range.
+                        Connect Gmail, Outlook, or IMAP and enable a daily scan
+                        to auto-stage leads. Use Pipeline {"\u2192"} Import New
+                        Leads to stage with a custom date range.
                       </div>
                     </div>
                     <div className="overflow-x-auto rounded-xl border border-gray-200">
                       <table className="min-w-[980px] border-collapse text-sm">
                         <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
                           <tr>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Include</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Provider</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Address</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Daily Scan</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Time</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Last Scan</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Status</th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Actions</th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Include
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Provider
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Address
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Daily Scan
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Time
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Last Scan
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Status
+                            </th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
+                              Actions
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
                           {activeEmailInboxes.length === 0 ? (
                             <tr>
-                              <td colSpan={8} className="px-3 py-6 text-center text-sm text-gray-500">
+                              <td
+                                colSpan={8}
+                                className="px-3 py-6 text-center text-sm text-gray-500"
+                              >
                                 No email inboxes connected yet.
                               </td>
                             </tr>
                           ) : (
                             activeEmailInboxes.map((inbox) => (
-                              <tr key={inbox.id} className="border-t border-gray-100">
+                              <tr
+                                key={inbox.id}
+                                className="border-t border-gray-100"
+                              >
                                 <td className="px-3 py-2">
                                   <input
                                     type="checkbox"
                                     className="h-4 w-4 accent-[#ff9df9]"
                                     checked={inbox.enabled}
-                                    onChange={(e) => patchEmailInbox(inbox.id, { enabled: e.target.checked })}
+                                    onChange={(e) =>
+                                      patchEmailInbox(inbox.id, {
+                                        enabled: e.target.checked,
+                                      })
+                                    }
                                   />
                                 </td>
                                 <td className="px-3 py-2">
-                                  <ClampedCell text={providerLabel(inbox.provider)} />
+                                  <ClampedCell
+                                    text={providerLabel(inbox.provider)}
+                                  />
                                 </td>
                                 <td className="px-3 py-2">
                                   <ClampedCell text={inbox.address} />
@@ -4773,24 +7231,45 @@ export default function SettingsPage() {
                                     type="checkbox"
                                     className="h-4 w-4 accent-[#ff9df9]"
                                     checked={inbox.daily_scan_enabled}
-                                    onChange={(e) => patchEmailInbox(inbox.id, { daily_scan_enabled: e.target.checked })}
+                                    onChange={(e) =>
+                                      patchEmailInbox(inbox.id, {
+                                        daily_scan_enabled: e.target.checked,
+                                      })
+                                    }
                                   />
                                 </td>
                                 <td className="px-3 py-2">
                                   <Input
                                     type="time"
                                     value={inbox.daily_scan_time ?? "08:00"}
-                                    onChange={(e) => patchEmailInbox(inbox.id, { daily_scan_time: e.target.value })}
+                                    onChange={(e) =>
+                                      patchEmailInbox(inbox.id, {
+                                        daily_scan_time: e.target.value,
+                                      })
+                                    }
                                     className="h-9"
                                     disabled={!inbox.daily_scan_enabled}
                                   />
                                 </td>
                                 <td className="px-3 py-2 text-xs text-gray-600">
-                                  {inbox.last_scan_at ? formatDateWithPattern(inbox.last_scan_at, dateFormat) : "Never"}
+                                  {inbox.last_scan_at
+                                    ? formatDateWithPattern(
+                                        inbox.last_scan_at,
+                                        dateFormat,
+                                      )
+                                    : "Never"}
                                 </td>
                                 <td className="px-3 py-2">
-                                  <span className={inbox.has_credentials ? "text-xs text-emerald-600" : "text-xs text-rose-500"}>
-                                    {inbox.has_credentials ? "Connected" : "Needs connection"}
+                                  <span
+                                    className={
+                                      inbox.has_credentials
+                                        ? "text-xs text-emerald-600"
+                                        : "text-xs text-rose-500"
+                                    }
+                                  >
+                                    {inbox.has_credentials
+                                      ? "Connected"
+                                      : "Needs connection"}
                                   </span>
                                 </td>
                                 <td className="px-3 py-2">
@@ -4799,20 +7278,30 @@ export default function SettingsPage() {
                                       <button
                                         type="button"
                                         className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                        onClick={() => connectGoogleInbox(inbox.id)}
+                                        onClick={() =>
+                                          connectGoogleInbox(inbox.id)
+                                        }
                                         disabled={!inbox.enabled}
                                       >
-                                        {inbox.has_credentials ? "Reconnect" : "Connect"}
+                                        {inbox.has_credentials
+                                          ? "Reconnect"
+                                          : "Connect"}
                                       </button>
                                     ) : inbox.provider === "OUTLOOK" ? (
-                                      <button type="button" className="itutoros-settings-btn itutoros-settings-btn-secondary" disabled>
+                                      <button
+                                        type="button"
+                                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                                        disabled
+                                      >
                                         Connect
                                       </button>
                                     ) : null}
                                     <button
                                       type="button"
                                       className="text-xs font-semibold text-rose-500"
-                                      onClick={() => archiveEmailInbox(inbox.id)}
+                                      onClick={() =>
+                                        archiveEmailInbox(inbox.id)
+                                      }
                                     >
                                       Archive
                                     </button>
@@ -4827,7 +7316,9 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4">
-                    <div className="text-sm font-semibold text-gray-700">Add email inbox</div>
+                    <div className="text-sm font-semibold text-gray-700">
+                      Add email inbox
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="grid gap-2">
                         <Label>Provider</Label>
@@ -4835,7 +7326,11 @@ export default function SettingsPage() {
                           className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                           value={newEmailInbox.provider}
                           onChange={(e) =>
-                            setNewEmailInbox((prev) => ({ ...prev, provider: e.target.value as EmailInbox["provider"] }))
+                            setNewEmailInbox((prev) => ({
+                              ...prev,
+                              provider: e.target
+                                .value as EmailInbox["provider"],
+                            }))
                           }
                         >
                           <option value="GMAIL">Gmail (OAuth)</option>
@@ -4847,7 +7342,12 @@ export default function SettingsPage() {
                         <Label>Label</Label>
                         <Input
                           value={newEmailInbox.label}
-                          onChange={(e) => setNewEmailInbox((prev) => ({ ...prev, label: e.target.value }))}
+                          onChange={(e) =>
+                            setNewEmailInbox((prev) => ({
+                              ...prev,
+                              label: e.target.value,
+                            }))
+                          }
                           placeholder="Admissions inbox"
                         />
                       </div>
@@ -4856,7 +7356,12 @@ export default function SettingsPage() {
                         <Input
                           type="email"
                           value={newEmailInbox.address}
-                          onChange={(e) => setNewEmailInbox((prev) => ({ ...prev, address: e.target.value }))}
+                          onChange={(e) =>
+                            setNewEmailInbox((prev) => ({
+                              ...prev,
+                              address: e.target.value,
+                            }))
+                          }
                           placeholder="info@yourtutoringbusiness.com"
                         />
                       </div>
@@ -4870,7 +7375,10 @@ export default function SettingsPage() {
                             className="h-4 w-4 accent-[#ff9df9]"
                             checked={newEmailInbox.daily_scan_enabled}
                             onChange={(e) =>
-                              setNewEmailInbox((prev) => ({ ...prev, daily_scan_enabled: e.target.checked }))
+                              setNewEmailInbox((prev) => ({
+                                ...prev,
+                                daily_scan_enabled: e.target.checked,
+                              }))
                             }
                           />
                           Enable daily scan
@@ -4881,12 +7389,19 @@ export default function SettingsPage() {
                         <Input
                           type="time"
                           value={newEmailInbox.daily_scan_time}
-                          onChange={(e) => setNewEmailInbox((prev) => ({ ...prev, daily_scan_time: e.target.value }))}
+                          onChange={(e) =>
+                            setNewEmailInbox((prev) => ({
+                              ...prev,
+                              daily_scan_time: e.target.value,
+                            }))
+                          }
                           className="h-10"
                           disabled={!newEmailInbox.daily_scan_enabled}
                         />
                       </div>
-                      <div className="text-xs text-gray-500 sm:pt-7">Uses your business timezone.</div>
+                      <div className="text-xs text-gray-500 sm:pt-7">
+                        Uses your business timezone.
+                      </div>
                     </div>
                     {newEmailInbox.provider === "IMAP" ? (
                       <div className="grid gap-3 sm:grid-cols-4">
@@ -4894,7 +7409,12 @@ export default function SettingsPage() {
                           <Label>IMAP host</Label>
                           <Input
                             value={newEmailInbox.imap_host}
-                            onChange={(e) => setNewEmailInbox((prev) => ({ ...prev, imap_host: e.target.value }))}
+                            onChange={(e) =>
+                              setNewEmailInbox((prev) => ({
+                                ...prev,
+                                imap_host: e.target.value,
+                              }))
+                            }
                             placeholder="imap.gmail.com"
                           />
                         </div>
@@ -4904,7 +7424,12 @@ export default function SettingsPage() {
                             type="number"
                             min={1}
                             value={newEmailInbox.imap_port}
-                            onChange={(e) => setNewEmailInbox((prev) => ({ ...prev, imap_port: e.target.value }))}
+                            onChange={(e) =>
+                              setNewEmailInbox((prev) => ({
+                                ...prev,
+                                imap_port: e.target.value,
+                              }))
+                            }
                             placeholder="993"
                           />
                         </div>
@@ -4912,9 +7437,14 @@ export default function SettingsPage() {
                           <Label>Security</Label>
                           <select
                             className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                            value={newEmailInbox.imap_secure ? "secure" : "insecure"}
+                            value={
+                              newEmailInbox.imap_secure ? "secure" : "insecure"
+                            }
                             onChange={(e) =>
-                              setNewEmailInbox((prev) => ({ ...prev, imap_secure: e.target.value === "secure" }))
+                              setNewEmailInbox((prev) => ({
+                                ...prev,
+                                imap_secure: e.target.value === "secure",
+                              }))
                             }
                           >
                             <option value="secure">SSL / TLS</option>
@@ -4926,14 +7456,20 @@ export default function SettingsPage() {
                           <Input
                             type="password"
                             value={newEmailInbox.password}
-                            onChange={(e) => setNewEmailInbox((prev) => ({ ...prev, password: e.target.value }))}
+                            onChange={(e) =>
+                              setNewEmailInbox((prev) => ({
+                                ...prev,
+                                password: e.target.value,
+                              }))
+                            }
                             placeholder="App password"
                           />
                         </div>
                       </div>
                     ) : (
                       <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                        OAuth connection will be required after saving. Use the Connect action in the table above.
+                        OAuth connection will be required after saving. Use the
+                        Connect action in the table above.
                       </div>
                     )}
                     <div className="flex flex-wrap items-center gap-2">
@@ -4949,730 +7485,805 @@ export default function SettingsPage() {
                 </div>
               ) : null}
 
-              {!loading && activeTab === "PRODUCTS" ? (
-                <div className="grid gap-6">
-                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <div className="flex flex-wrap gap-2">
-                      {MARKETING_TABS.map((tab) => (
-                        <button
-                          key={tab.key}
-                          type="button"
-                          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                            marketingTab === tab.key
-                              ? "bg-[#0b1f5f] text-white"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                          }`}
-                          onClick={() => setMarketingTab(tab.key)}
-                        >
-                          {tab.label}
-                        </button>
-                      ))}
+              {!loading && activeTab === "CONNECTIONS" ? (
+                <div className="grid gap-4">
+                  <div>
+                    <div className="text-base font-semibold text-gray-900">
+                      Connections
                     </div>
-                    <p className="mt-3 text-sm text-gray-600">
-                      Build marketing-ready copy and media for your services, subjects, topics, and products.
-                    </p>
+                    <div className="text-sm text-gray-600">
+                      Add the API credentials required to publish content and
+                      read inbound messages.
+                    </div>
                   </div>
-
-                  {marketingTab === "PRODUCTS" ? (
-                    <div className="grid gap-6">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-lg font-semibold text-[#0b1f5f]">Products</div>
-                          <div className="text-sm text-gray-600">
-                            Create marketing-ready offerings tied to your active service types.
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {CONNECTION_PROVIDERS.map((provider) => {
+                      const values = connections[provider.id] ?? {};
+                      const snapshot = connectionSnapshots[provider.id];
+                      const savedFields = snapshot?.fields ?? {};
+                      const connected =
+                        connectionStatusById[provider.id] ?? false;
+                      const statusLabel = connected
+                        ? "Connected"
+                        : "Need to Establish Connection";
+                      const statusTone = connected
+                        ? "text-emerald-600"
+                        : "text-amber-600";
+                      const lastSaved = snapshot?.updated_at
+                        ? new Date(snapshot.updated_at).toLocaleString()
+                        : null;
+                      const oauthReady = Boolean(
+                        provider.oauthSupported &&
+                        provider.fields
+                          .filter((field) => field.required)
+                          .every((field) => savedFields[field.key]?.has_value),
+                      );
+                      return (
+                        <div
+                          key={provider.id}
+                          className="relative overflow-hidden rounded-xl border border-gray-200 p-4 shadow-sm"
+                          style={{
+                            background: connectionCardGradient(provider.id),
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-white/70" />
+                          <div className="relative z-10">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                <div className="text-sm font-semibold text-gray-900 leading-5">
+                                  {provider.label}
+                                </div>
+                                <div className="text-xs text-gray-600 leading-5">
+                                  {provider.description}
+                                </div>
+                                <div
+                                  className={`text-xs font-semibold leading-5 ${statusTone}`}
+                                >
+                                  {statusLabel}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid gap-3">
+                              {provider.fields.map((field) => (
+                                <div
+                                  key={`${provider.id}-${field.key}`}
+                                  className="grid gap-2"
+                                >
+                                  <Label>
+                                    {field.label}
+                                    {field.required ? (
+                                      <span className="text-rose-500"> *</span>
+                                    ) : null}
+                                  </Label>
+                                  <Input
+                                    type={field.type ?? "text"}
+                                    value={
+                                      values[field.key] ??
+                                      (field.type === "password"
+                                        ? ""
+                                        : (savedFields[field.key]?.value ?? ""))
+                                    }
+                                    onChange={(e) =>
+                                      updateConnectionField(
+                                        provider.id,
+                                        field.key,
+                                        e.target.value,
+                                      )
+                                    }
+                                    placeholder={
+                                      savedFields[field.key]?.has_value &&
+                                      !values[field.key]
+                                        ? "Saved"
+                                        : field.placeholder
+                                    }
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                              <span>
+                                {lastSaved
+                                  ? `Last saved ${lastSaved}`
+                                  : "Not saved yet."}
+                              </span>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {provider.oauthSupported ? (
+                                  <button
+                                    type="button"
+                                    className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                                    onClick={() =>
+                                      startConnectionOAuth(provider.id)
+                                    }
+                                    disabled={!oauthReady}
+                                    title={
+                                      oauthReady
+                                        ? "Start OAuth connection"
+                                        : "Fill required fields and save before connecting"
+                                    }
+                                  >
+                                    Connect
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                                  onClick={() => saveConnection(provider.id)}
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                          onClick={() => selectProduct(null)}
-                        >
-                          New product
-                        </button>
-                      </div>
+                      );
+                    })}
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+                    Most platforms require app review, business verification,
+                    and OAuth/webhook setup before live posting or inbox
+                    syncing. Save credentials here, then use Connect to complete
+                    OAuth where supported.
+                  </div>
+                </div>
+              ) : null}
 
-                      <div className="itutoros-carousel">
-                        {products.map((product) => {
-                          const isActive = productDraft.id === product.id;
-                          const service = product.service_code
-                            ? marketingServiceByCode.get(product.service_code)
-                            : null;
-                          const initials = product.product_name
-                            ? product.product_name.slice(0, 2).toUpperCase()
-                            : "PR";
-                          return (
+              {!loading &&
+                (activeTab === "PRODUCTS" || activeTab === "MARKETING") && (
+                  <div className="grid gap-6">
+                    {activeTab === "PRODUCTS" ? (
+                      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                        <div className="flex flex-wrap gap-2">
+                          {CONTENT_STUDIO_TABS.map((tab) => (
                             <button
-                              key={product.id}
+                              key={tab.key}
                               type="button"
-                              className={`itutoros-card-1 itutoros-carousel-card text-left ${
-                                isActive ? "ring-2 ring-[#0b1f5f]" : ""
+                              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                marketingTab === tab.key
+                                  ? "bg-[#0b1f5f] text-white"
+                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                               }`}
-                              onClick={() => selectProduct(product)}
+                              onClick={() => setMarketingTab(tab.key)}
                             >
-                              <div className="flex items-center gap-3">
-                                {product.product_logo_url ? (
-                                  <img
-                                    src={product.product_logo_url}
-                                    alt={product.product_name}
-                                    className="h-10 w-10 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef2ff] text-xs font-semibold text-[#0b1f5f]">
-                                    {initials}
-                                  </div>
-                                )}
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-semibold text-gray-900">
-                                    {product.product_name}
-                                  </div>
-                                  <div className="truncate text-xs text-gray-500">
-                                    {product.product_slogan_text || "Add a product slogan"}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                                Service type
-                              </div>
-                              <div className="text-sm font-semibold text-[#0b1f5f]">
-                                {service?.display_name ?? product.service_code ?? "Not set"}
-                              </div>
+                              {tab.label}
                             </button>
-                          );
-                        })}
-                        <button
-                          type="button"
-                          className="itutoros-card-1 itutoros-carousel-card border-dashed text-left"
-                          onClick={() => selectProduct(null)}
-                        >
-                          <div className="text-sm font-semibold text-[#0b1f5f]">Add new product</div>
-                          <div className="mt-1 text-xs text-gray-500">
-                            Start a new product card for marketing and scheduling.
-                          </div>
-                        </button>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-sm text-gray-600">
+                          Manage content used across marketing, website, and
+                          scheduling.
+                        </p>
                       </div>
+                    ) : null}
 
-                      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <div className="text-lg font-semibold text-[#0b1f5f]">Product details</div>
-                              <div className="text-sm text-gray-600">Use Save above to store changes.</div>
+                    {activeTab === "PRODUCTS" && marketingTab === "PRODUCTS" ? (
+                      <div className="grid gap-6">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-lg font-semibold text-[#0b1f5f]">
+                              Products
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              Create marketing-ready offerings tied to your
+                              active service types.
                             </div>
                           </div>
-                          <div className="mt-4 grid gap-4">
-                            <div className="grid gap-2">
-                              <Label>Product name</Label>
-                              <Input
-                                value={productDraft.product_name}
-                                onChange={(e) => setProductDraft((prev) => ({ ...prev, product_name: e.target.value }))}
-                                placeholder="SAT Bootcamp"
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <div className="flex items-center justify-between">
-                                <Label>Product slogan</Label>
-                                {(() => {
-                                  const aiKey = "product:slogan";
-                                  const isLoading = Boolean(aiRewriteLoading[aiKey]);
-                                  const hasPending = Boolean(aiRewrites[aiKey]);
-                                  return (
-                                <button
-                                  type="button"
-                                  className={[
-                                    "text-xs font-semibold",
-                                    isLoading || hasPending
-                                      ? "cursor-default text-gray-400"
-                                      : "cursor-pointer text-[#0b1f5f]",
-                                  ].join(" ")}
-                                  disabled={isLoading || hasPending}
-                                  onClick={async () => {
-                                    if (isLoading || hasPending) return;
-                                    const previous = productDraft.product_slogan_text;
-                                    setAiLoading(aiKey, true);
-                                    try {
-                                      const next = await rewriteWithAi(
-                                        "Rewrite this product slogan for clarity and marketing appeal.",
-                                        previous,
-                                      );
-                                      setProductDraft((prev) => ({ ...prev, product_slogan_text: next }));
-                                      setAiRewrite(aiKey, previous, next);
-                                    } finally {
-                                      setAiLoading(aiKey, false);
-                                    }
-                                  }}
-                                >
-                                  {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
-                                </button>
-                                  );
-                                })()}
-                              </div>
-                              <Input
-                                value={productDraft.product_slogan_text}
-                                onChange={(e) =>
-                                  setProductDraft((prev) => ({ ...prev, product_slogan_text: e.target.value }))
-                                }
-                                placeholder="Help students ace the SAT with confidence."
-                              />
-                              {aiRewrites["product:slogan"] ? (
-                                <div className="flex items-center gap-3 text-xs">
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                    onClick={() => clearAiRewrite("product:slogan")}
-                                  >
-                                    <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} className="text-green-600" />
-                                    Accept
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                    onClick={() => {
-                                      const previous = aiRewrites["product:slogan"]?.previous ?? "";
-                                      setProductDraft((prev) => ({ ...prev, product_slogan_text: previous }));
-                                      clearAiRewrite("product:slogan");
-                                    }}
-                                  >
-                                    <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
-                                    Reject
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="grid gap-2">
-                              <div className="flex items-center justify-between">
-                                <Label>Product description</Label>
-                                {(() => {
-                                  const aiKey = "product:description";
-                                  const isLoading = Boolean(aiRewriteLoading[aiKey]);
-                                  const hasPending = Boolean(aiRewrites[aiKey]);
-                                  return (
-                                <button
-                                  type="button"
-                                  className={[
-                                    "text-xs font-semibold",
-                                    isLoading || hasPending
-                                      ? "cursor-default text-gray-400"
-                                      : "cursor-pointer text-[#0b1f5f]",
-                                  ].join(" ")}
-                                  disabled={isLoading || hasPending}
-                                  onClick={async () => {
-                                    if (isLoading || hasPending) return;
-                                    const previous = productDraft.product_description_text;
-                                    setAiLoading(aiKey, true);
-                                    try {
-                                      const next = await rewriteWithAi(
-                                        "Rewrite this product description for a polished marketing tone.",
-                                        previous,
-                                      );
-                                      setProductDraft((prev) => ({ ...prev, product_description_text: next }));
-                                      setAiRewrite(aiKey, previous, next);
-                                    } finally {
-                                      setAiLoading(aiKey, false);
-                                    }
-                                  }}
-                                >
-                                  {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
-                                </button>
-                                  );
-                                })()}
-                              </div>
-                              <Textarea
-                                value={productDraft.product_description_text}
-                                onChange={(e) =>
-                                  setProductDraft((prev) => ({ ...prev, product_description_text: e.target.value }))
-                                }
-                                rows={5}
-                                placeholder="Describe the outcomes, format, and who this product serves."
-                              />
-                              {aiRewrites["product:description"] ? (
-                                <div className="flex items-center gap-3 text-xs">
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                    onClick={() => clearAiRewrite("product:description")}
-                                  >
-                                    <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} className="text-green-600" />
-                                    Accept
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                    onClick={() => {
-                                      const previous = aiRewrites["product:description"]?.previous ?? "";
-                                      setProductDraft((prev) => ({ ...prev, product_description_text: previous }));
-                                      clearAiRewrite("product:description");
-                                    }}
-                                  >
-                                    <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
-                                    Reject
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Service type</Label>
-                              <select
-                                className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                value={productDraft.service_code}
-                                onChange={(e) => setProductDraft((prev) => ({ ...prev, service_code: e.target.value }))}
+                          <button
+                            type="button"
+                            className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                            onClick={() => selectProduct(null)}
+                          >
+                            New product
+                          </button>
+                        </div>
+
+                        <div className="itutoros-carousel">
+                          {products.map((product) => {
+                            const isActive = productDraft.id === product.id;
+                            const service = product.service_code
+                              ? marketingServiceByCode.get(product.service_code)
+                              : null;
+                            const initials = product.product_name
+                              ? product.product_name.slice(0, 2).toUpperCase()
+                              : "PR";
+                            return (
+                              <button
+                                key={product.id}
+                                type="button"
+                                className={`itutoros-card-1 itutoros-carousel-card text-left ${
+                                  isActive ? "ring-2 ring-[#0b1f5f]" : ""
+                                }`}
+                                onClick={() => selectProduct(product)}
                               >
-                                <option value="">Select a service type</option>
-                                {marketingServices.map((svc) => (
-                                  <option key={svc.service_code} value={svc.service_code}>
-                                    {svc.display_name ?? svc.service_code}
-                                  </option>
-                                ))}
-                              </select>
-                              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
-                                <div>
-                                  Unit length:{" "}
-                                  {selectedProductService?.unit_length_minutes
-                                    ? `${selectedProductService.unit_length_minutes} minutes`
-                                    : "--"}
+                                <div className="flex items-center gap-3">
+                                  {product.product_logo_url ? (
+                                    <img
+                                      src={product.product_logo_url}
+                                      alt={product.product_name}
+                                      className="h-10 w-10 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef2ff] text-xs font-semibold text-[#0b1f5f]">
+                                      {initials}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-semibold text-gray-900">
+                                      {product.product_name}
+                                    </div>
+                                    <div className="truncate text-xs text-gray-500">
+                                      {product.product_slogan_text ||
+                                        "Add a product slogan"}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div>
-                                  Unit price:{" "}
-                                  {selectedProductService
-                                    ? formatCurrencyFromCents(selectedProductService.hourly_rate_cents)
-                                    : "--"}
+                                <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                  Service type
+                                </div>
+                                <div className="text-sm font-semibold text-[#0b1f5f]">
+                                  {service?.display_name ??
+                                    product.service_code ??
+                                    "Not set"}
+                                </div>
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            className="itutoros-card-1 itutoros-carousel-card border-dashed text-left"
+                            onClick={() => selectProduct(null)}
+                          >
+                            <div className="text-sm font-semibold text-[#0b1f5f]">
+                              Add new product
+                            </div>
+                            <div className="mt-1 text-xs text-gray-500">
+                              Start a new product card for marketing and
+                              scheduling.
+                            </div>
+                          </button>
+                        </div>
+
+                        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:col-span-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <div className="text-lg font-semibold text-[#0b1f5f]">
+                                  Product details
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  Use Save above to store changes.
                                 </div>
                               </div>
                             </div>
-                            <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="mt-4 grid gap-4">
                               <div className="grid gap-2">
-                                <Label>Subject (optional)</Label>
-                                <select
-                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                  value={productDraft.subject_id}
+                                <Label>Product name</Label>
+                                <Input
+                                  value={productDraft.product_name}
                                   onChange={(e) =>
                                     setProductDraft((prev) => ({
                                       ...prev,
-                                      subject_id: e.target.value,
-                                      topic_id: "",
+                                      product_name: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="SAT Bootcamp"
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <div className="flex items-center justify-between">
+                                  <Label>Product slogan</Label>
+                                  {(() => {
+                                    const aiKey = "product:slogan";
+                                    const isLoading = Boolean(
+                                      aiRewriteLoading[aiKey],
+                                    );
+                                    const hasPending = Boolean(
+                                      aiRewrites[aiKey],
+                                    );
+                                    return (
+                                      <button
+                                        type="button"
+                                        className={[
+                                          "text-xs font-semibold",
+                                          isLoading || hasPending
+                                            ? "cursor-default text-gray-400"
+                                            : "cursor-pointer text-[#0b1f5f]",
+                                        ].join(" ")}
+                                        disabled={isLoading || hasPending}
+                                        onClick={async () => {
+                                          if (isLoading || hasPending) return;
+                                          const previous =
+                                            productDraft.product_slogan_text;
+                                          setAiLoading(aiKey, true);
+                                          try {
+                                            const next = await rewriteWithAi(
+                                              "Rewrite this product slogan for clarity and marketing appeal.",
+                                              previous,
+                                            );
+                                            setProductDraft((prev) => ({
+                                              ...prev,
+                                              product_slogan_text: next,
+                                            }));
+                                            setAiRewrite(aiKey, previous, next);
+                                          } finally {
+                                            setAiLoading(aiKey, false);
+                                          }
+                                        }}
+                                      >
+                                        {isLoading
+                                          ? "Thinking..."
+                                          : hasPending
+                                            ? "Accept?"
+                                            : "Rewrite with AI"}
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                                <Input
+                                  value={productDraft.product_slogan_text}
+                                  onChange={(e) =>
+                                    setProductDraft((prev) => ({
+                                      ...prev,
+                                      product_slogan_text: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Help students ace the SAT with confidence."
+                                />
+                                {aiRewrites["product:slogan"] ? (
+                                  <div className="flex items-center gap-3 text-xs">
+                                    <button
+                                      type="button"
+                                      className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                      onClick={() =>
+                                        clearAiRewrite("product:slogan")
+                                      }
+                                    >
+                                      <HugeiconsIcon
+                                        icon={CheckmarkCircle01Icon}
+                                        size={14}
+                                        className="text-green-600"
+                                      />
+                                      Accept
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                      onClick={() => {
+                                        const previous =
+                                          aiRewrites["product:slogan"]
+                                            ?.previous ?? "";
+                                        setProductDraft((prev) => ({
+                                          ...prev,
+                                          product_slogan_text: previous,
+                                        }));
+                                        clearAiRewrite("product:slogan");
+                                      }}
+                                    >
+                                      <HugeiconsIcon
+                                        icon={Cancel01Icon}
+                                        size={14}
+                                        className="text-red-600"
+                                      />
+                                      Reject
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="grid gap-2">
+                                <div className="flex items-center justify-between">
+                                  <Label>Product description</Label>
+                                  {(() => {
+                                    const aiKey = "product:description";
+                                    const isLoading = Boolean(
+                                      aiRewriteLoading[aiKey],
+                                    );
+                                    const hasPending = Boolean(
+                                      aiRewrites[aiKey],
+                                    );
+                                    return (
+                                      <button
+                                        type="button"
+                                        className={[
+                                          "text-xs font-semibold",
+                                          isLoading || hasPending
+                                            ? "cursor-default text-gray-400"
+                                            : "cursor-pointer text-[#0b1f5f]",
+                                        ].join(" ")}
+                                        disabled={isLoading || hasPending}
+                                        onClick={async () => {
+                                          if (isLoading || hasPending) return;
+                                          const previous =
+                                            productDraft.product_description_text;
+                                          setAiLoading(aiKey, true);
+                                          try {
+                                            const next = await rewriteWithAi(
+                                              "Rewrite this product description for a polished marketing tone.",
+                                              previous,
+                                            );
+                                            setProductDraft((prev) => ({
+                                              ...prev,
+                                              product_description_text: next,
+                                            }));
+                                            setAiRewrite(aiKey, previous, next);
+                                          } finally {
+                                            setAiLoading(aiKey, false);
+                                          }
+                                        }}
+                                      >
+                                        {isLoading
+                                          ? "Thinking..."
+                                          : hasPending
+                                            ? "Accept?"
+                                            : "Rewrite with AI"}
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                                <Textarea
+                                  value={productDraft.product_description_text}
+                                  onChange={(e) =>
+                                    setProductDraft((prev) => ({
+                                      ...prev,
+                                      product_description_text: e.target.value,
+                                    }))
+                                  }
+                                  rows={5}
+                                  placeholder="Describe the outcomes, format, and who this product serves."
+                                />
+                                {aiRewrites["product:description"] ? (
+                                  <div className="flex items-center gap-3 text-xs">
+                                    <button
+                                      type="button"
+                                      className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                      onClick={() =>
+                                        clearAiRewrite("product:description")
+                                      }
+                                    >
+                                      <HugeiconsIcon
+                                        icon={CheckmarkCircle01Icon}
+                                        size={14}
+                                        className="text-green-600"
+                                      />
+                                      Accept
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                      onClick={() => {
+                                        const previous =
+                                          aiRewrites["product:description"]
+                                            ?.previous ?? "";
+                                        setProductDraft((prev) => ({
+                                          ...prev,
+                                          product_description_text: previous,
+                                        }));
+                                        clearAiRewrite("product:description");
+                                      }}
+                                    >
+                                      <HugeiconsIcon
+                                        icon={Cancel01Icon}
+                                        size={14}
+                                        className="text-red-600"
+                                      />
+                                      Reject
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Service type</Label>
+                                <select
+                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                  value={productDraft.service_code}
+                                  onChange={(e) =>
+                                    setProductDraft((prev) => ({
+                                      ...prev,
+                                      service_code: e.target.value,
                                     }))
                                   }
                                 >
-                                  <option value="">Select a subject</option>
-                                  {subjects
-                                    .filter((subject) => !subject.archived_at)
-                                    .map((subject) => (
-                                      <option key={subject.id} value={subject.id}>
-                                        {subject.subject_name}
-                                      </option>
-                                    ))}
-                                </select>
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Topic (optional)</Label>
-                                <select
-                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                  value={productDraft.topic_id}
-                                  onChange={(e) => setProductDraft((prev) => ({ ...prev, topic_id: e.target.value }))}
-                                  disabled={!productDraft.subject_id}
-                                >
-                                  <option value="">Select a topic</option>
-                                  {productTopicOptions.map((topic) => (
-                                    <option key={topic.id} value={topic.id}>
-                                      {topic.topic_name}
+                                  <option value="">
+                                    Select a service type
+                                  </option>
+                                  {marketingServices.map((svc) => (
+                                    <option
+                                      key={svc.service_code}
+                                      value={svc.service_code}
+                                    >
+                                      {svc.display_name ?? svc.service_code}
                                     </option>
                                   ))}
                                 </select>
-                              </div>
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Product logo</Label>
-                              <div className="flex flex-wrap items-center gap-3">
-                                <Input
-                                  value={productDraft.product_logo_url}
-                                  onChange={(e) =>
-                                    setProductDraft((prev) => ({ ...prev, product_logo_url: e.target.value }))
-                                  }
-                                  placeholder="Paste logo URL or upload below"
-                                />
-                                <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                  Upload logo
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={async (e) => {
-                                      const file = e.target.files?.[0];
-                                      if (!file) return;
-                                      const dataUrl = await readFileAsDataUrl(file);
-                                      setProductDraft((prev) => ({ ...prev, product_logo_url: dataUrl }));
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                              {productDraft.product_logo_url ? (
-                                <img
-                                  src={productDraft.product_logo_url}
-                                  alt="Product logo"
-                                  className="h-16 w-16 rounded-xl border border-gray-200 object-cover"
-                                />
-                              ) : (
-                                <div className="text-xs text-gray-500">No logo uploaded yet.</div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                          <div className="text-lg font-semibold text-[#0b1f5f]">Product media</div>
-                          <div className="text-sm text-gray-600">
-                            Upload photos and videos for marketing galleries.
-                          </div>
-                          <div className="mt-4 grid gap-3">
-                            {productDraft.id ? (
-                              <>
-                                {productMediaLoading ? (
-                                  <div className="text-sm text-gray-500">Loading media...</div>
-                                ) : null}
-                                {productMedia.length === 0 && !productMediaLoading ? (
-                                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                    No media yet. Upload photos or videos to build your catalog.
+                                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                                  <div>
+                                    Unit length:{" "}
+                                    {selectedProductService?.unit_length_minutes
+                                      ? `${selectedProductService.unit_length_minutes} minutes`
+                                      : "--"}
                                   </div>
-                                ) : null}
-                                {productMedia.length ? (
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    {productMedia.map((media) => (
-                                      <div
-                                        key={media.id}
-                                        className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
-                                      >
-                                        {media.media_type === "VIDEO" ? (
-                                          <video src={media.media_url} controls className="h-40 w-full object-cover" />
-                                        ) : (
-                                          <img src={media.media_url} alt="" className="h-40 w-full object-cover" />
-                                        )}
-                                        <button
-                                          type="button"
-                                          className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
-                                          onClick={() =>
-                                            removeCatalogMedia(media.id, () =>
-                                              loadCatalogMedia({
-                                                kind: "product",
-                                                id: productDraft.id!,
-                                                product_id: productDraft.id!,
-                                              }),
-                                            )
-                                          }
+                                  <div>
+                                    Unit price:{" "}
+                                    {selectedProductService
+                                      ? formatCurrencyFromCents(
+                                          selectedProductService.hourly_rate_cents,
+                                        )
+                                      : "--"}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="grid gap-4">
+                                <div className="grid gap-2">
+                                  <Label>Subject (optional)</Label>
+                                  <select
+                                    className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                    value={productDraft.subject_id}
+                                    onChange={(e) =>
+                                      setProductDraft((prev) => ({
+                                        ...prev,
+                                        subject_id: e.target.value,
+                                        topic_id: "",
+                                      }))
+                                    }
+                                  >
+                                    <option value="">Select a subject</option>
+                                    {subjects
+                                      .filter((subject) => !subject.archived_at)
+                                      .map((subject) => (
+                                        <option
+                                          key={subject.id}
+                                          value={subject.id}
                                         >
-                                          Remove
-                                        </button>
-                                      </div>
+                                          {subject.subject_name}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Topic (optional)</Label>
+                                  <select
+                                    className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                    value={productDraft.topic_id}
+                                    onChange={(e) =>
+                                      setProductDraft((prev) => ({
+                                        ...prev,
+                                        topic_id: e.target.value,
+                                      }))
+                                    }
+                                    disabled={!productDraft.subject_id}
+                                  >
+                                    <option value="">Select a topic</option>
+                                    {productTopicOptions.map((topic) => (
+                                      <option key={topic.id} value={topic.id}>
+                                        {topic.topic_name}
+                                      </option>
                                     ))}
-                                  </div>
-                                ) : null}
-                                <div className="flex flex-wrap gap-2">
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Product logo</Label>
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <Input
+                                    value={productDraft.product_logo_url}
+                                    onChange={(e) =>
+                                      setProductDraft((prev) => ({
+                                        ...prev,
+                                        product_logo_url: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Paste logo URL or upload below"
+                                  />
                                   <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                    Upload photo
+                                    Upload logo
                                     <input
                                       type="file"
                                       accept="image/*"
                                       className="hidden"
-                                      multiple
-                                      onChange={(e) => {
-                                        const files = Array.from(e.target.files ?? []);
-                                        files.forEach((file) =>
-                                          handleMediaFileUpload({
-                                            kind: "product",
-                                            id: productDraft.id!,
-                                            file,
-                                            media_type: "PHOTO",
-                                            product_id: productDraft.id!,
-                                          }),
-                                        );
-                                      }}
-                                    />
-                                  </label>
-                                  <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                    Upload video
-                                    <input
-                                      type="file"
-                                      accept="video/*"
-                                      className="hidden"
-                                      multiple
-                                      onChange={(e) => {
-                                        const files = Array.from(e.target.files ?? []);
-                                        files.forEach((file) =>
-                                          handleMediaFileUpload({
-                                            kind: "product",
-                                            id: productDraft.id!,
-                                            file,
-                                            media_type: "VIDEO",
-                                            product_id: productDraft.id!,
-                                          }),
-                                        );
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        const dataUrl =
+                                          await readFileAsDataUrl(file);
+                                        setProductDraft((prev) => ({
+                                          ...prev,
+                                          product_logo_url: dataUrl,
+                                        }));
                                       }}
                                     />
                                   </label>
                                 </div>
-                              </>
-                            ) : (
-                              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                Save the product first to upload media.
+                                {productDraft.product_logo_url ? (
+                                  <img
+                                    src={productDraft.product_logo_url}
+                                    alt="Product logo"
+                                    className="h-16 w-16 rounded-xl border border-gray-200 object-cover"
+                                  />
+                                ) : (
+                                  <div className="text-xs text-gray-500">
+                                    No logo uploaded yet.
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            </div>
+                            <div className="mt-6 border-t border-gray-200 pt-4">
+                              <div className="text-lg font-semibold text-[#0b1f5f]">
+                                Product media
+                                {productDraft.product_name
+                                  ? ` for ${productDraft.product_name}`
+                                  : ""}
+                              </div>
+                              <div className="text-sm text-gray-600">
+                                Upload photos and videos specific to this
+                                product so it&apos;s clear what you&apos;re
+                                sharing.
+                              </div>
+                              <div className="mt-4 grid gap-3">
+                                {productDraft.id ? (
+                                  <>
+                                    {productMediaLoading ? (
+                                      <div className="text-sm text-gray-500">
+                                        Loading media...
+                                      </div>
+                                    ) : null}
+                                    {productMedia.length === 0 &&
+                                    !productMediaLoading ? (
+                                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                        No media yet. Upload photos or videos
+                                        for this product.
+                                      </div>
+                                    ) : null}
+                                    {productMedia.length ? (
+                                      <div className="grid gap-3 sm:grid-cols-2">
+                                        {productMedia.map((media) => (
+                                          <div
+                                            key={media.id}
+                                            className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
+                                          >
+                                            {media.media_type === "VIDEO" ? (
+                                              <video
+                                                src={media.media_url}
+                                                controls
+                                                className="h-40 w-full object-cover"
+                                              />
+                                            ) : (
+                                              <img
+                                                src={media.media_url}
+                                                alt=""
+                                                className="h-40 w-full object-cover"
+                                              />
+                                            )}
+                                            <button
+                                              type="button"
+                                              className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
+                                              onClick={() =>
+                                                removeCatalogMedia(
+                                                  media.id,
+                                                  () =>
+                                                    loadCatalogMedia({
+                                                      kind: "product",
+                                                      id: productDraft.id!,
+                                                      product_id:
+                                                        productDraft.id!,
+                                                    }),
+                                                )
+                                              }
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    <div className="flex flex-wrap gap-2">
+                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                        Upload photo
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          multiple
+                                          onChange={(e) => {
+                                            const files = Array.from(
+                                              e.target.files ?? [],
+                                            );
+                                            files.forEach((file) =>
+                                              handleMediaFileUpload({
+                                                kind: "product",
+                                                id: productDraft.id!,
+                                                file,
+                                                media_type: "PHOTO",
+                                                product_id: productDraft.id!,
+                                              }),
+                                            );
+                                          }}
+                                        />
+                                      </label>
+                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                        Upload video
+                                        <input
+                                          type="file"
+                                          accept="video/*"
+                                          className="hidden"
+                                          multiple
+                                          onChange={(e) => {
+                                            const files = Array.from(
+                                              e.target.files ?? [],
+                                            );
+                                            files.forEach((file) =>
+                                              handleMediaFileUpload({
+                                                kind: "product",
+                                                id: productDraft.id!,
+                                                file,
+                                                media_type: "VIDEO",
+                                                product_id: productDraft.id!,
+                                              }),
+                                            );
+                                          }}
+                                        />
+                                      </label>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                    Save the product first to upload media.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
-                  {marketingTab === "SERVICES" ? (
-                    <div className="grid gap-6">
-                      <div className="text-sm text-gray-600">
-                        Add marketing descriptions and media for each active service type.
-                      </div>
-                      {marketingServices.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                          No active services yet. Enable services in the Services tab first.
+                    ) : null}
+                    {activeTab === "PRODUCTS" && marketingTab === "SERVICES" ? (
+                      <div className="grid gap-6">
+                        <div className="text-sm text-gray-600">
+                          Add marketing descriptions and media for each active
+                          service type.
                         </div>
-                      ) : (
-                        <div className="grid gap-4">
-                          {marketingServices.map((svc) => {
-                            const mediaKey = catalogMediaKey("service", svc.service_code);
-                            const media = catalogMediaByKey[mediaKey] ?? [];
-                            const loadingMedia = Boolean(catalogMediaLoading[mediaKey]);
-                            const aiKey = `service:${svc.service_code}`;
-                            return (
-                              <div
-                                key={svc.service_code}
-                                className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div>
-                                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                      Service
-                                    </div>
-                                    <div className="text-lg font-semibold text-[#0b1f5f]">
-                                      {svc.display_name ?? svc.service_code}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      Unit length {svc.unit_length_minutes ?? 60} min - Unit price{" "}
-                                      {formatCurrencyFromCents(svc.hourly_rate_cents)}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                    onClick={() => saveServiceDescription(svc.service_code)}
-                                  >
-                                    Save
-                                  </button>
-                                </div>
-                                <div className="mt-4 grid gap-2">
-                                  <div className="flex items-center justify-between">
-                                    <Label>Description</Label>
-                                    {(() => {
-                                      const isLoading = Boolean(aiRewriteLoading[aiKey]);
-                                      const hasPending = Boolean(aiRewrites[aiKey]);
-                                      return (
-                                        <button
-                                          type="button"
-                                          className={[
-                                            "text-xs font-semibold",
-                                            isLoading || hasPending
-                                              ? "cursor-default text-gray-400"
-                                              : "cursor-pointer text-[#0b1f5f]",
-                                          ].join(" ")}
-                                          disabled={isLoading || hasPending}
-                                          onClick={async () => {
-                                            if (isLoading || hasPending) return;
-                                            const current = serviceDescriptionDrafts[svc.service_code] ?? "";
-                                            setAiLoading(aiKey, true);
-                                            try {
-                                              const next = await rewriteWithAi(
-                                                `Rewrite the marketing description for ${svc.display_name ?? svc.service_code}.`,
-                                                current,
-                                              );
-                                              setServiceDescriptionDrafts((prev) => ({
-                                                ...prev,
-                                                [svc.service_code]: next,
-                                              }));
-                                              setAiRewrite(aiKey, current, next);
-                                            } finally {
-                                              setAiLoading(aiKey, false);
-                                            }
-                                          }}
-                                        >
-                                          {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
-                                        </button>
-                                      );
-                                    })()}
-                                  </div>
-                                  <Textarea
-                                    rows={4}
-                                    value={serviceDescriptionDrafts[svc.service_code] ?? ""}
-                                    onChange={(e) =>
-                                      setServiceDescriptionDrafts((prev) => ({
-                                        ...prev,
-                                        [svc.service_code]: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Describe what makes this service special."
-                                  />
-                                  {aiRewrites[aiKey] ? (
-                                    <div className="flex items-center gap-3 text-xs">
-                                      <button
-                                        type="button"
-                                        className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                        onClick={() => clearAiRewrite(aiKey)}
-                                      >
-                                        <HugeiconsIcon
-                                          icon={CheckmarkCircle01Icon}
-                                          size={14}
-                                          className="text-green-600"
-                                        />
-                                        Accept
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                        onClick={() => {
-                                          const previous = aiRewrites[aiKey]?.previous ?? "";
-                                          setServiceDescriptionDrafts((prev) => ({
-                                            ...prev,
-                                            [svc.service_code]: previous,
-                                          }));
-                                          clearAiRewrite(aiKey);
-                                        }}
-                                      >
-                                        <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
-                                        Reject
-                                      </button>
-                                    </div>
-                                  ) : null}
-                                </div>
-                                <div className="mt-4 grid gap-3">
-                                  <div className="text-sm font-semibold text-gray-700">Media gallery</div>
-                                  {loadingMedia ? (
-                                    <div className="text-sm text-gray-500">Loading media...</div>
-                                  ) : null}
-                                  {media.length === 0 && !loadingMedia ? (
-                                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                      Add photos or videos to showcase this service.
-                                    </div>
-                                  ) : null}
-                                  {media.length ? (
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      {media.map((item) => (
-                                        <div
-                                          key={item.id}
-                                          className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
-                                        >
-                                          {item.media_type === "VIDEO" ? (
-                                            <video src={item.media_url} controls className="h-36 w-full object-cover" />
-                                          ) : (
-                                            <img src={item.media_url} alt="" className="h-36 w-full object-cover" />
-                                          )}
-                                          <button
-                                            type="button"
-                                            className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
-                                            onClick={() =>
-                                              removeCatalogMedia(item.id, () =>
-                                                loadCatalogMedia({
-                                                  kind: "service",
-                                                  id: svc.service_code,
-                                                  service_code: svc.service_code,
-                                                }),
-                                              )
-                                            }
-                                          >
-                                            Remove
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                  <div className="flex flex-wrap gap-2">
-                                    <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                      Upload photo
-                                      <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        multiple
-                                        onChange={(e) => {
-                                          const files = Array.from(e.target.files ?? []);
-                                          files.forEach((file) =>
-                                            handleMediaFileUpload({
-                                              kind: "service",
-                                              id: svc.service_code,
-                                              file,
-                                              media_type: "PHOTO",
-                                              service_code: svc.service_code,
-                                            }),
-                                          );
-                                        }}
-                                      />
-                                    </label>
-                                    <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                      Upload video
-                                      <input
-                                        type="file"
-                                        accept="video/*"
-                                        className="hidden"
-                                        multiple
-                                        onChange={(e) => {
-                                          const files = Array.from(e.target.files ?? []);
-                                          files.forEach((file) =>
-                                            handleMediaFileUpload({
-                                              kind: "service",
-                                              id: svc.service_code,
-                                              file,
-                                              media_type: "VIDEO",
-                                              service_code: svc.service_code,
-                                            }),
-                                          );
-                                        }}
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                  {marketingTab === "SUBJECTS" ? (
-                    <div className="grid gap-6">
-                      <div className="text-sm text-gray-600">
-                        Add marketing descriptions and media for your active subjects.
-                      </div>
-                      {subjects.filter((s) => !s.archived_at).length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                          No active subjects yet. Enable subjects first.
-                        </div>
-                      ) : (
-                        <div className="grid gap-4">
-                          {subjects
-                            .filter((subject) => !subject.archived_at)
-                            .map((subject) => {
-                              const mediaKey = catalogMediaKey("subject", subject.id);
+                        {marketingServices.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                            No active services yet. Enable services in the
+                            Services tab first.
+                          </div>
+                        ) : (
+                          <div className="grid gap-4">
+                            {marketingServices.map((svc) => {
+                              const mediaKey = catalogMediaKey(
+                                "service",
+                                svc.service_code,
+                              );
                               const media = catalogMediaByKey[mediaKey] ?? [];
-                              const loadingMedia = Boolean(catalogMediaLoading[mediaKey]);
-                              const aiKey = `subject:${subject.id}`;
+                              const loadingMedia = Boolean(
+                                catalogMediaLoading[mediaKey],
+                              );
+                              const aiKey = `service:${svc.service_code}`;
                               return (
                                 <div
-                                  key={subject.id}
+                                  key={svc.service_code}
                                   className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
                                 >
                                   <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div>
                                       <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                        Subject
+                                        Service
                                       </div>
                                       <div className="text-lg font-semibold text-[#0b1f5f]">
-                                        {subject.subject_name}
+                                        {svc.display_name ?? svc.service_code}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        Unit length{" "}
+                                        {svc.unit_length_minutes ?? 60} min -
+                                        Unit price{" "}
+                                        {formatCurrencyFromCents(
+                                          svc.hourly_rate_cents,
+                                        )}
                                       </div>
                                     </div>
                                     <button
                                       type="button"
                                       className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                      onClick={() => saveSubjectDescription(subject.id)}
+                                      onClick={() =>
+                                        saveServiceDescription(svc.service_code)
+                                      }
                                     >
                                       Save
                                     </button>
@@ -5681,8 +8292,12 @@ export default function SettingsPage() {
                                     <div className="flex items-center justify-between">
                                       <Label>Description</Label>
                                       {(() => {
-                                        const isLoading = Boolean(aiRewriteLoading[aiKey]);
-                                        const hasPending = Boolean(aiRewrites[aiKey]);
+                                        const isLoading = Boolean(
+                                          aiRewriteLoading[aiKey],
+                                        );
+                                        const hasPending = Boolean(
+                                          aiRewrites[aiKey],
+                                        );
                                         return (
                                           <button
                                             type="button"
@@ -5694,39 +8309,58 @@ export default function SettingsPage() {
                                             ].join(" ")}
                                             disabled={isLoading || hasPending}
                                             onClick={async () => {
-                                              if (isLoading || hasPending) return;
-                                              const current = subjectDescriptionDrafts[subject.id] ?? "";
+                                              if (isLoading || hasPending)
+                                                return;
+                                              const current =
+                                                serviceDescriptionDrafts[
+                                                  svc.service_code
+                                                ] ?? "";
                                               setAiLoading(aiKey, true);
                                               try {
-                                                const next = await rewriteWithAi(
-                                                  `Rewrite the marketing description for ${subject.subject_name}.`,
-                                                  current,
+                                                const next =
+                                                  await rewriteWithAi(
+                                                    `Rewrite the marketing description for ${svc.display_name ?? svc.service_code}.`,
+                                                    current,
+                                                  );
+                                                setServiceDescriptionDrafts(
+                                                  (prev) => ({
+                                                    ...prev,
+                                                    [svc.service_code]: next,
+                                                  }),
                                                 );
-                                                setSubjectDescriptionDrafts((prev) => ({
-                                                  ...prev,
-                                                  [subject.id]: next,
-                                                }));
-                                                setAiRewrite(aiKey, current, next);
+                                                setAiRewrite(
+                                                  aiKey,
+                                                  current,
+                                                  next,
+                                                );
                                               } finally {
                                                 setAiLoading(aiKey, false);
                                               }
                                             }}
                                           >
-                                            {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
+                                            {isLoading
+                                              ? "Thinking..."
+                                              : hasPending
+                                                ? "Accept?"
+                                                : "Rewrite with AI"}
                                           </button>
                                         );
                                       })()}
                                     </div>
                                     <Textarea
                                       rows={4}
-                                      value={subjectDescriptionDrafts[subject.id] ?? ""}
+                                      value={
+                                        serviceDescriptionDrafts[
+                                          svc.service_code
+                                        ] ?? ""
+                                      }
                                       onChange={(e) =>
-                                        setSubjectDescriptionDrafts((prev) => ({
+                                        setServiceDescriptionDrafts((prev) => ({
                                           ...prev,
-                                          [subject.id]: e.target.value,
+                                          [svc.service_code]: e.target.value,
                                         }))
                                       }
-                                      placeholder="Share the outcomes and focus areas for this subject."
+                                      placeholder="Describe what makes this service special."
                                     />
                                     {aiRewrites[aiKey] ? (
                                       <div className="flex items-center gap-3 text-xs">
@@ -5746,262 +8380,89 @@ export default function SettingsPage() {
                                           type="button"
                                           className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
                                           onClick={() => {
-                                            const previous = aiRewrites[aiKey]?.previous ?? "";
-                                            setSubjectDescriptionDrafts((prev) => ({
-                                              ...prev,
-                                              [subject.id]: previous,
-                                            }));
+                                            const previous =
+                                              aiRewrites[aiKey]?.previous ?? "";
+                                            setServiceDescriptionDrafts(
+                                              (prev) => ({
+                                                ...prev,
+                                                [svc.service_code]: previous,
+                                              }),
+                                            );
                                             clearAiRewrite(aiKey);
                                           }}
                                         >
-                                          <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
+                                          <HugeiconsIcon
+                                            icon={Cancel01Icon}
+                                            size={14}
+                                            className="text-red-600"
+                                          />
                                           Reject
                                         </button>
                                       </div>
                                     ) : null}
-                                  </div>
-                                  <div className="mt-4 grid gap-3">
-                                    <div className="text-sm font-semibold text-gray-700">Media gallery</div>
-                                    {loadingMedia ? (
-                                      <div className="text-sm text-gray-500">Loading media...</div>
-                                    ) : null}
-                                    {media.length === 0 && !loadingMedia ? (
-                                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                        Add photos or videos to highlight this subject.
-                                      </div>
-                                    ) : null}
-                                    {media.length ? (
-                                      <div className="grid gap-3 sm:grid-cols-2">
-                                        {media.map((item) => (
-                                          <div
-                                            key={item.id}
-                                            className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
-                                          >
-                                            {item.media_type === "VIDEO" ? (
-                                              <video src={item.media_url} controls className="h-36 w-full object-cover" />
-                                            ) : (
-                                              <img src={item.media_url} alt="" className="h-36 w-full object-cover" />
-                                            )}
-                                            <button
-                                              type="button"
-                                              className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
-                                              onClick={() =>
-                                                removeCatalogMedia(item.id, () =>
-                                                  loadCatalogMedia({
-                                                    kind: "subject",
-                                                    id: subject.id,
-                                                    subject_id: subject.id,
-                                                  }),
-                                                )
-                                              }
-                                            >
-                                              Remove
-                                            </button>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                    <div className="flex flex-wrap gap-2">
-                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                        Upload photo
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          className="hidden"
-                                          multiple
-                                          onChange={(e) => {
-                                            const files = Array.from(e.target.files ?? []);
-                                            files.forEach((file) =>
-                                              handleMediaFileUpload({
-                                                kind: "subject",
-                                                id: subject.id,
-                                                file,
-                                                media_type: "PHOTO",
-                                                subject_id: subject.id,
-                                              }),
-                                            );
-                                          }}
-                                        />
-                                      </label>
-                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                        Upload video
-                                        <input
-                                          type="file"
-                                          accept="video/*"
-                                          className="hidden"
-                                          multiple
-                                          onChange={(e) => {
-                                            const files = Array.from(e.target.files ?? []);
-                                            files.forEach((file) =>
-                                              handleMediaFileUpload({
-                                                kind: "subject",
-                                                id: subject.id,
-                                                file,
-                                                media_type: "VIDEO",
-                                                subject_id: subject.id,
-                                              }),
-                                            );
-                                          }}
-                                        />
-                                      </label>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                  {marketingTab === "TOPICS" ? (
-                    <div className="grid gap-6">
-                      <div className="text-sm text-gray-600">
-                        Add marketing descriptions for the topics within a subject.
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Subject</Label>
-                        <select
-                          className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                          value={marketingSubjectId}
-                          onChange={(e) => setMarketingSubjectId(e.target.value)}
-                        >
-                          <option value="">Select a subject</option>
-                          {subjects
-                            .filter((subject) => !subject.archived_at)
-                            .map((subject) => (
-                              <option key={subject.id} value={subject.id}>
-                                {subject.subject_name}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                      {!marketingSubjectId ? (
-                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                          Choose a subject to see its topics.
-                        </div>
-                      ) : null}
-                      {marketingSubjectId ? (
-                        <div className="grid gap-4">
-                          {(topicsBySubject[marketingSubjectId] ?? [])
-                            .filter((topic) => !topic.archived_at)
-                            .map((topic) => {
-                              const mediaKey = catalogMediaKey("topic", topic.id);
-                              const media = catalogMediaByKey[mediaKey] ?? [];
-                              const loadingMedia = Boolean(catalogMediaLoading[mediaKey]);
-                              const aiKey = `topic:${topic.id}`;
-                              return (
-                                <div
-                                  key={topic.id}
-                                  className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-                                >
-                                  <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                        Topic
-                                      </div>
-                                      <div className="text-lg font-semibold text-[#0b1f5f]">
-                                        {topic.topic_name}
-                                      </div>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                      onClick={() => saveTopicDescription(topic.id)}
-                                    >
-                                      Save
-                                    </button>
                                   </div>
                                   <div className="mt-4 grid gap-2">
-                                    <div className="flex items-center justify-between">
-                                      <Label>Description</Label>
-                                      {(() => {
-                                        const isLoading = Boolean(aiRewriteLoading[aiKey]);
-                                        const hasPending = Boolean(aiRewrites[aiKey]);
-                                        return (
-                                          <button
-                                            type="button"
-                                            className={[
-                                              "text-xs font-semibold",
-                                              isLoading || hasPending
-                                                ? "cursor-default text-gray-400"
-                                                : "cursor-pointer text-[#0b1f5f]",
-                                            ].join(" ")}
-                                            disabled={isLoading || hasPending}
-                                            onClick={async () => {
-                                              if (isLoading || hasPending) return;
-                                              const current = topicDescriptionDrafts[topic.id] ?? "";
-                                              setAiLoading(aiKey, true);
-                                              try {
-                                                const next = await rewriteWithAi(
-                                                  `Rewrite the marketing description for ${topic.topic_name}.`,
-                                                  current,
-                                                );
-                                                setTopicDescriptionDrafts((prev) => ({
-                                                  ...prev,
-                                                  [topic.id]: next,
-                                                }));
-                                                setAiRewrite(aiKey, current, next);
-                                              } finally {
-                                                setAiLoading(aiKey, false);
-                                              }
-                                            }}
-                                          >
-                                            {isLoading ? "Thinking..." : hasPending ? "Accept?" : "Rewrite with AI"}
-                                          </button>
-                                        );
-                                      })()}
-                                    </div>
-                                    <Textarea
-                                      rows={3}
-                                      value={topicDescriptionDrafts[topic.id] ?? ""}
-                                      onChange={(e) =>
-                                        setTopicDescriptionDrafts((prev) => ({
-                                          ...prev,
-                                          [topic.id]: e.target.value,
-                                        }))
-                                      }
-                                      placeholder="Describe the focus and outcomes for this topic."
-                                    />
-                                    {aiRewrites[aiKey] ? (
-                                      <div className="flex items-center gap-3 text-xs">
-                                        <button
-                                          type="button"
-                                          className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                          onClick={() => clearAiRewrite(aiKey)}
-                                        >
-                                          <HugeiconsIcon
-                                            icon={CheckmarkCircle01Icon}
-                                            size={14}
-                                            className="text-green-600"
-                                          />
-                                          Accept
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                          onClick={() => {
-                                            const previous = aiRewrites[aiKey]?.previous ?? "";
-                                            setTopicDescriptionDrafts((prev) => ({
+                                    <Label>Service branding/logo</Label>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                      <Input
+                                        value={
+                                          serviceLogoDrafts[svc.service_code] ??
+                                          ""
+                                        }
+                                        onChange={(e) =>
+                                          setServiceLogoDrafts((prev) => ({
+                                            ...prev,
+                                            [svc.service_code]: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Paste logo URL or upload below"
+                                      />
+                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                        Upload logo
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={async (e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            const dataUrl =
+                                              await readFileAsDataUrl(file);
+                                            setServiceLogoDrafts((prev) => ({
                                               ...prev,
-                                              [topic.id]: previous,
+                                              [svc.service_code]: dataUrl,
                                             }));
-                                            clearAiRewrite(aiKey);
                                           }}
-                                        >
-                                          <HugeiconsIcon icon={Cancel01Icon} size={14} className="text-red-600" />
-                                          Reject
-                                        </button>
+                                        />
+                                      </label>
+                                    </div>
+                                    {serviceLogoDrafts[svc.service_code] ? (
+                                      <img
+                                        src={
+                                          serviceLogoDrafts[svc.service_code]
+                                        }
+                                        alt={`${svc.display_name ?? svc.service_code} logo`}
+                                        className="h-16 w-16 rounded-xl border border-gray-200 object-cover"
+                                      />
+                                    ) : (
+                                      <div className="text-xs text-gray-500">
+                                        No service logo uploaded yet.
                                       </div>
-                                    ) : null}
+                                    )}
                                   </div>
                                   <div className="mt-4 grid gap-3">
-                                    <div className="text-sm font-semibold text-gray-700">Media gallery</div>
+                                    <div className="text-sm font-semibold text-gray-700">
+                                      Media gallery
+                                    </div>
                                     {loadingMedia ? (
-                                      <div className="text-sm text-gray-500">Loading media...</div>
+                                      <div className="text-sm text-gray-500">
+                                        Loading media...
+                                      </div>
                                     ) : null}
                                     {media.length === 0 && !loadingMedia ? (
                                       <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                        Add optional visuals for this topic.
+                                        Add photos or videos to showcase this
+                                        service.
                                       </div>
                                     ) : null}
                                     {media.length ? (
@@ -6012,20 +8473,31 @@ export default function SettingsPage() {
                                             className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
                                           >
                                             {item.media_type === "VIDEO" ? (
-                                              <video src={item.media_url} controls className="h-32 w-full object-cover" />
+                                              <video
+                                                src={item.media_url}
+                                                controls
+                                                className="h-36 w-full object-cover"
+                                              />
                                             ) : (
-                                              <img src={item.media_url} alt="" className="h-32 w-full object-cover" />
+                                              <img
+                                                src={item.media_url}
+                                                alt=""
+                                                className="h-36 w-full object-cover"
+                                              />
                                             )}
                                             <button
                                               type="button"
                                               className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
                                               onClick={() =>
-                                                removeCatalogMedia(item.id, () =>
-                                                  loadCatalogMedia({
-                                                    kind: "topic",
-                                                    id: topic.id,
-                                                    topic_id: topic.id,
-                                                  }),
+                                                removeCatalogMedia(
+                                                  item.id,
+                                                  () =>
+                                                    loadCatalogMedia({
+                                                      kind: "service",
+                                                      id: svc.service_code,
+                                                      service_code:
+                                                        svc.service_code,
+                                                    }),
                                                 )
                                               }
                                             >
@@ -6044,14 +8516,16 @@ export default function SettingsPage() {
                                           className="hidden"
                                           multiple
                                           onChange={(e) => {
-                                            const files = Array.from(e.target.files ?? []);
+                                            const files = Array.from(
+                                              e.target.files ?? [],
+                                            );
                                             files.forEach((file) =>
                                               handleMediaFileUpload({
-                                                kind: "topic",
-                                                id: topic.id,
+                                                kind: "service",
+                                                id: svc.service_code,
                                                 file,
                                                 media_type: "PHOTO",
-                                                topic_id: topic.id,
+                                                service_code: svc.service_code,
                                               }),
                                             );
                                           }}
@@ -6065,14 +8539,16 @@ export default function SettingsPage() {
                                           className="hidden"
                                           multiple
                                           onChange={(e) => {
-                                            const files = Array.from(e.target.files ?? []);
+                                            const files = Array.from(
+                                              e.target.files ?? [],
+                                            );
                                             files.forEach((file) =>
                                               handleMediaFileUpload({
-                                                kind: "topic",
-                                                id: topic.id,
+                                                kind: "service",
+                                                id: svc.service_code,
                                                 file,
                                                 media_type: "VIDEO",
-                                                topic_id: topic.id,
+                                                service_code: svc.service_code,
                                               }),
                                             );
                                           }}
@@ -6083,16 +8559,1664 @@ export default function SettingsPage() {
                                 </div>
                               );
                             })}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                    {activeTab === "PRODUCTS" && marketingTab === "SUBJECTS" ? (
+                      <div className="grid gap-6">
+                        <div className="text-sm text-gray-600">
+                          Add marketing descriptions and media for your active
+                          subjects.
                         </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+                        {subjects.filter((s) => !s.archived_at).length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                            No active subjects yet. Enable subjects first.
+                          </div>
+                        ) : (
+                          <div className="grid gap-4">
+                            {subjects
+                              .filter((subject) => !subject.archived_at)
+                              .map((subject) => {
+                                const mediaKey = catalogMediaKey(
+                                  "subject",
+                                  subject.id,
+                                );
+                                const media = catalogMediaByKey[mediaKey] ?? [];
+                                const loadingMedia = Boolean(
+                                  catalogMediaLoading[mediaKey],
+                                );
+                                const aiKey = `subject:${subject.id}`;
+                                return (
+                                  <div
+                                    key={subject.id}
+                                    className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                                  >
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                      <div>
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                          Subject
+                                        </div>
+                                        <div className="text-lg font-semibold text-[#0b1f5f]">
+                                          {subject.subject_name}
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="itutoros-settings-btn itutoros-settings-btn-primary"
+                                        onClick={() =>
+                                          saveSubjectDescription(subject.id)
+                                        }
+                                      >
+                                        Save
+                                      </button>
+                                    </div>
+                                    <div className="mt-4 grid gap-2">
+                                      <div className="flex items-center justify-between">
+                                        <Label>Description</Label>
+                                        {(() => {
+                                          const isLoading = Boolean(
+                                            aiRewriteLoading[aiKey],
+                                          );
+                                          const hasPending = Boolean(
+                                            aiRewrites[aiKey],
+                                          );
+                                          return (
+                                            <button
+                                              type="button"
+                                              className={[
+                                                "text-xs font-semibold",
+                                                isLoading || hasPending
+                                                  ? "cursor-default text-gray-400"
+                                                  : "cursor-pointer text-[#0b1f5f]",
+                                              ].join(" ")}
+                                              disabled={isLoading || hasPending}
+                                              onClick={async () => {
+                                                if (isLoading || hasPending)
+                                                  return;
+                                                const current =
+                                                  subjectDescriptionDrafts[
+                                                    subject.id
+                                                  ] ?? "";
+                                                setAiLoading(aiKey, true);
+                                                try {
+                                                  const next =
+                                                    await rewriteWithAi(
+                                                      `Rewrite the marketing description for ${subject.subject_name}.`,
+                                                      current,
+                                                    );
+                                                  setSubjectDescriptionDrafts(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      [subject.id]: next,
+                                                    }),
+                                                  );
+                                                  setAiRewrite(
+                                                    aiKey,
+                                                    current,
+                                                    next,
+                                                  );
+                                                } finally {
+                                                  setAiLoading(aiKey, false);
+                                                }
+                                              }}
+                                            >
+                                              {isLoading
+                                                ? "Thinking..."
+                                                : hasPending
+                                                  ? "Accept?"
+                                                  : "Rewrite with AI"}
+                                            </button>
+                                          );
+                                        })()}
+                                      </div>
+                                      <Textarea
+                                        rows={4}
+                                        value={
+                                          subjectDescriptionDrafts[
+                                            subject.id
+                                          ] ?? ""
+                                        }
+                                        onChange={(e) =>
+                                          setSubjectDescriptionDrafts(
+                                            (prev) => ({
+                                              ...prev,
+                                              [subject.id]: e.target.value,
+                                            }),
+                                          )
+                                        }
+                                        placeholder="Share the outcomes and focus areas for this subject."
+                                      />
+                                      {aiRewrites[aiKey] ? (
+                                        <div className="flex items-center gap-3 text-xs">
+                                          <button
+                                            type="button"
+                                            className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                            onClick={() =>
+                                              clearAiRewrite(aiKey)
+                                            }
+                                          >
+                                            <HugeiconsIcon
+                                              icon={CheckmarkCircle01Icon}
+                                              size={14}
+                                              className="text-green-600"
+                                            />
+                                            Accept
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                            onClick={() => {
+                                              const previous =
+                                                aiRewrites[aiKey]?.previous ??
+                                                "";
+                                              setSubjectDescriptionDrafts(
+                                                (prev) => ({
+                                                  ...prev,
+                                                  [subject.id]: previous,
+                                                }),
+                                              );
+                                              clearAiRewrite(aiKey);
+                                            }}
+                                          >
+                                            <HugeiconsIcon
+                                              icon={Cancel01Icon}
+                                              size={14}
+                                              className="text-red-600"
+                                            />
+                                            Reject
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    <div className="mt-4 grid gap-3">
+                                      <div className="text-sm font-semibold text-gray-700">
+                                        Media gallery
+                                      </div>
+                                      {loadingMedia ? (
+                                        <div className="text-sm text-gray-500">
+                                          Loading media...
+                                        </div>
+                                      ) : null}
+                                      {media.length === 0 && !loadingMedia ? (
+                                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                          Add photos or videos to highlight this
+                                          subject.
+                                        </div>
+                                      ) : null}
+                                      {media.length ? (
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                          {media.map((item) => (
+                                            <div
+                                              key={item.id}
+                                              className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
+                                            >
+                                              {item.media_type === "VIDEO" ? (
+                                                <video
+                                                  src={item.media_url}
+                                                  controls
+                                                  className="h-36 w-full object-cover"
+                                                />
+                                              ) : (
+                                                <img
+                                                  src={item.media_url}
+                                                  alt=""
+                                                  className="h-36 w-full object-cover"
+                                                />
+                                              )}
+                                              <button
+                                                type="button"
+                                                className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
+                                                onClick={() =>
+                                                  removeCatalogMedia(
+                                                    item.id,
+                                                    () =>
+                                                      loadCatalogMedia({
+                                                        kind: "subject",
+                                                        id: subject.id,
+                                                        subject_id: subject.id,
+                                                      }),
+                                                  )
+                                                }
+                                              >
+                                                Remove
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      <div className="flex flex-wrap gap-2">
+                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                          Upload photo
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            multiple
+                                            onChange={(e) => {
+                                              const files = Array.from(
+                                                e.target.files ?? [],
+                                              );
+                                              files.forEach((file) =>
+                                                handleMediaFileUpload({
+                                                  kind: "subject",
+                                                  id: subject.id,
+                                                  file,
+                                                  media_type: "PHOTO",
+                                                  subject_id: subject.id,
+                                                }),
+                                              );
+                                            }}
+                                          />
+                                        </label>
+                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                          Upload video
+                                          <input
+                                            type="file"
+                                            accept="video/*"
+                                            className="hidden"
+                                            multiple
+                                            onChange={(e) => {
+                                              const files = Array.from(
+                                                e.target.files ?? [],
+                                              );
+                                              files.forEach((file) =>
+                                                handleMediaFileUpload({
+                                                  kind: "subject",
+                                                  id: subject.id,
+                                                  file,
+                                                  media_type: "VIDEO",
+                                                  subject_id: subject.id,
+                                                }),
+                                              );
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                    {activeTab === "PRODUCTS" && marketingTab === "TOPICS" ? (
+                      <div className="grid gap-6">
+                        <div className="text-sm text-gray-600">
+                          Add marketing descriptions for the topics within a
+                          subject.
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Subject</Label>
+                          <select
+                            className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                            value={marketingSubjectId}
+                            onChange={(e) =>
+                              setMarketingSubjectId(e.target.value)
+                            }
+                          >
+                            <option value="">Select a subject</option>
+                            {subjects
+                              .filter((subject) => !subject.archived_at)
+                              .map((subject) => (
+                                <option key={subject.id} value={subject.id}>
+                                  {subject.subject_name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        {!marketingSubjectId ? (
+                          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                            Choose a subject to see its topics.
+                          </div>
+                        ) : null}
+                        {marketingSubjectId ? (
+                          <div className="grid gap-4">
+                            {(topicsBySubject[marketingSubjectId] ?? [])
+                              .filter((topic) => !topic.archived_at)
+                              .map((topic) => {
+                                const mediaKey = catalogMediaKey(
+                                  "topic",
+                                  topic.id,
+                                );
+                                const media = catalogMediaByKey[mediaKey] ?? [];
+                                const loadingMedia = Boolean(
+                                  catalogMediaLoading[mediaKey],
+                                );
+                                const aiKey = `topic:${topic.id}`;
+                                return (
+                                  <div
+                                    key={topic.id}
+                                    className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                                  >
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                      <div>
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                          Topic
+                                        </div>
+                                        <div className="text-lg font-semibold text-[#0b1f5f]">
+                                          {topic.topic_name}
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="itutoros-settings-btn itutoros-settings-btn-primary"
+                                        onClick={() =>
+                                          saveTopicDescription(topic.id)
+                                        }
+                                      >
+                                        Save
+                                      </button>
+                                    </div>
+                                    <div className="mt-4 grid gap-2">
+                                      <div className="flex items-center justify-between">
+                                        <Label>Description</Label>
+                                        {(() => {
+                                          const isLoading = Boolean(
+                                            aiRewriteLoading[aiKey],
+                                          );
+                                          const hasPending = Boolean(
+                                            aiRewrites[aiKey],
+                                          );
+                                          return (
+                                            <button
+                                              type="button"
+                                              className={[
+                                                "text-xs font-semibold",
+                                                isLoading || hasPending
+                                                  ? "cursor-default text-gray-400"
+                                                  : "cursor-pointer text-[#0b1f5f]",
+                                              ].join(" ")}
+                                              disabled={isLoading || hasPending}
+                                              onClick={async () => {
+                                                if (isLoading || hasPending)
+                                                  return;
+                                                const current =
+                                                  topicDescriptionDrafts[
+                                                    topic.id
+                                                  ] ?? "";
+                                                setAiLoading(aiKey, true);
+                                                try {
+                                                  const next =
+                                                    await rewriteWithAi(
+                                                      `Rewrite the marketing description for ${topic.topic_name}.`,
+                                                      current,
+                                                    );
+                                                  setTopicDescriptionDrafts(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      [topic.id]: next,
+                                                    }),
+                                                  );
+                                                  setAiRewrite(
+                                                    aiKey,
+                                                    current,
+                                                    next,
+                                                  );
+                                                } finally {
+                                                  setAiLoading(aiKey, false);
+                                                }
+                                              }}
+                                            >
+                                              {isLoading
+                                                ? "Thinking..."
+                                                : hasPending
+                                                  ? "Accept?"
+                                                  : "Rewrite with AI"}
+                                            </button>
+                                          );
+                                        })()}
+                                      </div>
+                                      <Textarea
+                                        rows={3}
+                                        value={
+                                          topicDescriptionDrafts[topic.id] ?? ""
+                                        }
+                                        onChange={(e) =>
+                                          setTopicDescriptionDrafts((prev) => ({
+                                            ...prev,
+                                            [topic.id]: e.target.value,
+                                          }))
+                                        }
+                                        placeholder="Describe the focus and outcomes for this topic."
+                                      />
+                                      {aiRewrites[aiKey] ? (
+                                        <div className="flex items-center gap-3 text-xs">
+                                          <button
+                                            type="button"
+                                            className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                            onClick={() =>
+                                              clearAiRewrite(aiKey)
+                                            }
+                                          >
+                                            <HugeiconsIcon
+                                              icon={CheckmarkCircle01Icon}
+                                              size={14}
+                                              className="text-green-600"
+                                            />
+                                            Accept
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                            onClick={() => {
+                                              const previous =
+                                                aiRewrites[aiKey]?.previous ??
+                                                "";
+                                              setTopicDescriptionDrafts(
+                                                (prev) => ({
+                                                  ...prev,
+                                                  [topic.id]: previous,
+                                                }),
+                                              );
+                                              clearAiRewrite(aiKey);
+                                            }}
+                                          >
+                                            <HugeiconsIcon
+                                              icon={Cancel01Icon}
+                                              size={14}
+                                              className="text-red-600"
+                                            />
+                                            Reject
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    <div className="mt-4 grid gap-3">
+                                      <div className="text-sm font-semibold text-gray-700">
+                                        Media gallery
+                                      </div>
+                                      {loadingMedia ? (
+                                        <div className="text-sm text-gray-500">
+                                          Loading media...
+                                        </div>
+                                      ) : null}
+                                      {media.length === 0 && !loadingMedia ? (
+                                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                          Add optional visuals for this topic.
+                                        </div>
+                                      ) : null}
+                                      {media.length ? (
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                          {media.map((item) => (
+                                            <div
+                                              key={item.id}
+                                              className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
+                                            >
+                                              {item.media_type === "VIDEO" ? (
+                                                <video
+                                                  src={item.media_url}
+                                                  controls
+                                                  className="h-32 w-full object-cover"
+                                                />
+                                              ) : (
+                                                <img
+                                                  src={item.media_url}
+                                                  alt=""
+                                                  className="h-32 w-full object-cover"
+                                                />
+                                              )}
+                                              <button
+                                                type="button"
+                                                className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
+                                                onClick={() =>
+                                                  removeCatalogMedia(
+                                                    item.id,
+                                                    () =>
+                                                      loadCatalogMedia({
+                                                        kind: "topic",
+                                                        id: topic.id,
+                                                        topic_id: topic.id,
+                                                      }),
+                                                  )
+                                                }
+                                              >
+                                                Remove
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                      <div className="flex flex-wrap gap-2">
+                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                          Upload photo
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            multiple
+                                            onChange={(e) => {
+                                              const files = Array.from(
+                                                e.target.files ?? [],
+                                              );
+                                              files.forEach((file) =>
+                                                handleMediaFileUpload({
+                                                  kind: "topic",
+                                                  id: topic.id,
+                                                  file,
+                                                  media_type: "PHOTO",
+                                                  topic_id: topic.id,
+                                                }),
+                                              );
+                                            }}
+                                          />
+                                        </label>
+                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                          Upload video
+                                          <input
+                                            type="file"
+                                            accept="video/*"
+                                            className="hidden"
+                                            multiple
+                                            onChange={(e) => {
+                                              const files = Array.from(
+                                                e.target.files ?? [],
+                                              );
+                                              files.forEach((file) =>
+                                                handleMediaFileUpload({
+                                                  kind: "topic",
+                                                  id: topic.id,
+                                                  file,
+                                                  media_type: "VIDEO",
+                                                  topic_id: topic.id,
+                                                }),
+                                              );
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {activeTab === "PRODUCTS" && marketingTab === "COMPANY" ? (
+                      <div className="grid gap-6">
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                          <div className="text-lg font-semibold text-[#0b1f5f]">
+                            Company content
+                          </div>
+                          <div className="mt-1 text-sm text-gray-600">
+                            This content is reused by Marketing post generation
+                            and Website development.
+                          </div>
+                          <div className="mt-4 grid gap-4">
+                            <div className="grid gap-2">
+                              <Label>Company description</Label>
+                              <Textarea
+                                rows={4}
+                                value={companyDraft.company_description_text}
+                                onChange={(e) =>
+                                  setCompanyDraft((prev) => ({
+                                    ...prev,
+                                    company_description_text: e.target.value,
+                                  }))
+                                }
+                                placeholder="Describe your tutoring business and who you serve."
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Mission statement</Label>
+                              <Textarea
+                                rows={3}
+                                value={companyDraft.mission_text}
+                                onChange={(e) =>
+                                  setCompanyDraft((prev) => ({
+                                    ...prev,
+                                    mission_text: e.target.value,
+                                  }))
+                                }
+                                placeholder="Share your mission and educational purpose."
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Teaching style</Label>
+                              <Textarea
+                                rows={3}
+                                value={companyDraft.tutoring_style_text}
+                                onChange={(e) =>
+                                  setCompanyDraft((prev) => ({
+                                    ...prev,
+                                    tutoring_style_text: e.target.value,
+                                  }))
+                                }
+                                placeholder="Explain your instructional approach."
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>About us</Label>
+                              <Textarea
+                                rows={4}
+                                value={companyDraft.about_us_text}
+                                onChange={(e) =>
+                                  setCompanyDraft((prev) => ({
+                                    ...prev,
+                                    about_us_text: e.target.value,
+                                  }))
+                                }
+                                placeholder="Team background, values, and why families choose you."
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {activeTab === "MARKETING" && (
+                      <div className="grid gap-6">
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                          <div className="flex flex-wrap gap-2">
+                            {MARKETING_SECTIONS.map((section) => (
+                              <button
+                                key={section.key}
+                                type="button"
+                                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                  marketingSection === section.key
+                                    ? "bg-[#0b1f5f] text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }`}
+                                onClick={() => setMarketingSection(section.key)}
+                              >
+                                {section.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="mt-3 text-sm text-gray-600">
+                            {marketingSection === "PLATFORMS"
+                              ? "Choose where you market and track connection readiness."
+                              : "Build AI-assisted social posts using content from Content Studio."}
+                          </div>
+                        </div>
 
-              {!loading && (activeTab === "MARKETING" || activeTab === "WEBSITE") ? (
-                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-600">
-                  Coming soon...
+                        <div
+                          className={
+                            marketingSection === "PLATFORMS" ? "" : "hidden"
+                          }
+                        >
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="text-base font-semibold text-[#0b1f5f]">
+                              Platforms
+                            </div>
+                            <div className="mt-1 text-sm text-gray-600">
+                              Choose the platforms you want to post to.
+                              Connections enable direct posting later, but you
+                              can still generate content now.
+                            </div>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {CONNECTION_PROVIDERS.map((provider) => {
+                                const connected =
+                                  connectionStatusById[provider.id] ?? false;
+                                const checked =
+                                  socialDraft.platform_ids.includes(
+                                    provider.id,
+                                  );
+                                return (
+                                  <label
+                                    key={provider.id}
+                                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm ${
+                                      connected
+                                        ? "border-gray-200 bg-white"
+                                        : "border-gray-200 bg-white/80"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 accent-[#ff9df9]"
+                                        checked={checked}
+                                        onChange={() =>
+                                          toggleSocialPlatform(provider.id)
+                                        }
+                                      />
+                                      <div>
+                                        <div className="font-semibold text-gray-800">
+                                          {provider.label}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          {connected ? (
+                                            "Connected"
+                                          ) : (
+                                            <>
+                                              Not connected (manual posting
+                                              only) go to{" "}
+                                              <button
+                                                type="button"
+                                                className="cursor-pointer font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
+                                                onClick={() =>
+                                                  void switchTab("CONNECTIONS")
+                                                }
+                                              >
+                                                Connections screen
+                                              </button>{" "}
+                                              to connect {provider.label}
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            <div className="mt-4 grid gap-2">
+                              {socialDraft.platform_ids.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
+                                  Select at least one connected platform to view
+                                  platform specs.
+                                </div>
+                              ) : (
+                                socialDraft.platform_ids.map((platformId) => {
+                                  const spec =
+                                    SOCIAL_PLATFORM_SPECS[platformId];
+                                  const label =
+                                    getConnectionProvider(platformId)?.label ??
+                                    platformId;
+                                  return (
+                                    <div
+                                      key={platformId}
+                                      className="rounded-xl border border-gray-200 bg-white/80 p-3 text-xs text-gray-600"
+                                    >
+                                      <div className="font-semibold text-gray-700">
+                                        {label}
+                                      </div>
+                                      <div>
+                                        Suggested sizes:{" "}
+                                        {spec.sizes.join(" | ")}
+                                      </div>
+                                      <div>
+                                        Aspect ratios: {spec.ratios.join(" | ")}
+                                      </div>
+                                      <div>{spec.notes.join(" | ")}</div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          className={
+                            marketingSection === "POST_BUILDER"
+                              ? "grid gap-6"
+                              : "hidden"
+                          }
+                        >
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="text-lg font-semibold text-[#0b1f5f]">
+                              Social post builder
+                            </div>
+                            <div className="mt-1 text-sm text-gray-600">
+                              Build AI-assisted social posts using your saved
+                              products, subjects, topics, and uploaded media.
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="text-base font-semibold text-[#0b1f5f]">
+                              Content sources
+                            </div>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              <div className="grid gap-2">
+                                <Label>Content Source Type</Label>
+                                <select
+                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                  value={socialSourceType}
+                                  onChange={(e) =>
+                                    setSocialSourceTypeSelection(
+                                      e.target.value as SocialSourceType,
+                                    )
+                                  }
+                                >
+                                  <option value="">Make a selection</option>
+                                  <option value="PRODUCTS">Product</option>
+                                  <option value="SERVICES">Service Type</option>
+                                  <option value="SUBJECTS">Subject</option>
+                                  <option value="TOPICS">Topic</option>
+                                </select>
+                              </div>
+                              {socialSourceType ? (
+                                <div className="grid gap-2">
+                                  <Label>
+                                    {socialSourceType === "PRODUCTS"
+                                      ? "Products"
+                                      : socialSourceType === "SERVICES"
+                                        ? "Services"
+                                        : socialSourceType === "SUBJECTS"
+                                          ? "Subjects"
+                                          : "Topics"}
+                                  </Label>
+                                  {socialSourceType === "PRODUCTS" ? (
+                                    <select
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      value={socialDraft.product_id}
+                                      onChange={(e) =>
+                                        setSocialDraft((prev) => ({
+                                          ...prev,
+                                          product_id: e.target.value,
+                                          service_code: "",
+                                          subject_id: "",
+                                          topic_id: "",
+                                          selected_media_ids: [],
+                                        }))
+                                      }
+                                    >
+                                      <option value="">Select a product</option>
+                                      {products.map((product) => (
+                                        <option
+                                          key={product.id}
+                                          value={product.id}
+                                        >
+                                          {product.product_name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : null}
+                                  {socialSourceType === "SERVICES" ? (
+                                    <select
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      value={socialDraft.service_code}
+                                      onChange={(e) =>
+                                        setSocialDraft((prev) => ({
+                                          ...prev,
+                                          product_id: "",
+                                          service_code: e.target.value,
+                                          subject_id: "",
+                                          topic_id: "",
+                                          selected_media_ids: [],
+                                        }))
+                                      }
+                                    >
+                                      <option value="">Select a service</option>
+                                      {marketingServices.map((svc) => (
+                                        <option
+                                          key={svc.service_code}
+                                          value={svc.service_code}
+                                        >
+                                          {svc.display_name ?? svc.service_code}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : null}
+                                  {socialSourceType === "SUBJECTS" ? (
+                                    <select
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      value={socialDraft.subject_id}
+                                      onChange={(e) =>
+                                        setSocialDraft((prev) => ({
+                                          ...prev,
+                                          product_id: "",
+                                          service_code: "",
+                                          subject_id: e.target.value,
+                                          topic_id: "",
+                                          selected_media_ids: [],
+                                        }))
+                                      }
+                                    >
+                                      <option value="">Select a subject</option>
+                                      {subjects
+                                        .filter(
+                                          (subject) => !subject.archived_at,
+                                        )
+                                        .map((subject) => (
+                                          <option
+                                            key={subject.id}
+                                            value={subject.id}
+                                          >
+                                            {subject.subject_name}
+                                          </option>
+                                        ))}
+                                    </select>
+                                  ) : null}
+                                  {socialSourceType === "TOPICS" ? (
+                                    <select
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      value={socialDraft.topic_id}
+                                      onChange={(e) =>
+                                        setSocialDraft((prev) => ({
+                                          ...prev,
+                                          product_id: "",
+                                          service_code: "",
+                                          subject_id: "",
+                                          topic_id: e.target.value,
+                                          selected_media_ids: [],
+                                        }))
+                                      }
+                                    >
+                                      <option value="">Select a topic</option>
+                                      {socialTopicOptions.map((topic) => (
+                                        <option key={topic.id} value={topic.id}>
+                                          {topic.topic_name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="text-base font-semibold text-[#0b1f5f]">
+                              Offer details
+                            </div>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              <div className="grid gap-2 md:col-span-2">
+                                <Label>Headline</Label>
+                                <Input
+                                  value={socialDraft.headline}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      headline: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Registration is open!"
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Start date</Label>
+                                <Input
+                                  type="date"
+                                  value={socialDraft.start_date}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      start_date: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>End date</Label>
+                                <Input
+                                  type="date"
+                                  value={socialDraft.end_date}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      end_date: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Age range</Label>
+                                <Input
+                                  value={socialDraft.age_range}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      age_range: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Grades 3-5, ages 8-10"
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Price / offer</Label>
+                                <Input
+                                  value={socialDraft.price_detail}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      price_detail: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="$200 for 4 sessions"
+                                />
+                              </div>
+                              <div className="grid gap-2 md:col-span-2">
+                                <Label>Location / format</Label>
+                                <Input
+                                  value={socialDraft.location_detail}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      location_detail: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Irvington campus or virtual"
+                                />
+                              </div>
+                              <div className="grid gap-2 md:col-span-2">
+                                <Label>Enrollment link</Label>
+                                <Input
+                                  value={socialDraft.enrollment_link}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      enrollment_link: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="https://..."
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Call to action</Label>
+                                <Input
+                                  value={socialDraft.call_to_action}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      call_to_action: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Book a spot today"
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Hashtags</Label>
+                                <Input
+                                  value={socialDraft.hashtags}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      hashtags: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="#tutoring #learning"
+                                />
+                              </div>
+                              <div className="grid gap-2 md:col-span-2">
+                                <Label>Extra notes</Label>
+                                <Textarea
+                                  rows={3}
+                                  value={socialDraft.extra_notes}
+                                  onChange={(e) =>
+                                    setSocialDraft((prev) => ({
+                                      ...prev,
+                                      extra_notes: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Any extra details you want included."
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="text-base font-semibold text-[#0b1f5f]">
+                              Media & templates
+                            </div>
+                            <div className="mt-4 grid gap-4">
+                              {socialMediaOptions.length > 0 ? (
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                  {socialMediaOptions.map((media) => {
+                                    const checked =
+                                      socialDraft.selected_media_ids.includes(
+                                        media.id,
+                                      );
+                                    return (
+                                      <label
+                                        key={media.id}
+                                        className="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          className="absolute right-2 top-2 h-4 w-4 accent-[#ff9df9]"
+                                          checked={checked}
+                                          onChange={() =>
+                                            toggleSocialMedia(media.id)
+                                          }
+                                        />
+                                        {media.type === "VIDEO" ? (
+                                          <video
+                                            src={media.url}
+                                            className="h-36 w-full object-cover"
+                                          />
+                                        ) : (
+                                          <img
+                                            src={media.url}
+                                            alt=""
+                                            className="h-36 w-full object-cover"
+                                          />
+                                        )}
+                                        <div className="p-2 text-xs text-gray-600">
+                                          {media.label}
+                                        </div>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                              <div className="grid gap-6 lg:grid-cols-2">
+                                <div className="grid gap-4">
+                                  <div className="grid gap-2">
+                                    <Label>Template style</Label>
+                                    <select
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      value={socialDraft.template_style}
+                                      onChange={(e) =>
+                                        setSocialDraft((prev) => ({
+                                          ...prev,
+                                          template_style: e.target.value,
+                                        }))
+                                      }
+                                    >
+                                      {SOCIAL_TEMPLATE_STYLES.map((style) => (
+                                        <option key={style} value={style}>
+                                          {style}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label>Layout preset</Label>
+                                    <select
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      value={socialDraft.layout_preset}
+                                      onChange={(e) =>
+                                        setSocialDraft((prev) => ({
+                                          ...prev,
+                                          layout_preset: e.target.value,
+                                        }))
+                                      }
+                                    >
+                                      {SOCIAL_LAYOUT_PRESETS.map((preset) => (
+                                        <option key={preset} value={preset}>
+                                          {preset}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="grid gap-2">
+                                    <Label>Aspect ratio</Label>
+                                    <select
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      value={socialDraft.aspect_ratio}
+                                      onChange={(e) =>
+                                        setSocialDraft((prev) => ({
+                                          ...prev,
+                                          aspect_ratio: e.target.value,
+                                        }))
+                                      }
+                                    >
+                                      {SOCIAL_ASPECT_RATIOS.map((ratio) => (
+                                        <option
+                                          key={ratio.value}
+                                          value={ratio.value}
+                                        >
+                                          {ratio.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Presets</Label>
+                                  <div
+                                    ref={socialPresetCarouselRef}
+                                    className="itutoros-carousel px-[2px] py-[2px]"
+                                  >
+                                    <div
+                                      aria-hidden
+                                      className="shrink-0"
+                                      style={{
+                                        flex: "0 0 max(8px, calc(50% - 129px))",
+                                      }}
+                                    />
+                                    {SOCIAL_PRESET_CAROUSEL_ITEMS.map(
+                                      (item) => {
+                                        const selected =
+                                          item.id === selectedCarouselPresetId;
+                                        return (
+                                          <button
+                                            key={item.id}
+                                            type="button"
+                                            ref={(node) => {
+                                              socialPresetRefs.current[
+                                                item.id
+                                              ] = node;
+                                            }}
+                                            className={`itutoros-carousel-card !basis-[258px] relative min-w-[178px] overflow-hidden rounded-xl border bg-white text-left shadow-sm transition ${
+                                              selected
+                                                ? "border-[#ff9df9] ring-2 ring-[#ff9df9]"
+                                                : "border-gray-200"
+                                            }`}
+                                            style={{
+                                              scrollSnapAlign: "center",
+                                            }}
+                                            onClick={() =>
+                                              setSocialDraft((prev) => ({
+                                                ...prev,
+                                                layout_preset:
+                                                  item.layout_preset,
+                                                aspect_ratio: item.aspect_ratio,
+                                              }))
+                                            }
+                                          >
+                                            <img
+                                              src={
+                                                selected
+                                                  ? item.selected_src
+                                                  : item.unselected_src
+                                              }
+                                              alt={item.label}
+                                              className="h-[110px] w-full bg-gray-50 p-2 object-contain"
+                                            />
+                                            <div className="px-2 py-2 text-xs text-gray-600">
+                                              {item.label}
+                                            </div>
+                                          </button>
+                                        );
+                                      },
+                                    )}
+                                    <div
+                                      aria-hidden
+                                      className="shrink-0"
+                                      style={{
+                                        flex: "0 0 max(8px, calc(50% - 129px))",
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
+                                  Upload template image
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file)
+                                        void handleSocialTemplateUpload(file);
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                              {socialTemplates.length ? (
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                  {socialTemplates.map((template) => {
+                                    const selected =
+                                      socialDraft.selected_template_id ===
+                                      template.id;
+                                    return (
+                                      <button
+                                        key={template.id}
+                                        type="button"
+                                        className={`relative overflow-hidden rounded-xl border bg-white text-left shadow-sm transition ${
+                                          selected
+                                            ? "border-[#ff9df9] ring-2 ring-[#ff9df9]"
+                                            : "border-gray-200"
+                                        }`}
+                                        onClick={() =>
+                                          setSocialDraft((prev) => ({
+                                            ...prev,
+                                            selected_template_id: selected
+                                              ? ""
+                                              : template.id,
+                                          }))
+                                        }
+                                      >
+                                        <img
+                                          src={template.data_url}
+                                          alt={template.name}
+                                          className="h-32 w-full object-cover"
+                                        />
+                                        <div className="flex items-center justify-between gap-2 p-2 text-xs text-gray-600">
+                                          <span className="truncate">
+                                            {template.name}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="text-xs font-semibold text-rose-600"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              removeSocialTemplate(template.id);
+                                            }}
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                        {selected ? (
+                                          <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold text-[#c00f5e]">
+                                            Selected
+                                          </span>
+                                        ) : null}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                              <div className="rounded-xl border border-gray-200 bg-white p-3">
+                                <div className="text-sm font-semibold text-gray-700">
+                                  Preview
+                                </div>
+                                <div className="mt-3">
+                                  <div
+                                    className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50"
+                                    style={{
+                                      aspectRatio: `${socialAspect.width} / ${socialAspect.height}`,
+                                    }}
+                                  >
+                                    {socialPreviewMedia ? (
+                                      socialPreviewMedia.type === "VIDEO" ? (
+                                        <video
+                                          src={socialPreviewMedia.url}
+                                          className="h-full w-full object-cover"
+                                        />
+                                      ) : (
+                                        <img
+                                          src={socialPreviewMedia.url}
+                                          alt=""
+                                          className="h-full w-full object-cover"
+                                        />
+                                      )
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
+                                        Select media or a template to preview.
+                                      </div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/20" />
+                                    {socialDraft.layout_preset ===
+                                    "Bold headline" ? (
+                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-white">
+                                        <div className="text-2xl font-extrabold drop-shadow">
+                                          {socialDraft.headline ||
+                                            socialSelectedProduct?.product_name ||
+                                            "Your headline"}
+                                        </div>
+                                        <div className="text-sm font-semibold drop-shadow">
+                                          {socialDraft.call_to_action ||
+                                            socialDraft.start_date ||
+                                            "Call to action"}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {socialDraft.layout_preset ===
+                                    "Band rows" ? (
+                                      <div className="absolute inset-0 flex flex-col justify-center gap-3 px-4 text-white">
+                                        {[
+                                          socialDraft.headline ||
+                                            socialSelectedProduct?.product_name ||
+                                            "Headline",
+                                          socialDraft.start_date ||
+                                            "Dates / schedule",
+                                          socialDraft.age_range ||
+                                            "Age range / audience",
+                                          socialDraft.call_to_action ||
+                                            "Call to action",
+                                        ].map((line, idx) => (
+                                          <div
+                                            key={String(idx)}
+                                            className="rounded-lg bg-[#ff9df9]/70 px-3 py-2 text-base font-semibold shadow"
+                                          >
+                                            {line}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    {socialDraft.layout_preset ===
+                                    "Photo + footer" ? (
+                                      <div className="absolute inset-x-0 bottom-0 bg-[#0b1f5f]/80 px-4 py-3 text-white">
+                                        <div className="text-lg font-bold">
+                                          {socialDraft.headline ||
+                                            socialSelectedProduct?.product_name ||
+                                            "Program spotlight"}
+                                        </div>
+                                        <div className="text-sm font-semibold">
+                                          {socialDraft.call_to_action ||
+                                            socialDraft.location_detail ||
+                                            "Join us"}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                    {socialDraft.layout_preset ===
+                                    "Schedule list" ? (
+                                      <div className="absolute inset-0 flex flex-col gap-3 px-4 py-4 text-white">
+                                        <div className="rounded-lg bg-black/50 px-3 py-2 text-base font-semibold">
+                                          {socialDraft.start_date
+                                            ? `Dates: ${socialDraft.start_date}${socialDraft.end_date ? ` - ${socialDraft.end_date}` : ""}`
+                                            : "Dates / schedule"}
+                                        </div>
+                                        <div className="rounded-lg bg-black/40 px-3 py-2 text-sm">
+                                          {(
+                                            socialDraft.extra_notes ||
+                                            "Monday: Activity\nTuesday: Activity\nWednesday: Activity"
+                                          )
+                                            .split("\n")
+                                            .slice(0, 4)
+                                            .map((line) => (
+                                              <div key={line}>{line}</div>
+                                            ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <div className="text-base font-semibold text-[#0b1f5f]">
+                                  Post Text
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  Generate copy with AI, then tweak it before
+                                  posting.
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {(() => {
+                                  const aiKey = "social:copy";
+                                  const isLoading = Boolean(
+                                    aiRewriteLoading[aiKey],
+                                  );
+                                  return (
+                                    <button
+                                      type="button"
+                                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                                      onClick={generateSocialCopy}
+                                      disabled={isLoading}
+                                    >
+                                      {isLoading
+                                        ? "Generating..."
+                                        : socialDraft.generated_copy.trim()
+                                          ? "Regenerate with AI"
+                                          : "Generate with AI"}
+                                    </button>
+                                  );
+                                })()}
+                                <button
+                                  type="button"
+                                  className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                                  onClick={discardSocialCopy}
+                                  disabled={!socialDraft.generated_copy.trim()}
+                                >
+                                  Discard Text
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-4 grid gap-2">
+                              <Textarea
+                                rows={8}
+                                value={socialDraft.generated_copy}
+                                onChange={(e) =>
+                                  setSocialDraft((prev) => ({
+                                    ...prev,
+                                    generated_copy: e.target.value,
+                                  }))
+                                }
+                                placeholder="Generated copy will appear here."
+                              />
+                              {aiRewrites["social:copy"] ? (
+                                <div className="flex items-center gap-3 text-xs">
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+                                    onClick={() =>
+                                      clearAiRewrite("social:copy")
+                                    }
+                                  >
+                                    <HugeiconsIcon
+                                      icon={CheckmarkCircle01Icon}
+                                      size={14}
+                                      className="text-green-600"
+                                    />
+                                    Accept
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+                                    onClick={() => {
+                                      const previous =
+                                        aiRewrites["social:copy"]?.previous ??
+                                        "";
+                                      setSocialDraft((prev) => ({
+                                        ...prev,
+                                        generated_copy: previous,
+                                      }));
+                                      clearAiRewrite("social:copy");
+                                    }}
+                                  >
+                                    <HugeiconsIcon
+                                      icon={Cancel01Icon}
+                                      size={14}
+                                      className="text-red-600"
+                                    />
+                                    Reject
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                              onClick={() => void saveSocialPost("DRAFT")}
+                            >
+                              Save Draft
+                            </button>
+                            <button
+                              type="button"
+                              className="itutoros-settings-btn itutoros-settings-btn-primary"
+                              onClick={() => void saveSocialPost("READY")}
+                            >
+                              Save Post
+                            </button>
+                            <button
+                              type="button"
+                              className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                              onClick={() => {
+                                const confirmed = window.confirm(
+                                  "Discard this post builder draft and clear all fields?",
+                                );
+                                if (!confirmed) return;
+                                clearSocialBuilder();
+                              }}
+                            >
+                              Discard
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              {!loading && activeTab === "WEBSITE" ? (
+                <div className="grid gap-6">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <div className="text-lg font-semibold text-[#0b1f5f]">
+                      Website content sources
+                    </div>
+                    <div className="mt-1 text-sm text-gray-600">
+                      Website builder content is sourced from Content Studio and
+                      Company content.
+                    </div>
+                    <div className="mt-4 grid gap-3 text-sm text-gray-700 md:grid-cols-2">
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Products
+                        </div>
+                        <div className="mt-1 text-base font-semibold">
+                          {products.length}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Services
+                        </div>
+                        <div className="mt-1 text-base font-semibold">
+                          {marketingServices.length}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Subjects
+                        </div>
+                        <div className="mt-1 text-base font-semibold">
+                          {
+                            subjects.filter((subject) => !subject.archived_at)
+                              .length
+                          }
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Topics
+                        </div>
+                        <div className="mt-1 text-base font-semibold">
+                          {
+                            Object.values(topicsBySubject)
+                              .flat()
+                              .filter((topic) => !topic.archived_at).length
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                    <div className="text-base font-semibold text-[#0b1f5f]">
+                      Company profile for website copy
+                    </div>
+                    <div className="mt-4 grid gap-4">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Company description
+                        </div>
+                        <div className="mt-1 text-sm text-gray-700">
+                          {org?.company_description_text?.trim() || "Not set"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Mission statement
+                        </div>
+                        <div className="mt-1 text-sm text-gray-700">
+                          {org?.mission_text?.trim() || "Not set"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Teaching style
+                        </div>
+                        <div className="mt-1 text-sm text-gray-700">
+                          {org?.tutoring_style_text?.trim() || "Not set"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          About us
+                        </div>
+                        <div className="mt-1 text-sm text-gray-700">
+                          {org?.about_us_text?.trim() ||
+                            org?.about_text?.trim() ||
+                            "Not set"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -6103,12 +10227,18 @@ export default function SettingsPage() {
       {childPrompt ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-[560px] rounded-xl bg-white p-6 shadow-xl">
-            <div className="text-lg font-extrabold">Unarchive {childPrompt.childTypeLabel}</div>
-            <div className="mt-1 text-sm text-gray-600">Parent record: {childPrompt.parentLabel}</div>
+            <div className="text-lg font-extrabold">
+              Unarchive {childPrompt.childTypeLabel}
+            </div>
+            <div className="mt-1 text-sm text-gray-600">
+              Parent record: {childPrompt.parentLabel}
+            </div>
             <div className="mt-4 grid max-h-[320px] gap-2 overflow-y-auto text-sm text-gray-700">
               {childPrompt.items.map((item) => {
                 const isArchived = item.archived;
-                const checked = isArchived ? childPrompt.selectedIds.includes(item.id) : true;
+                const checked = isArchived
+                  ? childPrompt.selectedIds.includes(item.id)
+                  : true;
                 return (
                   <label
                     key={item.id}
@@ -6149,7 +10279,9 @@ export default function SettingsPage() {
               <button
                 type="button"
                 className="itutoros-settings-btn itutoros-settings-btn-primary"
-                onClick={() => closeChildUnarchivePrompt(childPrompt.selectedIds)}
+                onClick={() =>
+                  closeChildUnarchivePrompt(childPrompt.selectedIds)
+                }
               >
                 Continue
               </button>
@@ -6202,9 +10334,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-
-
-
-
-

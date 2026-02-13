@@ -63,6 +63,7 @@ export async function POST(req: Request) {
         unit_length_minutes: unitLength,
         display_name: typeof body.display_name === "string" ? body.display_name : null,
         description_text: typeof body.description_text === "string" ? body.description_text : null,
+        service_logo_url: typeof body.service_logo_url === "string" ? body.service_logo_url.trim() || null : null,
         is_active: body.is_active == null ? true : Boolean(body.is_active),
       },
     });
@@ -153,6 +154,8 @@ export async function PATCH(req: Request) {
     if (displayName !== undefined) data.display_name = displayName;
     const descriptionText = normalize(body.description_text);
     if (descriptionText !== undefined) data.description_text = descriptionText;
+    const serviceLogoUrl = normalize(body.service_logo_url);
+    if (serviceLogoUrl !== undefined) data.service_logo_url = serviceLogoUrl;
 
     if (Object.keys(data).length === 0) badRequest("No fields to update");
 

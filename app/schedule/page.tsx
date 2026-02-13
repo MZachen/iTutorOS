@@ -6,7 +6,6 @@ import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ClampedCell } from "@/components/ui/clamped-cell";
 import { DEFAULT_DATE_FORMAT, formatDateTimeWithPattern, formatDateWithPattern, normalizeDateFormat } from "@/lib/date-format";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert01Icon, Calendar01Icon, CalendarAdd01Icon } from "@hugeicons/core-free-icons";
@@ -15,7 +14,8 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
-import type { DateClickArg, EventClickArg, EventInput } from "@fullcalendar/core";
+import type { EventClickArg, EventInput } from "@fullcalendar/core";
+import type { DateClickArg } from "@fullcalendar/interaction";
 import { toast } from "@/lib/use-toast";
 
 type ScheduleTab = "CALENDAR" | "NEW" | "CONFLICTS";
@@ -299,6 +299,22 @@ function normalizeConflictTags(tags: any): string[] {
   return [];
 }
 
+const UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const UUID_REGEX = new RegExp(UUID_PATTERN, "gi");
+const UUID_PARENS_REGEX = new RegExp(`\\([^)]*${UUID_PATTERN}[^)]*\\)`, "gi");
+
+function formatConflictMessage(message?: string | null) {
+  if (!message) return "This schedule overlaps another entry.";
+  let sanitized = message.replace(UUID_PARENS_REGEX, "").replace(UUID_REGEX, "");
+  sanitized = sanitized.replace(/\s{2,}/g, " ").replace(/\(\s*\)/g, "").trim();
+  return sanitized || "This schedule overlaps another entry.";
+}
+
+function conflictPairKey(row: ScheduleConflict) {
+  const ids = [row.schedule_entry_id, row.conflicting_schedule_entry_id].filter(Boolean).sort();
+  return ids.join("|");
+}
+
 function parseRecurrenceDays(value: any): number[] {
   if (!value) return [];
   if (Array.isArray(value)) return value.map((v) => Number(v)).filter((v) => Number.isFinite(v));
@@ -379,6 +395,10 @@ export default function SchedulePage() {
   const [saving, setSaving] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [calendarLocationChoice, setCalendarLocationChoice] = useState<string>("all");
+  const [deletePromptOpen, setDeletePromptOpen] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<"THIS" | "ALL">("THIS");
+  const [deleteStep, setDeleteStep] = useState<"choose" | "confirm">("choose");
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const [attendeeQuery, setAttendeeQuery] = useState("");
   const [attendeeOpen, setAttendeeOpen] = useState(false);
@@ -389,6 +409,8 @@ export default function SchedulePage() {
   const [form, setForm] = useState<ScheduleFormState>({ ...DEFAULT_SCHEDULE_FORM });
 
   const locationMap = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
+  const subjectMap = useMemo(() => new Map(subjects.map((s) => [s.id, s])), [subjects]);
+  const topicMap = useMemo(() => new Map(topics.map((t) => [t.id, t])), [topics]);
   const setupLocations = useMemo(
     () => locations.filter((loc) => !loc.archived_at && !loc.is_system),
     [locations],
@@ -444,6 +466,7 @@ export default function SchedulePage() {
   const productMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const tutorMap = useMemo(() => new Map(tutors.map((t) => [t.id, t])), [tutors]);
   const studentMap = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
+  const entryMap = useMemo(() => new Map(entries.map((entry) => [entry.id, entry])), [entries]);
   const parentMap = useMemo(() => new Map(parents.map((p) => [p.id, p])), [parents]);
   const selectedAttendees = useMemo(
     () => form.attendee_student_ids.map((id) => studentMap.get(id)).filter(Boolean) as Student[],
@@ -978,6 +1001,43 @@ export default function SchedulePage() {
     return events;
   }, [entries, selectedTutorId, showConflictsOnly, conflictTagMap, serviceMap, tutorMap, productMap]);
 
+  const dedupedConflictRows = useMemo(() => {
+    const map = new Map<string, ScheduleConflict>();
+    conflictRows.forEach((row) => {
+      const key = conflictPairKey(row);
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, { ...row, conflict_tags: normalizeConflictTags(row.conflict_tags) });
+        return;
+      }
+      const mergedTags = new Set([
+        ...normalizeConflictTags(existing.conflict_tags),
+        ...normalizeConflictTags(row.conflict_tags),
+      ]);
+      const existingCreated = existing.created_at ? new Date(existing.created_at).getTime() : Infinity;
+      const nextCreated = row.created_at ? new Date(row.created_at).getTime() : Infinity;
+      map.set(key, {
+        ...existing,
+        conflict_tags: Array.from(mergedTags),
+        created_at: nextCreated < existingCreated ? row.created_at : existing.created_at,
+        resolved_at: existing.resolved_at && row.resolved_at ? existing.resolved_at : null,
+        scheduleEntry: existing.scheduleEntry ?? row.scheduleEntry,
+        conflictingScheduleEntry: existing.conflictingScheduleEntry ?? row.conflictingScheduleEntry,
+        message: existing.message || row.message,
+      });
+    });
+    return Array.from(map.values());
+  }, [conflictRows]);
+
+  const visibleConflictRows = useMemo(() => {
+    return dedupedConflictRows.filter((row) => {
+      const schedule = row.scheduleEntry;
+      const conflict = row.conflictingScheduleEntry;
+      if (!schedule || !conflict) return false;
+      return !schedule.archived_at && !conflict.archived_at;
+    });
+  }, [dedupedConflictRows]);
+
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === selectedEntryId) ?? null,
     [entries, selectedEntryId],
@@ -988,12 +1048,52 @@ export default function SchedulePage() {
     [entries, editingEntryId],
   );
 
+  const entryServiceLine = (entry?: ScheduleEntry | null) => {
+    if (!entry) return "--";
+    return entry.product_id
+      ? productMap.get(entry.product_id)?.product_name ?? serviceLabel(serviceMap.get(entry.service_offered_id))
+      : serviceLabel(serviceMap.get(entry.service_offered_id));
+  };
+
+  const entryLineOne = (entry?: ScheduleEntry | null) => {
+    if (!entry) return "--";
+    const resolved = entryMap.get(entry.id) ?? entry;
+    const attendees = resolved.attendees ?? entry.attendees ?? [];
+    const attendeeCount = attendees.length;
+    const serviceCapacity = serviceMap.get(entry.service_offered_id)?.capacity ?? entry.capacity ?? null;
+    const isPrivate = attendeeCount === 1 || (attendeeCount === 0 && serviceCapacity === 1);
+    if (isPrivate) {
+      const studentId = attendees[0]?.student_id;
+      return studentId ? studentLabel(studentMap.get(studentId)) : "Student";
+    }
+    const subjectName = entry.subject_id ? subjectMap.get(entry.subject_id)?.subject_name : null;
+    const topicName = entry.topic_id ? topicMap.get(entry.topic_id)?.topic_name : null;
+    if (subjectName && topicName) return `${subjectName} / ${topicName}`;
+    return subjectName || topicName || "Group session";
+  };
+
+  const entrySummaryLines = (entry?: ScheduleEntry | null) => ({
+    line1: entryLineOne(entry),
+    line2: entryServiceLine(entry),
+    line3: entry ? formatDateTime(entry.start_at) : "--",
+  });
+
   const selectedLocation = selectedLocationId ? locationMap.get(selectedLocationId) : null;
   const locationDetailRequired = Boolean(locationDetailMode);
   const showRooms = Boolean(locationChoice.startsWith("setup:") && selectedLocation && !selectedLocation.is_system);
 
   function resetFormState(overrides: Partial<ScheduleFormState> = {}) {
     setForm({ ...DEFAULT_SCHEDULE_FORM, ...overrides });
+  }
+
+  function clearNewEntryForm() {
+    setPendingConflict(null);
+    setEditingEntryId(null);
+    setSelectedServiceKey("");
+    setLocationChoice("");
+    setAttendeeQuery("");
+    setAttendeeOpen(false);
+    resetFormState();
   }
 
   function buildEventDetails(entry: ScheduleEntry) {
@@ -1086,6 +1186,7 @@ export default function SchedulePage() {
     if (conflictRes.ok) {
       setActiveConflicts((await conflictRes.json()) as ScheduleConflict[]);
     }
+    await refreshConflictRows();
   }
 
   async function refreshConflictRows() {
@@ -1299,7 +1400,7 @@ export default function SchedulePage() {
         if (res.status === 409) {
           const body = (await res.json()) as ConflictPayload;
           setPendingConflict(body);
-          toast({ title: "Conflict detected", description: body.message || "This schedule overlaps another entry." });
+          toast({ title: "Conflict detected", description: formatConflictMessage(body.message) });
           return;
         }
         if (!res.ok) {
@@ -1309,7 +1410,7 @@ export default function SchedulePage() {
         }
         setPendingConflict(null);
         toast({ title: "Schedule entry updated" });
-        setEditingEntryId(null);
+        clearNewEntryForm();
         await refreshLocationData();
         setActiveTab("CALENDAR");
       } else {
@@ -1349,7 +1450,7 @@ export default function SchedulePage() {
         if (res.status === 409) {
           const body = (await res.json()) as ConflictPayload;
           setPendingConflict(body);
-          toast({ title: "Conflict detected", description: body.message || "This schedule overlaps another entry." });
+          toast({ title: "Conflict detected", description: formatConflictMessage(body.message) });
           return;
         }
         if (!res.ok) {
@@ -1359,6 +1460,7 @@ export default function SchedulePage() {
         }
         setPendingConflict(null);
         toast({ title: "Schedule entry saved" });
+        clearNewEntryForm();
         await refreshLocationData();
         setActiveTab("CALENDAR");
       }
@@ -1370,8 +1472,37 @@ export default function SchedulePage() {
     }
   }
 
+  async function handleDeleteScheduleEntry() {
+    if (!editingEntryId || !token) return;
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/schedule-entries/${editingEntryId}/archive?scope=${deleteScope}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        toast({ title: "Unable to delete schedule entry", description: text, variant: "destructive" });
+        return;
+      }
+      toast({
+        title: deleteScope === "ALL" ? "Schedule series deleted" : "Schedule entry deleted",
+      });
+      setDeletePromptOpen(false);
+      setDeleteStep("choose");
+      clearNewEntryForm();
+      await refreshLocationData();
+      setActiveTab("CALENDAR");
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Unable to delete schedule entry", variant: "destructive" });
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   function openNewEntryAt(date: Date) {
-    setEditingEntryId(null);
+    clearNewEntryForm();
     setActiveTab("NEW");
     const startLocal = toDateTimeLocal(date);
     setForm((prev) => ({
@@ -1428,7 +1559,14 @@ export default function SchedulePage() {
                   <button
                     key={tab.key}
                     type="button"
-                    onClick={() => setActiveTab(tab.key)}
+                    onClick={() => {
+                      if (tab.key === "NEW") {
+                        clearNewEntryForm();
+                        setActiveTab("NEW");
+                        return;
+                      }
+                      setActiveTab(tab.key);
+                    }}
                     style={{ "--tab-icon-color": SCHEDULE_TAB_ICON_COLORS[tab.key] } as CSSProperties}
                     className={[
                       "group w-full rounded-lg px-3 py-2 text-left text-sm transition",
@@ -1515,11 +1653,10 @@ export default function SchedulePage() {
                       <button
                         type="button"
                         className="itutoros-settings-btn itutoros-settings-btn-primary"
-                        onClick={() => {
-                          setEditingEntryId(null);
-                          resetFormState();
-                          setActiveTab("NEW");
-                        }}
+                      onClick={() => {
+                        clearNewEntryForm();
+                        setActiveTab("NEW");
+                      }}
                       >
                         New schedule entry
                       </button>
@@ -1625,6 +1762,44 @@ export default function SchedulePage() {
                           hideTooltip();
                         };
 
+                        const renderCapacityFlag = () => {
+                          const existingFlag = el.querySelector(".itutoros-fc-capacity-flag");
+                          if (existingFlag) existingFlag.remove();
+                          if (isBuffer) return;
+                          const attendees = entry.attendees ?? [];
+                          const attendeeCount = attendees.length;
+                          const serviceCapacity =
+                            serviceMap.get(entry.service_offered_id)?.capacity ?? entry.capacity ?? null;
+                          if (!serviceCapacity || attendeeCount <= serviceCapacity) return;
+
+                          el.style.position = "relative";
+                          const flag = document.createElement("span");
+                          flag.className = "itutoros-fc-capacity-flag";
+                          flag.setAttribute("aria-label", "Over capacity");
+                          flag.title = "Over capacity";
+                          flag.style.position = "absolute";
+                          flag.style.top = "2px";
+                          flag.style.right = "2px";
+                          flag.style.height = "18px";
+                          flag.style.width = "18px";
+                          flag.style.borderRadius = "9999px";
+                          flag.style.display = "flex";
+                          flag.style.alignItems = "center";
+                          flag.style.justifyContent = "center";
+                          flag.style.background = "rgba(255,255,255,0.9)";
+                          flag.style.border = "1px solid rgba(219, 39, 119, 0.6)";
+                          flag.style.boxShadow = "0 1px 2px rgba(15, 23, 42, 0.2)";
+                          flag.style.pointerEvents = "none";
+                          flag.innerHTML = `
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path d="M13.9248 21H10.0752C5.44476 21 3.12955 21 2.27636 19.4939C1.42317 17.9879 2.60736 15.9914 4.97574 11.9985L6.90057 8.75333C9.17559 4.91778 10.3131 3 12 3C13.6869 3 14.8244 4.91777 17.0994 8.75332L19.0243 11.9985C21.3926 15.9914 22.5768 17.9879 21.7236 19.4939C20.8704 21 18.5552 21 13.9248 21Z" stroke="rgba(219, 39, 119, 0.95)" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+                              <path d="M12 17V12.5" stroke="rgba(219, 39, 119, 0.95)" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+                              <path d="M12 8.99828V8.98828" stroke="rgba(219, 39, 119, 0.95)" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"></path>
+                            </svg>
+                          `;
+                          el.appendChild(flag);
+                        };
+
                         el.addEventListener("mouseenter", handleEnter);
                         el.addEventListener("mouseleave", handleLeave);
 
@@ -1635,10 +1810,14 @@ export default function SchedulePage() {
                           };
                         }
 
+                        renderCapacityFlag();
+
                         (el as any).__itutorosCleanup = () => {
                           hideTooltip();
                           el.removeEventListener("mouseenter", handleEnter);
                           el.removeEventListener("mouseleave", handleLeave);
+                          const existingFlag = el.querySelector(".itutoros-fc-capacity-flag");
+                          if (existingFlag) existingFlag.remove();
                         };
                       }}
                       eventWillUnmount={(info) => {
@@ -1747,66 +1926,47 @@ export default function SchedulePage() {
               {activeTab === "NEW" ? (
                 <div className="grid gap-6">
                   {editingEntry ? (
-                    <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-indigo-800">Editing schedule entry</div>
-                          <div className="text-xs text-indigo-700">
-                            {editingEntry.product_id
-                              ? productMap.get(editingEntry.product_id)?.product_name ??
-                                serviceLabel(serviceMap.get(editingEntry.service_offered_id))
-                              : serviceLabel(serviceMap.get(editingEntry.service_offered_id))}{" "}
-                            · {formatDateTime(editingEntry.start_at)}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-red-800">Delete schedule entry</div>
+                            <div className="text-xs text-red-700">
+                              {entryServiceLine(editingEntry)} - {formatDateTime(editingEntry.start_at)}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            className="itutoros-settings-btn itutoros-settings-btn-danger"
+                            onClick={() => {
+                              setDeleteScope("THIS");
+                              setDeleteStep("choose");
+                              setDeletePromptOpen(true);
+                            }}
+                          >
+                            Delete
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                          onClick={() => {
-                            setActiveTab("CALENDAR");
-                            setEditingEntryId(null);
-                            setPendingConflict(null);
-                            resetFormState();
-                          }}
-                        >
-                          Cancel edit
-                        </button>
                       </div>
-                    </div>
-                  ) : null}
-                  {pendingConflict ? (
-                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                      <div className="text-sm font-semibold text-red-700">Conflict detected</div>
-                      <div className="mt-1 text-sm text-red-700">
-                        {pendingConflict.message || "This schedule overlaps another entry."}
-                      </div>
-                      {pendingConflict.conflict_tags?.length ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {pendingConflict.conflict_tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700"
-                            >
-                              {tag}
-                            </span>
-                          ))}
+                      <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-indigo-800">Editing schedule entry</div>
+                            <div className="text-xs text-indigo-700">
+                              {entryServiceLine(editingEntry)} - {formatDateTime(editingEntry.start_at)}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                            onClick={() => {
+                              clearNewEntryForm();
+                              setActiveTab("CALENDAR");
+                            }}
+                          >
+                            Cancel edit
+                          </button>
                         </div>
-                      ) : null}
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="itutoros-settings-btn itutoros-settings-btn-primary"
-                          onClick={() => submitSchedule(true)}
-                        >
-                          Save anyway
-                        </button>
-                        <button
-                          type="button"
-                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                          onClick={() => setPendingConflict(null)}
-                        >
-                          Review schedule
-                        </button>
                       </div>
                     </div>
                   ) : null}
@@ -1867,6 +2027,7 @@ export default function SchedulePage() {
                           onChange={(e) => setForm((prev) => ({ ...prev, tutor_id: e.target.value }))}
                           disabled={Boolean(editingEntryId)}
                         >
+                          <option value="">Select a tutor</option>
                           {tutors.map((tutor) => (
                             <option
                               key={tutor.id}
@@ -1878,7 +2039,7 @@ export default function SchedulePage() {
                           ))}
                         </select>
                       </div>
-                      <div className="grid gap-2">
+                      <div className="grid gap-2 md:col-span-2">
                         <Label htmlFor="subject-select">Subject</Label>
                         <select
                           id="subject-select"
@@ -1894,7 +2055,7 @@ export default function SchedulePage() {
                           ))}
                         </select>
                       </div>
-                      <div className="grid gap-2">
+                      <div className="grid gap-2 md:col-span-2">
                         <Label htmlFor="topic-select">Topic</Label>
                         <select
                           id="topic-select"
@@ -1935,18 +2096,6 @@ export default function SchedulePage() {
                             setForm((prev) => ({ ...prev, duration_minutes: Number.isNaN(next) ? 0 : next }));
                           }}
                         />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="session-revenue">Session revenue</Label>
-                        <Input
-                          id="session-revenue"
-                          readOnly
-                          value={formatCurrencyFromCents(sessionRevenueCents)}
-                          className="bg-zinc-50 text-gray-700"
-                        />
-                        <div className="text-xs text-gray-500">
-                          Based on unit price, duration, and attendees.
-                        </div>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-gray-700">
                         <input
@@ -2235,34 +2384,86 @@ export default function SchedulePage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                      onClick={() => {
-                        setPendingConflict(null);
-                        setForm((prev) => ({
-                          ...prev,
-                          start_at_local: "",
-                          attendee_student_ids: [],
-                          room_ids: [],
-                          resources_text: "",
-                          location_detail: "",
-                          recurrence_type: "AD_HOC",
-                        }));
-                      }}
-                    >
-                      Reset
-                    </button>
-                    <button
-                      type="button"
-                      className="itutoros-settings-btn itutoros-settings-btn-primary"
-                      disabled={saving}
-                      onClick={() => submitSchedule(false)}
-                    >
-                      {saving ? "Saving..." : "Save schedule entry"}
-                    </button>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <h2 className="text-lg font-semibold text-[#0b1f5f]">Session revenue</h2>
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <span className="text-sm text-gray-700">Unit Price x Duration x Attendees =</span>
+                      <Input
+                        id="session-revenue"
+                        readOnly
+                        value={formatCurrencyFromCents(sessionRevenueCents)}
+                        className="w-40 bg-zinc-50 text-gray-700"
+                      />
+                    </div>
                   </div>
+
+                  {pendingConflict ? (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                      <div className="text-sm font-semibold text-red-700">Conflict detected</div>
+                      <div className="mt-1 text-sm text-red-700">
+                        {formatConflictMessage(pendingConflict.message)}
+                      </div>
+                      {pendingConflict.conflict_tags?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {pendingConflict.conflict_tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-primary"
+                          onClick={() => submitSchedule(true)}
+                        >
+                          Save anyway
+                        </button>
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                          onClick={() => setPendingConflict(null)}
+                        >
+                          Review schedule
+                        </button>
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                          onClick={() => {
+                            clearNewEntryForm();
+                            setActiveTab("CALENDAR");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                        onClick={() => {
+                          clearNewEntryForm();
+                          setActiveTab("CALENDAR");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="itutoros-settings-btn itutoros-settings-btn-primary"
+                        disabled={saving}
+                        onClick={() => submitSchedule(false)}
+                      >
+                        {saving ? "Saving..." : "Save schedule entry"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : null}
 
@@ -2326,17 +2527,19 @@ export default function SchedulePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {conflictRows.length === 0 ? (
+                          {visibleConflictRows.length === 0 ? (
                             <tr>
                               <td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-500">
                                 No conflicts found.
                               </td>
                             </tr>
                           ) : (
-                            conflictRows.map((row) => {
+                            visibleConflictRows.map((row) => {
                               const schedule = row.scheduleEntry;
                               const conflict = row.conflictingScheduleEntry;
                               const tags = normalizeConflictTags(row.conflict_tags);
+                              const scheduleLines = entrySummaryLines(schedule);
+                              const conflictLines = entrySummaryLines(conflict);
                               return (
                                 <tr key={row.id} className="border-t border-gray-100">
                                   <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(row.created_at)}</td>
@@ -2356,36 +2559,24 @@ export default function SchedulePage() {
                                       )}
                                     </div>
                                     {row.message ? (
-                                      <div className="mt-1 text-xs text-gray-600">{row.message}</div>
+                                      <div className="mt-1 text-xs text-gray-600">
+                                        {formatConflictMessage(row.message)}
+                                      </div>
                                     ) : null}
                                   </td>
                                   <td className="px-3 py-2">
-                                    <ClampedCell
-                                      text={
-                                        schedule
-                                          ? `${schedule.product_id
-                                              ? productMap.get(schedule.product_id)?.product_name ??
-                                                serviceLabel(serviceMap.get(schedule.service_offered_id))
-                                              : serviceLabel(serviceMap.get(schedule.service_offered_id))} - ${formatDateTime(
-                                              schedule.start_at,
-                                            )}`
-                                          : "--"
-                                      }
-                                    />
+                                    <div className="flex flex-col gap-0.5 text-sm leading-snug">
+                                      <div className="font-semibold text-gray-900">{scheduleLines.line1}</div>
+                                      <div className="text-gray-700">{scheduleLines.line2}</div>
+                                      <div className="text-xs text-gray-500">{scheduleLines.line3}</div>
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2">
-                                    <ClampedCell
-                                      text={
-                                        conflict
-                                          ? `${conflict.product_id
-                                              ? productMap.get(conflict.product_id)?.product_name ??
-                                                serviceLabel(serviceMap.get(conflict.service_offered_id))
-                                              : serviceLabel(serviceMap.get(conflict.service_offered_id))} - ${formatDateTime(
-                                              conflict.start_at,
-                                            )}`
-                                          : "--"
-                                      }
-                                    />
+                                    <div className="flex flex-col gap-0.5 text-sm leading-snug">
+                                      <div className="font-semibold text-gray-900">{conflictLines.line1}</div>
+                                      <div className="text-gray-700">{conflictLines.line2}</div>
+                                      <div className="text-xs text-gray-500">{conflictLines.line3}</div>
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2">
                                     {row.resolved_at ? (
@@ -2414,6 +2605,93 @@ export default function SchedulePage() {
                 </div>
               ) : null}
             </div>
+
+            {deletePromptOpen && editingEntry ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                <div className="w-full max-w-[520px] rounded-xl bg-white p-6 shadow-xl">
+                  <div className="text-lg font-semibold text-gray-900">Delete schedule entry</div>
+                  {deleteStep === "choose" ? (
+                    <>
+                      <div className="mt-2 text-sm text-gray-600">
+                        Choose whether to delete just this instance or the entire series.
+                      </div>
+                      <div className="mt-4 grid gap-3">
+                        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3">
+                          <input
+                            type="radio"
+                            name="delete-scope"
+                            checked={deleteScope === "THIS"}
+                            onChange={() => setDeleteScope("THIS")}
+                          />
+                          <div>
+                            <div className="font-semibold text-gray-900">Delete this instance</div>
+                            <div className="text-xs text-gray-500">{formatDateTime(editingEntry.start_at)}</div>
+                          </div>
+                        </label>
+                        {editingEntry.series_id ? (
+                          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3">
+                            <input
+                              type="radio"
+                              name="delete-scope"
+                              checked={deleteScope === "ALL"}
+                              onChange={() => setDeleteScope("ALL")}
+                            />
+                            <div>
+                              <div className="font-semibold text-gray-900">Delete entire series</div>
+                              <div className="text-xs text-gray-500">Removes every occurrence in this series.</div>
+                            </div>
+                          </label>
+                        ) : null}
+                      </div>
+                      <div className="mt-5 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                          onClick={() => {
+                            setDeletePromptOpen(false);
+                            setDeleteStep("choose");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-danger"
+                          onClick={() => setDeleteStep("confirm")}
+                        >
+                          Continue
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                        {deleteScope === "ALL"
+                          ? "This will permanently delete the entire series."
+                          : `This will permanently delete the ${formatDateTime(editingEntry.start_at)} entry.`}
+                      </div>
+                      <div className="mt-5 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                          onClick={() => setDeleteStep("choose")}
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="button"
+                          className="itutoros-settings-btn itutoros-settings-btn-danger"
+                          disabled={deleteBusy}
+                          onClick={handleDeleteScheduleEntry}
+                        >
+                          {deleteBusy ? "Deleting..." : "Confirm delete"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </section>
         </div>
       </main>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
@@ -12,7 +12,9 @@ import {
 } from "@/lib/client-fields";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { ClampedCell } from "@/components/ui/clamped-cell";
+import { PortalTooltip } from "@/components/ui/portal-tooltip";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowDown01Icon,
@@ -22,7 +24,12 @@ import {
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import { toast } from "@/lib/use-toast";
-import { DEFAULT_DATE_FORMAT, formatDateWithPattern, normalizeDateFormat } from "@/lib/date-format";
+import {
+  DEFAULT_DATE_FORMAT,
+  formatDateTimeWithPattern,
+  formatDateWithPattern,
+  normalizeDateFormat,
+} from "@/lib/date-format";
 
 type Location = { id: string; location_name: string; archived_at?: string | null };
 type Parent = {
@@ -75,13 +82,30 @@ type Student = {
   parent?: Parent;
 };
 
-type ClientTab = "ADD_FAMILY" | "ADD_STUDENT" | "PARENTS" | "STUDENTS";
+type UserSummary = {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+};
+
+type StudentRecord = {
+  id: string;
+  student_id: string;
+  note_text: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  createdBy?: UserSummary | null;
+  updatedBy?: UserSummary | null;
+};
+
+type ClientTab = "ADD_FAMILY" | "ADD_STUDENT" | "PARENTS" | "STUDENTS" | "STUDENT_RECORDS";
 
 const CLIENT_TABS: { key: ClientTab; label: string; icon: any }[] = [
   { key: "ADD_FAMILY", label: "Add New Family", icon: UserAdd01Icon },
   { key: "ADD_STUDENT", label: "Add New Student", icon: UserAdd01Icon },
   { key: "PARENTS", label: "Parents", icon: UserGroupIcon },
   { key: "STUDENTS", label: "Students", icon: UserIcon },
+  { key: "STUDENT_RECORDS", label: "Student Records", icon: UserIcon },
 ];
 
 const CLIENT_TAB_ICON_COLORS: Record<ClientTab, string> = {
@@ -89,6 +113,7 @@ const CLIENT_TAB_ICON_COLORS: Record<ClientTab, string> = {
   ADD_STUDENT: "#1604ff",
   PARENTS: "#ffa904",
   STUDENTS: "#ff04f0",
+  STUDENT_RECORDS: "#7a572e",
 };
 
 export default function ClientsPage() {
@@ -119,6 +144,15 @@ export default function ClientsPage() {
   const [studentEditMode, setStudentEditMode] = useState(false);
   const [parentEdits, setParentEdits] = useState<Record<string, Partial<Parent>>>({});
   const [studentEdits, setStudentEdits] = useState<Record<string, Partial<Student>>>({});
+
+  const [studentRecords, setStudentRecords] = useState<StudentRecord[]>([]);
+  const [studentRecordsLoading, setStudentRecordsLoading] = useState(false);
+  const [studentRecordsStatus, setStudentRecordsStatus] = useState<string | null>(null);
+  const [studentRecordQuery, setStudentRecordQuery] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [newStudentRecordNote, setNewStudentRecordNote] = useState("");
+  const [recordEditId, setRecordEditId] = useState<string | null>(null);
+  const [recordEditDraft, setRecordEditDraft] = useState("");
 
   const [parentModal, setParentModal] = useState<Parent | null>(null);
   const [studentModal, setStudentModal] = useState<{ parent: Parent; students: Student[] } | null>(null);
@@ -186,6 +220,7 @@ export default function ClientsPage() {
     return map;
   }, [locations]);
   const activeParents = useMemo(() => parents.filter((p) => !p.archived_at), [parents]);
+  const activeStudents = useMemo(() => students.filter((s) => !s.archived_at), [students]);
 
   const visibleParentFields = PARENT_FIELDS.filter((f) => fieldPrefs.parents[f.key]);
   const visibleStudentFields = STUDENT_FIELDS.filter((f) => fieldPrefs.students[f.key]);
@@ -218,6 +253,18 @@ export default function ClientsPage() {
     };
   }, [router, supabase]);
 
+  useEffect(() => {
+    if (!token) return;
+    if (!selectedStudentId) {
+      setStudentRecords([]);
+      return;
+    }
+    setNewStudentRecordNote("");
+    setRecordEditId(null);
+    setRecordEditDraft("");
+    void loadStudentRecords(token, selectedStudentId);
+  }, [token, selectedStudentId]);
+
   async function loadData(accessToken: string) {
     const [locRes, parentRes, studentRes, orgRes] = await Promise.all([
       fetch("/locations", { headers: { Authorization: `Bearer ${accessToken}` } }),
@@ -235,6 +282,130 @@ export default function ClientsPage() {
     }
   }
 
+  async function loadStudentRecords(accessToken: string, studentId: string) {
+    setStudentRecordsLoading(true);
+    setStudentRecordsStatus(null);
+    const activeToken = await resolveAccessToken(accessToken);
+    if (!activeToken) {
+      setStudentRecordsStatus("Session expired. Please refresh and try again.");
+      setStudentRecordsLoading(false);
+      return;
+    }
+    let res = await fetch(`/student-records?student_id=${encodeURIComponent(studentId)}`, {
+      headers: { Authorization: `Bearer ${activeToken}` },
+    });
+    if (res.status === 401) {
+      const refreshed = await supabase.auth.refreshSession();
+      const nextToken = refreshed.data.session?.access_token;
+      if (nextToken) {
+        setToken(nextToken);
+        res = await fetch(`/student-records?student_id=${encodeURIComponent(studentId)}`, {
+          headers: { Authorization: `Bearer ${nextToken}` },
+        });
+      }
+    }
+    if (!res.ok) {
+      if (res.status === 401) {
+        setStudentRecordsStatus("Session expired. Please refresh and try again.");
+      } else {
+        setStudentRecordsStatus(`Student records load failed (${res.status})`);
+      }
+      setStudentRecordsLoading(false);
+      return;
+    }
+    const records = (await res.json()) as StudentRecord[];
+    setStudentRecords(records);
+    setStudentRecordsLoading(false);
+  }
+
+  async function addStudentRecord() {
+    if (!selectedStudentId) return;
+    const activeToken = await resolveAccessToken(token);
+    if (!activeToken) {
+      setStudentRecordsStatus("Session expired. Please refresh and try again.");
+      return;
+    }
+    const note = newStudentRecordNote.trim();
+    if (!note) {
+      setStudentRecordsStatus("Please enter a note.");
+      return;
+    }
+    setStudentRecordsStatus(null);
+    let res = await fetch("/student-records", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${activeToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ student_id: selectedStudentId, note_text: note }),
+    });
+    if (res.status === 401) {
+      const refreshed = await supabase.auth.refreshSession();
+      const nextToken = refreshed.data.session?.access_token;
+      if (nextToken) {
+        setToken(nextToken);
+        res = await fetch("/student-records", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${nextToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ student_id: selectedStudentId, note_text: note }),
+        });
+      }
+    }
+    if (!res.ok) {
+      setStudentRecordsStatus(`Add note failed (${res.status})`);
+      return;
+    }
+    const created = (await res.json()) as StudentRecord;
+    setStudentRecords((prev) => [created, ...prev]);
+    setNewStudentRecordNote("");
+  }
+
+  function startRecordEdit(record: StudentRecord) {
+    setRecordEditId(record.id);
+    setRecordEditDraft(record.note_text ?? "");
+  }
+
+  function discardRecordEdit() {
+    setRecordEditId(null);
+    setRecordEditDraft("");
+  }
+
+  async function saveRecordEdit() {
+    if (!recordEditId) return;
+    const activeToken = await resolveAccessToken(token);
+    if (!activeToken) {
+      setStudentRecordsStatus("Session expired. Please refresh and try again.");
+      return;
+    }
+    const note = recordEditDraft.trim();
+    if (!note) {
+      setStudentRecordsStatus("Please enter a note.");
+      return;
+    }
+    setStudentRecordsStatus(null);
+    let res = await fetch("/student-records", {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${activeToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ record_id: recordEditId, note_text: note }),
+    });
+    if (res.status === 401) {
+      const refreshed = await supabase.auth.refreshSession();
+      const nextToken = refreshed.data.session?.access_token;
+      if (nextToken) {
+        setToken(nextToken);
+        res = await fetch("/student-records", {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${nextToken}`, "content-type": "application/json" },
+          body: JSON.stringify({ record_id: recordEditId, note_text: note }),
+        });
+      }
+    }
+    if (!res.ok) {
+      setStudentRecordsStatus(`Update failed (${res.status})`);
+      return;
+    }
+    const updated = (await res.json()) as StudentRecord;
+    setStudentRecords((prev) => prev.map((record) => (record.id === updated.id ? updated : record)));
+    discardRecordEdit();
+  }
+
   function parentDisplayName(parent?: Parent | null) {
     const name = [parent?.parent1_first_name, parent?.parent1_last_name].filter(Boolean).join(" ");
     return name || "Parent";
@@ -249,21 +420,69 @@ export default function ClientsPage() {
   }
 
   function studentAgeLabel(dob?: string | null) {
-    if (!dob) return "— years old";
+  if (!dob) return "— years old";
     const date = new Date(dob);
-    if (Number.isNaN(date.getTime())) return "— years old";
+  if (Number.isNaN(date.getTime())) return "— years old";
     const today = new Date();
     let age = today.getFullYear() - date.getFullYear();
     const monthDiff = today.getMonth() - date.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < date.getDate())) {
       age -= 1;
     }
-    if (age < 0) return "— years old";
+  if (age < 0) return "— years old";
     return `${age} years old`;
   }
 
   function formatDate(value: any) {
     return formatDateWithPattern(value, dateFormat);
+  }
+
+  function formatDateTime(value: any) {
+    return formatDateTimeWithPattern(value, dateFormat);
+  }
+
+  async function resolveAccessToken(fallback?: string | null) {
+    const sessionRes = await supabase.auth.getSession();
+    let sessionToken = sessionRes.data.session?.access_token ?? null;
+    if (!sessionToken) {
+      const refreshRes = await supabase.auth.refreshSession();
+      sessionToken = refreshRes.data.session?.access_token ?? null;
+    }
+    if (sessionToken && sessionToken !== token) {
+      setToken(sessionToken);
+    }
+    return sessionToken ?? fallback ?? null;
+  }
+
+  function renderYesNo(value?: boolean | null) {
+    if (value === null || value === undefined) {
+      return <span className="font-semibold text-gray-400">—</span>;
+    }
+    return value ? (
+      <span className="font-semibold text-rose-600">Yes</span>
+    ) : (
+      <span className="font-semibold text-emerald-600">No</span>
+    );
+  }
+
+  function userLabel(user?: UserSummary | null) {
+  if (!user) return "—";
+    const name = [user.first_name, user.last_name].filter(Boolean).join(" ");
+  return name || user.email || "—";
+  }
+
+  function studentDisplayName(student?: Student | null) {
+    if (!student) return "Student";
+    const name = [student.first_name, student.last_name].filter(Boolean).join(" ");
+    return name || "Student";
+  }
+
+  function selectRecordStudent(student: Student) {
+    setSelectedStudentId(student.id);
+    setStudentRecordQuery(studentDisplayName(student));
+    setRecordEditId(null);
+    setRecordEditDraft("");
+    setStudentRecordsStatus(null);
   }
 
 
@@ -313,6 +532,22 @@ export default function ClientsPage() {
     });
     return rows;
   }, [students, studentSort, locationMap, studentView]);
+
+  const selectedStudent = useMemo(
+    () => (selectedStudentId ? students.find((s) => s.id === selectedStudentId) ?? null : null),
+    [students, selectedStudentId],
+  );
+
+  const recordSearchResults = useMemo(() => {
+    const query = studentRecordQuery.trim().toLowerCase();
+    if (!query) return [];
+    return activeStudents
+      .filter((student) => {
+        const name = `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim().toLowerCase();
+        return name.includes(query);
+      })
+      .slice(0, 8);
+  }, [studentRecordQuery, activeStudents]);
 
   function toggleSort(type: "parent" | "student", key: string) {
     if (type === "parent") {
@@ -616,7 +851,7 @@ export default function ClientsPage() {
     return (
       <div className="min-h-screen bg-white">
         <AppHeader />
-        <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">Loading clients…</main>
+        <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">Loading clients...</main>
       </div>
     );
   }
@@ -1339,28 +1574,28 @@ export default function ClientsPage() {
                   <div className="max-h-[520px] overflow-y-auto">
                     <table className="min-w-[900px] border-collapse text-sm">
                       <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                      <tr>
-                        {visibleStudentFields.map((field) => (
-                          <th
-                            key={field.key}
-                            className={[
-                              "px-3 py-2 text-left whitespace-nowrap",
-                              field.key === "notes" ? "itutoros-notes-col" : "",
-                            ].join(" ")}
-                          >
-                            <button
-                              type="button"
-                              className={`flex items-center gap-1 whitespace-nowrap font-semibold ${studentSort.key === field.key ? "text-[#ff9df9]" : "text-gray-900"}`}
-                              onClick={() => toggleSort("student", field.key)}
+                        <tr>
+                          {visibleStudentFields.map((field) => (
+                            <th
+                              key={field.key}
+                              className={[
+                                "px-3 py-2 text-left whitespace-nowrap",
+                                field.key === "notes" ? "itutoros-notes-col" : "",
+                              ].join(" ")}
                             >
-                              {field.label}
-                              {renderSortIcons(studentSort.key === field.key, studentSort.dir)}
-                            </button>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
+                              <button
+                                type="button"
+                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${studentSort.key === field.key ? "text-[#ff9df9]" : "text-gray-900"}`}
+                                onClick={() => toggleSort("student", field.key)}
+                              >
+                                {field.label}
+                                {renderSortIcons(studentSort.key === field.key, studentSort.dir)}
+                              </button>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
                         {sortedStudents.map((student) => (
                           <tr key={student.id} className="border-t border-gray-100">
                             {visibleStudentFields.map((field) => {
@@ -1411,40 +1646,271 @@ export default function ClientsPage() {
                                   </td>
                                 );
                               }
-                              if (field.key === "parent") {
-                                const parentText = typeof value === "string" ? value : "";
-                                return (
-                                  <td key={field.key} className="px-3 py-2">
-                                    <button
-                                      type="button"
-                                      className="text-left text-[#7200dc] underline"
-                                      onClick={() => setParentModal(student.parent ?? null)}
-                                    >
-                                      <ClampedCell text={parentText} />
-                                    </button>
-                                  </td>
-                                );
-                              }
+
                               return (
                                 <td
                                   key={field.key}
-                                  className={[
-                                    "px-3 py-2",
-                                    field.key === "notes" ? "itutoros-notes-col" : "",
-                                  ].join(" ")}
+                                  className={["px-3 py-2", field.key === "notes" ? "itutoros-notes-col" : ""].join(" ")}
                                 >
-                                  <ClampedCell text={value !== null && value !== undefined ? String(value) : ""} />
+                                  {field.key === "parent" ? (
+                                    <PortalTooltip content={parentDisplayName(student.parent)}>
+                                      <span className="text-[#7c1fff] underline">{parentDisplayName(student.parent)}</span>
+                                    </PortalTooltip>
+                                  ) : (
+                                    <ClampedCell text={value !== null && value !== undefined ? String(value) : ""} />
+                                  )}
                                 </td>
                               );
                             })}
                           </tr>
                         ))}
-                    </tbody>
-                  </table>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
             ) : null}
+
+            {activeTab === "STUDENT_RECORDS" ? (
+              <div className="grid gap-4">
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="grid gap-2">
+                      <Label>Find student</Label>
+                      <div className="relative">
+                        <Input
+                          value={studentRecordQuery}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setStudentRecordQuery(next);
+                            if (!next.trim()) {
+                              setSelectedStudentId(null);
+                              setStudentRecords([]);
+                              return;
+                            }
+                            if (selectedStudentId && selectedStudent) {
+                              const selectedName = studentDisplayName(selectedStudent).toLowerCase();
+                              if (next.trim().toLowerCase() !== selectedName) {
+                                setSelectedStudentId(null);
+                                setStudentRecords([]);
+                              }
+                            }
+                          }}
+                          placeholder="Search student name"
+                          className="h-10"
+                        />
+                        {studentRecordQuery.trim() && recordSearchResults.length && !selectedStudentId ? (
+                          <div className="absolute z-20 mt-2 w-full rounded-xl border border-gray-200 bg-white shadow-lg">
+                            {recordSearchResults.map((student) => (
+                              <button
+                                key={student.id}
+                                type="button"
+                                className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                                onClick={() => selectRecordStudent(student)}
+                              >
+                                <div className="font-semibold text-gray-900">{studentDisplayName(student)}</div>
+                                {student.parent ? (
+                                  <div className="text-xs text-gray-500">{parentDisplayName(student.parent)}</div>
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {selectedStudent ? (
+                      <div className="mt-4 grid gap-3">
+                        <div className="text-base font-semibold text-gray-900">
+                          {studentDisplayName(selectedStudent)}
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>New student note</Label>
+                          <Textarea
+                            value={newStudentRecordNote}
+                            onChange={(e) => setNewStudentRecordNote(e.target.value)}
+                            placeholder="Write a note for this student..."
+                            rows={4}
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="itutoros-settings-btn itutoros-settings-btn-primary"
+                            onClick={addStudentRecord}
+                            disabled={!newStudentRecordNote.trim()}
+                          >
+                            Save note
+                          </button>
+                          <button
+                            type="button"
+                            className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                            onClick={() => setNewStudentRecordNote("")}
+                            disabled={!newStudentRecordNote.trim()}
+                          >
+                            Discard
+                          </button>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Notes automatically capture the timestamp and author.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 text-sm text-gray-600">Select a student to add notes.</div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-[#0b1f5f]">Student details</h3>
+                    </div>
+                    {selectedStudent ? (
+                      <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">DOB</span>
+                          <span className="font-semibold text-gray-900">
+                            {formatDate(selectedStudent.dob) || "—"}
+                          </span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">School</span>
+                          <span className="font-semibold text-gray-900">{selectedStudent.school || "—"}</span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">Location</span>
+                          <span className="font-semibold text-gray-900">
+                            {locationMap.get(selectedStudent.location_id) || "—"}
+                          </span>
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">IEP</span>
+                          {renderYesNo(selectedStudent.iep)}
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">Allergies</span>
+                          {renderYesNo(selectedStudent.allergies)}
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">Medical condition</span>
+                          {renderYesNo(selectedStudent.medical_condition)}
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">Behavioral issue</span>
+                          {renderYesNo(selectedStudent.behaviorial_issue)}
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">Vision Issue</span>
+                          {renderYesNo(selectedStudent.vision_issue)}
+                        </div>
+                        <div className="grid gap-1">
+                          <span className="text-gray-500">Hearing Issue</span>
+                          {renderYesNo(selectedStudent.hearing_issue)}
+                        </div>
+                        <div className="grid gap-1 sm:col-span-2 lg:col-span-4">
+                          <span className="text-gray-500">Notes</span>
+                          {selectedStudent.notes ? <ClampedCell text={selectedStudent.notes} /> : <span className="text-gray-400">—</span>}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 text-sm text-gray-600">Select a student to view details.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-[#0b1f5f]">Student records</h3>
+                  </div>
+                  {studentRecordsStatus ? (
+                    <div className="mt-2 text-sm text-rose-600">{studentRecordsStatus}</div>
+                  ) : null}
+                  {studentRecordsLoading ? (
+                    <div className="mt-3 text-sm text-gray-600">Loading records...</div>
+                  ) : null}
+                  {!studentRecordsLoading && selectedStudentId && studentRecords.length === 0 ? (
+                    <div className="mt-3 text-sm text-gray-600">No records yet.</div>
+                  ) : null}
+                  {!selectedStudentId ? (
+                    <div className="mt-3 text-sm text-gray-600">Select a student to view records.</div>
+                  ) : null}
+                  {studentRecords.length ? (
+                    <div className="mt-3 overflow-x-auto rounded-xl border border-gray-200">
+                      <div className="max-h-[420px] overflow-y-auto">
+                        <table className="min-w-[900px] border-collapse text-sm">
+                          <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
+                            <tr>
+                              <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Last updated</th>
+                              <th className="px-3 py-2 text-left whitespace-nowrap font-semibold itutoros-notes-col">
+                                Note
+                              </th>
+                              <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Updated by</th>
+                              <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Created by</th>
+                              <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Created at</th>
+                              <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {studentRecords.map((record) => {
+                              const isEditing = recordEditId === record.id;
+                              return (
+                                <tr key={record.id} className="border-t border-gray-100">
+                                  <td className="px-3 py-2">
+                                    {formatDateTime(record.updated_at || record.created_at)}
+                                  </td>
+                                  <td className="px-3 py-2 itutoros-notes-col">
+                                    {isEditing ? (
+                                      <Textarea
+                                        value={recordEditDraft}
+                                        onChange={(e) => setRecordEditDraft(e.target.value)}
+                                        rows={3}
+                                      />
+                                    ) : (
+                                      <ClampedCell text={record.note_text} />
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">{userLabel(record.updatedBy)}</td>
+                                  <td className="px-3 py-2">{userLabel(record.createdBy)}</td>
+                                  <td className="px-3 py-2">{formatDateTime(record.created_at)}</td>
+                                  <td className="px-3 py-2">
+                                    {isEditing ? (
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                          type="button"
+                                          className="itutoros-settings-btn itutoros-settings-btn-primary"
+                                          onClick={saveRecordEdit}
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                                          onClick={discardRecordEdit}
+                                        >
+                                          Discard
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                                        onClick={() => startRecordEdit(record)}
+                                      >
+                                        Edit
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             </div>
           </section>
         </div>
@@ -1496,3 +1962,5 @@ export default function ClientsPage() {
     </div>
   );
 }
+
+

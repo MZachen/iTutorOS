@@ -19,6 +19,12 @@ const BUILTIN_SOURCES: PipelineSourceSetting[] = [
   { id: "instagram", label: "Instagram", type: "SOCIAL", enabled: true, address: "" },
   { id: "messenger", label: "Messenger", type: "SOCIAL", enabled: true, address: "" },
   { id: "tiktok", label: "TikTok", type: "SOCIAL", enabled: true, address: "" },
+  { id: "x", label: "X", type: "SOCIAL", enabled: true, address: "" },
+  { id: "linkedin", label: "LinkedIn", type: "SOCIAL", enabled: true, address: "" },
+  { id: "snapchat", label: "Snapchat", type: "SOCIAL", enabled: true, address: "" },
+  { id: "pinterest", label: "Pinterest", type: "SOCIAL", enabled: true, address: "" },
+  { id: "youtube", label: "YouTube", type: "SOCIAL", enabled: true, address: "" },
+  { id: "whatsapp", label: "WhatsApp", type: "SOCIAL", enabled: true, address: "" },
 ];
 
 function normalizeEntry(entry: any): PipelineSourceSetting | null {
