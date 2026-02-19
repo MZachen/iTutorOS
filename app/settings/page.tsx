@@ -593,9 +593,9 @@ const EMPTY_SOCIAL_DRAFT: SocialPostDraft = {
   subject_id: "",
   topic_id: "",
   service_code: "",
-  template_style: SOCIAL_TEMPLATE_STYLES[0],
-  layout_preset: "Bold headline",
-  aspect_ratio: "1:1",
+  template_style: "",
+  layout_preset: "",
+  aspect_ratio: "",
   headline: "",
   call_to_action: "",
   start_date: "",
@@ -1083,43 +1083,10 @@ function SettingsPageContent() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const raw = window.localStorage.getItem(SOCIAL_DRAFT_STORAGE_KEY);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as Partial<SocialPostDraft>;
-      setSocialDraft((prev) => ({
-        ...prev,
-        ...parsed,
-        platform_ids: Array.isArray(parsed.platform_ids)
-          ? parsed.platform_ids
-          : prev.platform_ids,
-        selected_media_ids: Array.isArray(parsed.selected_media_ids)
-          ? parsed.selected_media_ids
-          : prev.selected_media_ids,
-      }));
-    } catch {
-      // ignore invalid local storage
-    }
+    window.localStorage.removeItem(SOCIAL_DRAFT_STORAGE_KEY);
+    setSocialDraft({ ...EMPTY_SOCIAL_DRAFT });
+    setSocialSourceType("");
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(
-      SOCIAL_DRAFT_STORAGE_KEY,
-      JSON.stringify(socialDraft),
-    );
-  }, [socialDraft]);
-
-  useEffect(() => {
-    if (!org) return;
-    setSocialDraft((prev) => ({
-      ...prev,
-      company_description:
-        prev.company_description || org.company_description_text || "",
-      about_us: prev.about_us || org.about_us_text || org.about_text || "",
-      slogan: prev.slogan || org.slogan_text || org.headline_text || "",
-    }));
-  }, [org?.id]);
 
   useEffect(() => {
     if (!org) return;
@@ -1702,6 +1669,42 @@ function SettingsPageContent() {
     }
   }, [activeTab]);
 
+  const socialBuilderHasContent = useMemo(() => {
+    const hasTextField = [
+      socialDraft.headline,
+      socialDraft.call_to_action,
+      socialDraft.start_date,
+      socialDraft.end_date,
+      socialDraft.age_range,
+      socialDraft.price_detail,
+      socialDraft.location_detail,
+      socialDraft.enrollment_link,
+      socialDraft.hashtags,
+      socialDraft.extra_notes,
+      socialDraft.generated_copy,
+      socialDraft.generated_image_url,
+      socialDraft.company_description,
+      socialDraft.about_us,
+      socialDraft.slogan,
+      socialDraft.template_style,
+      socialDraft.layout_preset,
+      socialDraft.aspect_ratio,
+    ].some((value) => String(value ?? "").trim().length > 0);
+
+    return Boolean(
+      hasTextField ||
+        socialSourceType ||
+        socialDraft.platform_ids.length ||
+        socialDraft.selected_media_ids.length ||
+        socialDraft.selected_template_id ||
+        socialDraft.product_id ||
+        socialDraft.service_code ||
+        socialDraft.subject_id ||
+        socialDraft.topic_id ||
+        socialTemplates.length,
+    );
+  }, [socialDraft, socialSourceType, socialTemplates.length]);
+
   const dirtyTabs = useMemo(() => {
     const servicesDirty =
       Object.keys(serviceEdits).length > 0 ||
@@ -1730,7 +1733,7 @@ function SettingsPageContent() {
       SCHEDULE: scheduleForm.hasChanges,
       PIPELINE: pipelineForm.hasChanges,
       CONNECTIONS: connectionsDirty,
-      MARKETING: false,
+      MARKETING: socialBuilderHasContent,
       WEBSITE: false,
       ARCHIVE: false,
     } as Record<SettingsTab, boolean>;
@@ -1751,6 +1754,7 @@ function SettingsPageContent() {
     newTutor.email,
     newTutor.first_name,
     newTutor.last_name,
+    socialBuilderHasContent,
   ]);
 
   const anyDirty = useMemo(

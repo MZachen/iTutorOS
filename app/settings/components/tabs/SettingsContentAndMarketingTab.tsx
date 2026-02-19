@@ -443,28 +443,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     useState("outside");
   const [socialFontFamily, setSocialFontFamily] = useState("inherit");
   const [socialActiveTool, setSocialActiveTool] = useState("pointer");
-  const [socialSelectedLayer, setSocialSelectedLayer] = useState("headline");
-  const [socialLayerOrder, setSocialLayerOrder] = useState([
-    "media",
-    "shape",
-    "headline",
-    "start",
-    "cta",
-  ]);
-  const [socialLayerVisible, setSocialLayerVisible] = useState({
-    media: true,
-    shape: true,
-    headline: true,
-    start: true,
-    cta: true,
-  });
-  const [socialLayerLocked, setSocialLayerLocked] = useState({
-    media: false,
-    shape: false,
-    headline: false,
-    start: false,
-    cta: false,
-  });
+  const [socialSelectedLayer, setSocialSelectedLayer] = useState("");
+  const [socialLayerOrder, setSocialLayerOrder] = useState<string[]>([]);
+  const [socialLayerVisible, setSocialLayerVisible] = useState<
+    Record<string, boolean>
+  >({});
+  const [socialLayerLocked, setSocialLayerLocked] = useState<
+    Record<string, boolean>
+  >({});
   const [socialShapeKind, setSocialShapeKind] = useState("rect");
   const [socialShapeColor, setSocialShapeColor] = useState("#3aa6d9");
   const [socialShapeOpacity, setSocialShapeOpacity] = useState(60);
@@ -476,6 +462,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialSelectedImageId, setSocialSelectedImageId] = useState("");
   const [socialPreviewOverrideUrl, setSocialPreviewOverrideUrl] = useState("");
   const [socialImageLayers, setSocialImageLayers] = useState({});
+  const [socialFooterBrandSide, setSocialFooterBrandSide] = useState<"left" | "right">(
+    "left",
+  );
   const [socialPreviewDropActive, setSocialPreviewDropActive] = useState(false);
   const socialPreviewRef = useRef(null);
   const [socialShadowPopupOpen, setSocialShadowPopupOpen] = useState(false);
@@ -485,12 +474,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialTextEditorOpen, setSocialTextEditorOpen] = useState(false);
   const [socialTextEditorLayer, setSocialTextEditorLayer] = useState("headline");
   const [socialTextEditorValue, setSocialTextEditorValue] = useState("");
-  const [socialLayerFrames, setSocialLayerFrames] = useState(() => ({
-    shape: { x: 280, y: 100, width: 440, height: 180 },
-    headline: { x: 55, y: 160, width: 890, height: 250 },
-    start: { x: 40, y: 60, width: 500, height: 140 },
-    cta: { x: 55, y: 420, width: 890, height: 220 },
-  }));
+  const [socialLayerFrames, setSocialLayerFrames] = useState<
+    Record<string, { x: number; y: number; width: number; height: number }>
+  >({});
   const [socialDraggingLayer, setSocialDraggingLayer] = useState("");
   const socialDragStateRef = useRef(null);
   const socialResizeStateRef = useRef(null);
@@ -515,6 +501,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     headline: "Headline",
     start: "Start Date",
     cta: "Call To Action",
+    footer: "Footer",
+    brand: "Brand",
+    contact: "Contact",
   };
   const clampLayerValue = (value, min, max) => Math.max(min, Math.min(max, value));
   const socialFrameToStyle = (frame) => ({
@@ -569,7 +558,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   useEffect(() => {
     if (socialDraggingLayer) return;
     const maxByLayer = socialTextMaxWidthByLayout(socialDraft.layout_preset);
-    const textLayers = ["headline", "start", "cta"];
+    const textLayers = ["headline", "start", "cta", SOCIAL_BRAND_LAYER_ID];
+    const announcementBold =
+      socialDraft.template_style === "Class announcement" &&
+      socialDraft.layout_preset === "Bold headline";
 
     setSocialLayerFrames((prev) => {
       let changed = false;
@@ -585,6 +577,47 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         const text = socialRenderedLayerText(layerId);
         const fontSize = socialTextFontSizes[layerId] ?? 24;
         const fontWeight = layerId === "headline" ? 800 : layerId === "cta" ? 700 : 700;
+
+        if (announcementBold && layerId === "headline") {
+          const measured = measureWrappedSocialText({
+            text,
+            fontSize,
+            fontWeight,
+            fontFamily:
+              socialFontFamily && socialFontFamily !== "inherit"
+                ? socialFontFamily
+                : "Poppins, sans-serif",
+            maxWidth: 1000,
+            minWidth: 1000,
+            paddingX: 24,
+            paddingY: 16,
+            lineHeightMultiplier: 1.1,
+            outlineWidth: socialToolOutlineWidth,
+          });
+
+          const width = 1000;
+          const height = clampLayerValue(measured.height, 70, 980);
+          const x = 0;
+          const y = 0;
+
+          if (
+            frame.width !== width ||
+            frame.height !== height ||
+            frame.x !== x ||
+            frame.y !== y
+          ) {
+            next[layerId] = {
+              ...frame,
+              x,
+              y,
+              width,
+              height,
+            };
+            changed = true;
+          }
+          continue;
+        }
+
         const measured = measureWrappedSocialText({
           text,
           fontSize,
@@ -623,17 +656,165 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         }
       }
 
+      if (announcementBold && socialLayerVisible[SOCIAL_HEADER_LAYER_ID] && socialLayerVisible.headline) {
+        const headlineFrame = next.headline;
+        if (headlineFrame) {
+          const shapeCurrent = next[SOCIAL_HEADER_LAYER_ID] ?? {
+            x: 0,
+            y: 0,
+            width: 1000,
+            height: headlineFrame.height,
+          };
+          if (
+            shapeCurrent.x !== 0 ||
+            shapeCurrent.y !== 0 ||
+            shapeCurrent.width !== 1000 ||
+            shapeCurrent.height !== headlineFrame.height
+          ) {
+            next[SOCIAL_HEADER_LAYER_ID] = {
+              ...shapeCurrent,
+              x: 0,
+              y: 0,
+              width: 1000,
+              height: headlineFrame.height,
+            };
+            changed = true;
+          }
+        }
+
+        const footerCurrent = next[SOCIAL_FOOTER_LAYER_ID] ?? {
+          x: 0,
+          y: 920,
+          width: 1000,
+          height: 80,
+        };
+        if (
+          footerCurrent.x !== 0 ||
+          footerCurrent.y !== 920 ||
+          footerCurrent.width !== 1000 ||
+          footerCurrent.height !== 80
+        ) {
+          next[SOCIAL_FOOTER_LAYER_ID] = {
+            ...footerCurrent,
+            x: 0,
+            y: 920,
+            width: 1000,
+            height: 80,
+          };
+          changed = true;
+        }
+
+        const contactCurrent = next[SOCIAL_CONTACT_LAYER_ID] ?? {
+          x: 0,
+          y: 920,
+          width: 1000,
+          height: 80,
+        };
+        if (
+          contactCurrent.x !== 0 ||
+          contactCurrent.y !== 920 ||
+          contactCurrent.width !== 1000 ||
+          contactCurrent.height !== 80
+        ) {
+          next[SOCIAL_CONTACT_LAYER_ID] = {
+            ...contactCurrent,
+            x: 0,
+            y: 920,
+            width: 1000,
+            height: 80,
+          };
+          changed = true;
+        }
+
+        if (socialLayerVisible[SOCIAL_BRAND_LAYER_ID]) {
+          if (socialHasBrandLogo) {
+            const brandCurrent = next[SOCIAL_BRAND_LAYER_ID] ?? {
+              x: 20,
+              y: 925,
+              width: 960,
+              height: 70,
+            };
+            if (
+              brandCurrent.x !== 20 ||
+              brandCurrent.y !== 925 ||
+              brandCurrent.width !== 960 ||
+              brandCurrent.height !== 70
+            ) {
+              next[SOCIAL_BRAND_LAYER_ID] = {
+                ...brandCurrent,
+                x: 20,
+                y: 925,
+                width: 960,
+                height: 70,
+              };
+              changed = true;
+            }
+          } else {
+            const measuredBrand = measureWrappedSocialText({
+              text: socialCompanyNameText,
+              fontSize: 30,
+              fontWeight: 700,
+              fontFamily:
+                socialFontFamily && socialFontFamily !== "inherit"
+                  ? socialFontFamily
+                  : "Poppins, sans-serif",
+              maxWidth: 1000,
+              minWidth: 1000,
+              paddingX: 0,
+              paddingY: 0,
+              lineHeightMultiplier: 1.1,
+              outlineWidth: 0,
+            });
+            const brandHeight = clampLayerValue(measuredBrand.height, 80, 995);
+            const brandCurrent = next[SOCIAL_BRAND_LAYER_ID] ?? {
+              x: 0,
+              y: 1000 - brandHeight,
+              width: 1000,
+              height: brandHeight,
+            };
+            const nextBrandY = clampLayerValue(1000 - brandHeight, 0, 995);
+            if (
+              brandCurrent.x !== 0 ||
+              brandCurrent.y !== nextBrandY ||
+              brandCurrent.width !== 1000 ||
+              brandCurrent.height !== brandHeight
+            ) {
+              next[SOCIAL_BRAND_LAYER_ID] = {
+                ...brandCurrent,
+                x: 0,
+                y: nextBrandY,
+                width: 1000,
+                height: brandHeight,
+              };
+              changed = true;
+            }
+          }
+        }
+      }
+
       return changed ? next : prev;
     });
   }, [
     socialDraft.call_to_action,
     socialDraft.end_date,
     socialDraft.headline,
+    socialDraft.template_style,
     socialDraft.layout_preset,
     socialDraft.location_detail,
     socialDraft.start_date,
     socialDraggingLayer,
     socialFontFamily,
+    companyDraft?.company_logo_url,
+    businessForm?.formData?.business_phone,
+    businessForm?.formData?.business_email,
+    org?.business_phone,
+    org?.business_email,
+    org?.business_name,
+    socialLayerVisible.brand,
+    socialLayerVisible.shape,
+    socialLayerVisible.footer,
+    socialLayerVisible.contact,
+    socialLayerVisible.shape,
     socialLayerVisible.cta,
     socialLayerVisible.headline,
     socialLayerVisible.start,
@@ -713,10 +894,42 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     socialToolShadowSize,
   ]);
 
+  const buildOutsideTextStrokeShadow = (width, color) => {
+    const radius = Math.max(0, Math.round(Number(width) || 0));
+    if (!radius) return "none";
+    const strokeColor = String(color || "#000000");
+    const shadows = [];
+    for (let y = -radius; y <= radius; y += 1) {
+      for (let x = -radius; x <= radius; x += 1) {
+        if (x === 0 && y === 0) continue;
+        if (Math.hypot(x, y) > radius + 0.25) continue;
+        shadows.push(`${x}px ${y}px 0 ${strokeColor}`);
+      }
+    }
+    return shadows.length ? shadows.join(", ") : "none";
+  };
+
   const previewTextStyle = (target, fallbackSize) => {
     const isSelected = socialToolTarget === target;
+    const forceAnnouncementHeadlineStyle =
+      target === "headline" &&
+      socialDraft.template_style === "Class announcement" &&
+      socialDraft.layout_preset === "Bold headline";
     const layerFontSize = socialTextFontSizes[target] ?? fallbackSize;
-    if (!isSelected) {
+    if (forceAnnouncementHeadlineStyle) {
+      return {
+        color: "#ffffff",
+        fontSize: `${layerFontSize}px`,
+        WebkitTextStroke: "0px transparent",
+        textShadow: buildOutsideTextStrokeShadow(
+          Math.max(0, socialToolOutlineWidth),
+          socialToolOutlineColor,
+        ),
+        lineHeight: 1.1,
+        fontFamily: socialFontFamily,
+      };
+    }
+    if (!isSelected && !forceAnnouncementHeadlineStyle) {
       return {
         color: "#ffffff",
         fontSize: `${layerFontSize}px`,
@@ -815,6 +1028,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialShapeOpacity,
         socialShapeStyles,
         socialImageLayers,
+        socialFooterBrandSide,
         socialPreviewOverrideUrl,
       }),
     [
@@ -843,6 +1057,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialShapeOpacity,
       socialShapeStyles,
       socialImageLayers,
+      socialFooterBrandSide,
       socialPreviewOverrideUrl,
     ],
   );
@@ -924,6 +1139,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       },
     );
     setSocialImageLayers(snap.socialImageLayers ?? {});
+    setSocialFooterBrandSide(snap.socialFooterBrandSide === "right" ? "right" : "left");
     setSocialPreviewOverrideUrl(snap.socialPreviewOverrideUrl ?? "");
     setTimeout(() => {
       socialApplyingHistoryRef.current = false;
@@ -1033,10 +1249,44 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ];
   const SOCIAL_SHAPE_LAYER_PREFIX = "shape-extra-";
   const SOCIAL_IMAGE_LAYER_PREFIX = "image-extra-";
+  const SOCIAL_HEADER_LAYER_ID = "shape";
+  const SOCIAL_FOOTER_LAYER_ID = "footer";
+  const SOCIAL_BRAND_LAYER_ID = "brand";
+  const SOCIAL_CONTACT_LAYER_ID = "contact";
+  const SOCIAL_ANNOUNCEMENT_LAYER_ORDER = [
+    SOCIAL_CONTACT_LAYER_ID,
+    SOCIAL_BRAND_LAYER_ID,
+    SOCIAL_FOOTER_LAYER_ID,
+    "headline",
+    SOCIAL_HEADER_LAYER_ID,
+    "media",
+  ];
+  const formatBusinessPhone = (value) => {
+    const digits = String(value ?? "").replace(/\D/g, "");
+    const normalized =
+      digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+    if (normalized.length !== 10) return "";
+    return `(${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6)}`;
+  };
+  const socialBrandLogoUrl = String(companyDraft?.company_logo_url ?? "").trim();
+  const socialHasBrandLogo = socialBrandLogoUrl.length > 0;
+  const socialCompanyNameText = String(org?.business_name ?? "").trim() || "Company Name";
+  const socialBusinessPhoneText = formatBusinessPhone(
+    businessForm?.formData?.business_phone ?? org?.business_phone ?? "",
+  );
+  const socialBusinessEmailText = String(
+    businessForm?.formData?.business_email ?? org?.business_email ?? "",
+  ).trim();
+  const socialFooterContactText =
+    socialBusinessPhoneText || socialBusinessEmailText || "#tutoring";
   const isSocialImageLayer = (layerId) =>
-    layerId === "media" || String(layerId || "").startsWith(SOCIAL_IMAGE_LAYER_PREFIX);
+    layerId === "media" ||
+    (layerId === SOCIAL_BRAND_LAYER_ID && socialHasBrandLogo) ||
+    String(layerId || "").startsWith(SOCIAL_IMAGE_LAYER_PREFIX);
   const isSocialShapeLayer = (layerId) =>
-    layerId === "shape" || String(layerId || "").startsWith(SOCIAL_SHAPE_LAYER_PREFIX);
+    layerId === SOCIAL_HEADER_LAYER_ID ||
+    layerId === SOCIAL_FOOTER_LAYER_ID ||
+    String(layerId || "").startsWith(SOCIAL_SHAPE_LAYER_PREFIX);
   const buildSocialShapeLayerId = () =>
     `${SOCIAL_SHAPE_LAYER_PREFIX}${Date.now()}-${socialShapeCounterRef.current++}`;
   const buildSocialImageLayerId = () =>
@@ -1115,37 +1365,141 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const templateStyle = "Class announcement";
     const layoutPreset = "Bold headline";
     const aspectRatio = "1:1";
-    const baseOrder = ["media", "shape", "headline", "start", "cta"];
-    const hiddenLayers = {
-      media: false,
-      shape: false,
-      headline: false,
-      start: false,
-      cta: false,
-    };
-    const unlockedLayers = {
-      media: false,
-      shape: false,
-      headline: false,
-      start: false,
-      cta: false,
-    };
+    const isCompanyLogoMedia = (media) => media?.id === "company-logo";
+    const allImages = socialMediaOptions.filter((media) => media.type === "PHOTO");
+    const allBackgroundImages = allImages.filter((media) => !isCompanyLogoMedia(media));
+    const selectedImages = (socialDraft.selected_media_ids ?? [])
+      .map((id) => allBackgroundImages.find((media) => media.id === id) ?? null)
+      .filter(Boolean) as Array<(typeof socialMediaOptions)[number]>;
+    const pool = selectedImages.length > 0 ? selectedImages : allBackgroundImages;
 
-    setSocialLayerOrder(baseOrder);
-    setSocialLayerVisible(hiddenLayers);
-    setSocialLayerLocked(unlockedLayers);
-    setSocialLayerFrames(buildDefaultLayerFrames(layoutPreset));
-    setSocialImageLayers({});
-    setSocialShapeStyles({
-      shape: {
-        kind: socialShapeKind,
-        color: socialShapeColor,
-        opacity: socialShapeOpacity,
-      },
+    const chosenMedia =
+      pool.length === 0
+        ? null
+        : pool.length === 1
+          ? pool[0]
+          : pool[Math.floor(Math.random() * pool.length)];
+
+    const alignChoices = ["left", "center", "right"] as const;
+    const randomAlign =
+      alignChoices[Math.floor(Math.random() * alignChoices.length)] ?? "center";
+    const colorChoices = [
+      "#0ea5e9",
+      "#22c55e",
+      "#f97316",
+      "#ef4444",
+      "#8b5cf6",
+      "#06b6d4",
+      "#14b8a6",
+      "#f59e0b",
+      "#e11d48",
+      "#6366f1",
+    ];
+    const randomRectColor =
+      colorChoices[Math.floor(Math.random() * colorChoices.length)] ?? "#0ea5e9";
+    const randomBrandSide = Math.random() < 0.5 ? "left" : "right";
+
+    const generatedHeadlineText =
+      socialDraft.headline && socialDraft.headline.trim().length > 0
+        ? socialDraft.headline
+        : "Add Headline";
+    const measuredHeadline = measureWrappedSocialText({
+      text: generatedHeadlineText,
+      fontSize: 75,
+      fontWeight: 800,
+      fontFamily:
+        socialFontFamily && socialFontFamily !== "inherit"
+          ? socialFontFamily
+          : "Poppins, sans-serif",
+      maxWidth: 1000,
+      minWidth: 1000,
+      paddingX: 24,
+      paddingY: 16,
+      lineHeightMultiplier: 1.1,
+      outlineWidth: 2,
     });
-    setSocialPreviewOverrideUrl("");
-    setSocialSelectedImageId("");
-    setSocialSelectedLayer("headline");
+    const headlineHeight = clampLayerValue(measuredHeadline.height, 70, 520);
+
+    setSocialLayerOrder(chosenMedia ? [...SOCIAL_ANNOUNCEMENT_LAYER_ORDER] : []);
+    setSocialLayerVisible(
+      chosenMedia
+        ? {
+            media: true,
+            [SOCIAL_HEADER_LAYER_ID]: true,
+            headline: true,
+            [SOCIAL_FOOTER_LAYER_ID]: true,
+            [SOCIAL_BRAND_LAYER_ID]: true,
+            [SOCIAL_CONTACT_LAYER_ID]: true,
+          }
+        : {},
+    );
+    setSocialLayerLocked(
+      chosenMedia
+        ? {
+            media: false,
+            [SOCIAL_HEADER_LAYER_ID]: false,
+            headline: false,
+            [SOCIAL_FOOTER_LAYER_ID]: false,
+            [SOCIAL_BRAND_LAYER_ID]: false,
+            [SOCIAL_CONTACT_LAYER_ID]: false,
+          }
+        : {},
+    );
+    setSocialLayerFrames(
+      chosenMedia
+        ? {
+            [SOCIAL_HEADER_LAYER_ID]: { x: 0, y: 0, width: 1000, height: headlineHeight },
+            headline: { x: 0, y: 0, width: 1000, height: headlineHeight },
+            [SOCIAL_FOOTER_LAYER_ID]: { x: 0, y: 920, width: 1000, height: 80 },
+            [SOCIAL_BRAND_LAYER_ID]: socialHasBrandLogo
+              ? { x: 20, y: 925, width: 960, height: 70 }
+              : { x: 0, y: 920, width: 1000, height: 80 },
+            [SOCIAL_CONTACT_LAYER_ID]: { x: 0, y: 920, width: 1000, height: 80 },
+          }
+        : {},
+    );
+    setSocialImageLayers(
+      chosenMedia && socialHasBrandLogo
+        ? {
+            [SOCIAL_BRAND_LAYER_ID]: {
+              id: SOCIAL_BRAND_LAYER_ID,
+              url: socialBrandLogoUrl,
+              type: detectSocialMediaTypeFromUrl(socialBrandLogoUrl),
+            },
+          }
+        : {},
+    );
+    setSocialShapeStyles(
+      chosenMedia
+        ? {
+            [SOCIAL_HEADER_LAYER_ID]: {
+              kind: "rectangle",
+              color: randomRectColor,
+              opacity: 50,
+            },
+            [SOCIAL_FOOTER_LAYER_ID]: {
+              kind: "rectangle",
+              color: "#000000",
+              opacity: 70,
+            },
+          }
+        : {},
+    );
+    setSocialToolTarget("headline");
+    setSocialToolAlignX(randomAlign);
+    setSocialToolAlignY("center");
+    setSocialToolColor("#ffffff");
+    setSocialToolFontSize(75);
+    setSocialTextFontSizes((prev) => ({
+      ...prev,
+      headline: 75,
+    }));
+    setSocialToolOutlineColor("#000000");
+    setSocialToolOutlineWidth(2);
+    setSocialFooterBrandSide(randomBrandSide);
+    setSocialPreviewOverrideUrl(chosenMedia?.url ?? "");
+    setSocialSelectedImageId(chosenMedia?.id ?? "");
+    setSocialSelectedLayer(chosenMedia ? "headline" : "");
     setSocialDraft((prev) => ({
       ...prev,
       template_style: templateStyle,
@@ -1153,7 +1507,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       aspect_ratio: aspectRatio,
       selected_template_id: "",
     }));
-    setStatus("Blank canvas generated.");
+    setStatus(
+      chosenMedia
+        ? `Post generated. Using image: ${chosenMedia.label}.`
+        : "Post generated. No images available in Media & templates.",
+    );
   };
 
   const applySocialShapeColor = (color) => {
@@ -1189,6 +1547,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
 
   const socialRenderedLayerText = (layerId) => {
     if (layerId === "headline") {
+      if (
+        socialDraft.template_style === "Class announcement" &&
+        socialDraft.layout_preset === "Bold headline"
+      ) {
+        return socialDraft.headline && socialDraft.headline.trim().length > 0
+          ? socialDraft.headline
+          : "Add Headline";
+      }
       return socialDraft.headline || socialSelectedProduct?.product_name || "Your headline";
     }
     if (layerId === "start") {
@@ -1761,6 +2127,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           ? socialPreviewMediaResolved
           : socialImageLayers[layerId] ?? null;
       if (!imageMeta?.url) {
+        if (layerId === SOCIAL_BRAND_LAYER_ID) {
+          return (
+            <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-gray-500">
+              TXT
+            </div>
+          );
+        }
         return (
           <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-gray-400">
             IMG
@@ -1989,6 +2362,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     backgroundFill = "",
     backgroundOpacity = 0,
     borderRadius = 0,
+    paddingLeft = 0,
+    paddingRight = 0,
+    paddingTop = 0,
+    paddingBottom = 0,
     onClick = null,
   }) => {
     if (layerId && !socialLayerVisible[layerId]) return null;
@@ -2049,6 +2426,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               display: "flex",
               justifyContent,
               flexDirection: "column",
+              boxSizing: "border-box",
+              paddingLeft: `${Math.max(0, paddingLeft)}px`,
+              paddingRight: `${Math.max(0, paddingRight)}px`,
+              paddingTop: `${Math.max(0, paddingTop)}px`,
+              paddingBottom: `${Math.max(0, paddingBottom)}px`,
             }}
           >
             <div
@@ -2093,8 +2475,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
 
   const socialRenderPresetTextLayers = () => {
     if (socialDraft.layout_preset === "Bold headline") {
+      const isAnnouncement =
+        socialDraft.template_style === "Class announcement";
       const topY =
         socialToolAlignY === "top" ? 52 : socialToolAlignY === "bottom" ? 290 : 160;
+      const brandAlignX = socialFooterBrandSide === "right" ? "right" : "left";
+      const brandPaddingLeft = socialFooterBrandSide === "right" ? 0 : 20;
+      const brandPaddingRight = socialFooterBrandSide === "right" ? 20 : 0;
+      const contactAlignX = socialFooterBrandSide === "right" ? "left" : "right";
+      const contactPaddingLeft = socialFooterBrandSide === "right" ? 10 : 0;
+      const contactPaddingRight = socialFooterBrandSide === "right" ? 0 : 10;
       return (
         <>
           {socialRenderSvgTextLayer({
@@ -2102,28 +2492,61 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             layerId: "headline",
             text:
               socialDraft.headline || socialSelectedProduct?.product_name || "Your headline",
-            fallbackSize: 48,
+            fallbackSize: isAnnouncement ? 75 : 48,
             x: 55,
             y: topY,
             width: 890,
             height: 250,
             alignX: socialToolAlignX,
-            alignY: "top",
+            alignY: isAnnouncement ? "center" : "top",
             fontWeight: 800,
           })}
-          {socialRenderSvgTextLayer({
-            keyId: "bold-cta",
-            layerId: "cta",
-            text: socialDraft.call_to_action || socialDraft.start_date || "Call to action",
-            fallbackSize: 20,
-            x: 55,
-            y: topY + 260,
-            width: 890,
-            height: 220,
-            alignX: socialToolAlignX,
-            alignY: "top",
-            fontWeight: 700,
-          })}
+          {isAnnouncement && !socialHasBrandLogo
+            ? socialRenderSvgTextLayer({
+                keyId: "announcement-brand-text",
+                layerId: SOCIAL_BRAND_LAYER_ID,
+                text: socialCompanyNameText,
+                fallbackSize: 30,
+                x: 0,
+                y: 920,
+                width: 1000,
+                height: 80,
+                alignX: brandAlignX,
+                alignY: "center",
+                fontWeight: 700,
+                paddingLeft: brandPaddingLeft,
+                paddingRight: brandPaddingRight,
+              })
+            : null}
+          {isAnnouncement
+            ? socialRenderSvgTextLayer({
+                keyId: "announcement-contact",
+                layerId: SOCIAL_CONTACT_LAYER_ID,
+                text: socialFooterContactText,
+                fallbackSize: 30,
+                x: 0,
+                y: 920,
+                width: 1000,
+                height: 80,
+                alignX: contactAlignX,
+                alignY: "center",
+                fontWeight: 700,
+                paddingLeft: contactPaddingLeft,
+                paddingRight: contactPaddingRight,
+              })
+            : socialRenderSvgTextLayer({
+                keyId: "bold-cta",
+                layerId: "cta",
+                text: socialDraft.call_to_action || socialDraft.start_date || "Call to action",
+                fallbackSize: 20,
+                x: 55,
+                y: topY + 260,
+                width: 890,
+                height: 220,
+                alignX: socialToolAlignX,
+                alignY: "top",
+                fontWeight: 700,
+              })}
         </>
       );
     }
@@ -4744,6 +5167,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                         }))
                                       }
                                     >
+                                      <option value="">Select a template style</option>
                                       {SOCIAL_TEMPLATE_STYLES.map((style) => (
                                         <option key={style} value={style}>
                                           {style}
@@ -4763,6 +5187,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                         }))
                                       }
                                     >
+                                      <option value="">Select a layout preset</option>
                                       {SOCIAL_LAYOUT_PRESETS.map((preset) => (
                                         <option key={preset} value={preset}>
                                           {preset}
@@ -4782,6 +5207,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                         }))
                                       }
                                     >
+                                      <option value="">Select an aspect ratio</option>
                                       {SOCIAL_ASPECT_RATIOS.map((ratio) => (
                                         <option
                                           key={ratio.value}
@@ -5184,13 +5610,29 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                             {imageMeta.type === "VIDEO" ? (
                                               <video
                                                 src={imageMeta.url}
-                                                className="h-full w-full object-cover"
+                                                className={`h-full w-full ${
+                                                  layerId === SOCIAL_BRAND_LAYER_ID
+                                                    ? `object-contain ${
+                                                        socialFooterBrandSide === "right"
+                                                          ? "object-right-bottom"
+                                                          : "object-left-bottom"
+                                                      }`
+                                                    : "object-cover"
+                                                }`}
                                               />
                                             ) : (
                                               <img
                                                 src={imageMeta.url}
                                                 alt=""
-                                                className="h-full w-full object-cover"
+                                                className={`h-full w-full ${
+                                                  layerId === SOCIAL_BRAND_LAYER_ID
+                                                    ? `object-contain ${
+                                                        socialFooterBrandSide === "right"
+                                                          ? "object-right-bottom"
+                                                          : "object-left-bottom"
+                                                      }`
+                                                    : "object-cover"
+                                                }`}
                                               />
                                             )}
                                           </div>
