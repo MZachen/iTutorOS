@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
-import { getConnectionProvider, type ConnectionProviderId } from "@/lib/connections";
+import {
+  getConnectionProvider,
+  type ConnectionProviderId,
+} from "@/lib/connections";
 
 type MarketingPost = {
   id: string;
@@ -48,8 +51,12 @@ export default function MarketingPage() {
       setStatus(null);
       try {
         const [postsRes, connectionsRes] = await Promise.all([
-          fetch("/marketing-posts", { headers: { Authorization: `Bearer ${accessToken}` } }),
-          fetch("/connections", { headers: { Authorization: `Bearer ${accessToken}` } }),
+          fetch("/marketing-posts", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }),
+          fetch("/connections", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }),
         ]);
 
         if (!postsRes.ok) {
@@ -60,7 +67,8 @@ export default function MarketingPage() {
         if (!cancelled) setPosts(postsJson);
 
         if (connectionsRes.ok) {
-          const connectionsJson = (await connectionsRes.json()) as ConnectionSnapshot[];
+          const connectionsJson =
+            (await connectionsRes.json()) as ConnectionSnapshot[];
           if (!cancelled) setConnections(connectionsJson);
         }
       } finally {
@@ -71,7 +79,30 @@ export default function MarketingPage() {
     if (token) void loadAll(token);
   }, [token]);
 
-  const canShowMetrics = useMemo(() => connections.some((c) => c.connected), [connections]);
+  const canShowMetrics = useMemo(
+    () => connections.some((c) => c.connected),
+    [connections],
+  );
+
+  async function archivePost(post: MarketingPost) {
+    if (!token) return;
+    const confirmed = window.confirm(
+      `Archive "${post.title}"? This removes it from Marketing.`,
+    );
+    if (!confirmed) return;
+    setStatus(null);
+    const res = await fetch(`/marketing-posts/${encodeURIComponent(post.id)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      setStatus(`Archive failed (${res.status}): ${text}`);
+      return;
+    }
+    setPosts((prev) => prev.filter((item) => item.id !== post.id));
+    setStatus("Post archived.");
+  }
 
   return (
     <div className="min-h-screen bg-[#f7f6fb]">
@@ -85,7 +116,7 @@ export default function MarketingPage() {
             </p>
           </div>
           <a
-            href="/settings?tab=MARKETING"
+            href="/settings?tab=MARKETING&section=POST_BUILDER"
             className="itutoros-settings-btn itutoros-settings-btn-primary"
           >
             Create post
@@ -104,34 +135,54 @@ export default function MarketingPage() {
               <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Post</th>
-                  <th className="px-4 py-3 text-left font-semibold">Platforms</th>
+                  <th className="px-4 py-3 text-left font-semibold">
+                    Platforms
+                  </th>
                   <th className="px-4 py-3 text-left font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold">Last posted</th>
+                  <th className="px-4 py-3 text-left font-semibold">
+                    Last posted
+                  </th>
                   {canShowMetrics ? (
                     <>
-                      <th className="px-4 py-3 text-left font-semibold">Views</th>
-                      <th className="px-4 py-3 text-left font-semibold">Clicks</th>
+                      <th className="px-4 py-3 text-left font-semibold">
+                        Views
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold">
+                        Clicks
+                      </th>
                     </>
                   ) : null}
+                  <th className="px-4 py-3 text-left font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={canShowMetrics ? 6 : 4} className="px-4 py-6 text-center text-gray-500">
+                    <td
+                      colSpan={canShowMetrics ? 7 : 5}
+                      className="px-4 py-6 text-center text-gray-500"
+                    >
                       Loading posts...
                     </td>
                   </tr>
                 ) : posts.length === 0 ? (
                   <tr>
-                    <td colSpan={canShowMetrics ? 6 : 4} className="px-4 py-6 text-center text-gray-500">
-                      No marketing posts yet. Create your first post from Settings to Marketing.
+                    <td
+                      colSpan={canShowMetrics ? 7 : 5}
+                      className="px-4 py-6 text-center text-gray-500"
+                    >
+                      No marketing posts yet. Create your first post from
+                      Settings to Marketing.
                     </td>
                   </tr>
                 ) : (
                   posts.map((post) => {
                     const label =
-                      post.status === "POSTED" ? "Posted" : post.status === "READY" ? "Ready" : "Unposted";
+                      post.status === "POSTED"
+                        ? "Posted"
+                        : post.status === "READY"
+                          ? "Ready"
+                          : "Unposted";
                     const tone =
                       post.status === "POSTED"
                         ? "text-emerald-600"
@@ -144,22 +195,53 @@ export default function MarketingPage() {
                     return (
                       <tr key={post.id} className="border-t border-gray-100">
                         <td className="px-4 py-3">
-                          <div className="font-semibold text-gray-900">{post.title}</div>
-                          <div className="text-xs text-gray-500 line-clamp-1">{post.copy_text ?? ""}</div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">{platformLabels || "-"}</td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs font-semibold ${tone}`}>{label}</span>
+                          <div className="font-semibold text-gray-900">
+                            {post.title}
+                          </div>
+                          <div className="text-xs text-gray-500 line-clamp-1">
+                            {post.copy_text ?? ""}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-gray-700">
-                          {post.last_posted_at ? new Date(post.last_posted_at).toLocaleString() : "-"}
+                          {platformLabels || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs font-semibold ${tone}`}>
+                            {label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {post.last_posted_at
+                            ? new Date(post.last_posted_at).toLocaleString()
+                            : "-"}
                         </td>
                         {canShowMetrics ? (
                           <>
-                            <td className="px-4 py-3 text-gray-700">{post.views_count ?? "-"}</td>
-                            <td className="px-4 py-3 text-gray-700">{post.clicks_count ?? "-"}</td>
+                            <td className="px-4 py-3 text-gray-700">
+                              {post.views_count ?? "-"}
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">
+                              {post.clicks_count ?? "-"}
+                            </td>
                           </>
                         ) : null}
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <a
+                              href={`/settings?tab=MARKETING&section=POST_BUILDER&post_id=${encodeURIComponent(post.id)}`}
+                              className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+                            >
+                              Edit
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => void archivePost(post)}
+                              className="rounded-lg border border-red-200 px-3 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                            >
+                              Archive
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })
@@ -172,4 +254,3 @@ export default function MarketingPage() {
     </div>
   );
 }
-

@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -10,6 +11,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import AppHeader from "@/app/_components/AppHeader";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useSettingsForm } from "@/lib/useSettingsForm";
@@ -92,6 +94,7 @@ type Org = {
   business_email: string | null;
   date_format?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   business_address_1: string | null;
   business_address_2: string | null;
   business_city: string | null;
@@ -107,6 +110,12 @@ type Org = {
   tutoring_style_text?: string | null;
   testimonials_text?: string | null;
   cta_text?: string | null;
+  images?: Array<{
+    id: string;
+    image_url: string;
+    image_type?: string | null;
+    archived_at?: string | null;
+  }>;
 };
 
 type Location = {
@@ -239,7 +248,13 @@ type CatalogMedia = {
   archived_at?: string | null;
 };
 
-type MarketingTab = "PRODUCTS" | "SERVICES" | "SUBJECTS" | "TOPICS" | "COMPANY";
+type MarketingTab =
+  | "IMAGE_LIBRARY"
+  | "SERVICES"
+  | "SUBJECTS"
+  | "TOPICS"
+  | "COMPANY"
+  | "PRODUCTS";
 type MarketingSection = "PLATFORMS" | "POST_BUILDER";
 type SocialSourceType = "" | "PRODUCTS" | "SERVICES" | "SUBJECTS" | "TOPICS";
 
@@ -393,7 +408,7 @@ const ALL_TABS: { key: SettingsTab; label: string; icon: any }[] = [
 ];
 
 const TAB_HEADINGS: Partial<Record<SettingsTab, string>> = {
-  PRODUCTS: "Products",
+  PRODUCTS: "Content Studio",
 };
 
 const TAB_DIVIDERS = new Set<SettingsTab>(["PRODUCTS", "ARCHIVE"]);
@@ -416,15 +431,16 @@ const SETTINGS_TAB_ICON_COLORS: Record<SettingsTab, string> = {
 };
 
 const CONTENT_STUDIO_TABS: { key: MarketingTab; label: string }[] = [
-  { key: "PRODUCTS", label: "Products" },
+  { key: "IMAGE_LIBRARY", label: "Image Library" },
   { key: "SERVICES", label: "Services" },
   { key: "SUBJECTS", label: "Subjects" },
   { key: "TOPICS", label: "Topics" },
   { key: "COMPANY", label: "Company" },
+  { key: "PRODUCTS", label: "Products" },
 ];
 const MARKETING_SECTIONS: { key: MarketingSection; label: string }[] = [
-  { key: "PLATFORMS", label: "Marketing Platforms" },
   { key: "POST_BUILDER", label: "Social Media Post Builder" },
+  { key: "PLATFORMS", label: "Marketing Platforms" },
 ];
 
 const SOCIAL_DRAFT_STORAGE_KEY = "itutoros:social-post-draft";
@@ -924,7 +940,15 @@ function buildSubjectDrafts(
   return drafts;
 }
 
-export default function SettingsPage() {
+const LazySettingsTabPanels = dynamic(
+  () => import("./components/SettingsTabPanels"),
+  {
+    ssr: false,
+    loading: () => <p className="text-sm text-gray-500">Loading section...</p>,
+  },
+);
+
+function SettingsPageContent() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -952,9 +976,10 @@ export default function SettingsPage() {
     Record<string, Topic[]>
   >({});
   const [products, setProducts] = useState<Product[]>([]);
-  const [marketingTab, setMarketingTab] = useState<MarketingTab>("PRODUCTS");
+  const [marketingTab, setMarketingTab] =
+    useState<MarketingTab>("IMAGE_LIBRARY");
   const [marketingSection, setMarketingSection] =
-    useState<MarketingSection>("PLATFORMS");
+    useState<MarketingSection>("POST_BUILDER");
   const [productDraft, setProductDraft] = useState<ProductDraft>({
     ...EMPTY_PRODUCT_DRAFT,
   });
@@ -977,6 +1002,7 @@ export default function SettingsPage() {
     mission_text: "",
     tutoring_style_text: "",
     about_us_text: "",
+    company_logo_url: "",
   });
   const [catalogMediaByKey, setCatalogMediaByKey] = useState<
     Record<string, CatalogMedia[]>
@@ -1097,13 +1123,16 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!org) return;
+    const activeLogo =
+      org.images?.find((img) => !img.archived_at)?.image_url ?? "";
     setCompanyDraft({
       company_description_text: org.company_description_text ?? "",
       mission_text: org.mission_text ?? "",
       tutoring_style_text: org.tutoring_style_text ?? "",
       about_us_text: org.about_us_text ?? org.about_text ?? "",
+      company_logo_url: activeLogo,
     });
-  }, [org?.id]);
+  }, [org?.id, org?.updated_at]);
 
   const timezones = useMemo(() => {
     const supported =
@@ -1388,14 +1417,17 @@ export default function SettingsPage() {
 
   const companyDirty = useMemo(() => {
     if (!org) return false;
+    const activeLogo =
+      org.images?.find((img) => !img.archived_at)?.image_url ?? "";
     const baseline = {
       company_description_text: org.company_description_text ?? "",
       mission_text: org.mission_text ?? "",
       tutoring_style_text: org.tutoring_style_text ?? "",
       about_us_text: org.about_us_text ?? org.about_text ?? "",
+      company_logo_url: activeLogo,
     };
     return JSON.stringify(companyDraft) !== JSON.stringify(baseline);
-  }, [companyDraft, org?.id]);
+  }, [companyDraft, org?.id, org?.updated_at]);
 
   const productMediaKey = productDraft.id
     ? catalogMediaKey("product", productDraft.id)
@@ -1447,6 +1479,11 @@ export default function SettingsPage() {
     return byCode.get(socialDraft.service_code) ?? null;
   }, [servicesByLocation, socialDraft.service_code]);
 
+  const activeCompanyLogoUrl = useMemo(
+    () => org?.images?.find((img) => !img.archived_at)?.image_url ?? "",
+    [org?.id, org?.updated_at],
+  );
+
   const socialMediaOptions = useMemo(() => {
     const items: Array<{
       id: string;
@@ -1454,6 +1491,14 @@ export default function SettingsPage() {
       type: CatalogMedia["media_type"];
       label: string;
     }> = [];
+    if (activeCompanyLogoUrl) {
+      items.push({
+        id: "company-logo",
+        url: activeCompanyLogoUrl,
+        type: "PHOTO",
+        label: "Company logo",
+      });
+    }
     if (socialSelectedProduct) {
       if (socialSelectedProduct.product_logo_url) {
         items.push({
@@ -1519,6 +1564,7 @@ export default function SettingsPage() {
     }
     return items;
   }, [
+    activeCompanyLogoUrl,
     catalogMediaByKey,
     socialSelectedProduct,
     socialSelectedService,
@@ -1592,8 +1638,8 @@ export default function SettingsPage() {
       productAutoSelectedRef.current = true;
       return;
     }
+    // Keep "Add new product" selected by default when entering Products.
     if (!products.length) return;
-    selectProduct(products[0]);
     productAutoSelectedRef.current = true;
   }, [products, productDraft.id, productDraft.product_name]);
 
@@ -1649,7 +1695,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (activeTab === "PRODUCTS") {
-      setMarketingTab("PRODUCTS");
+      setMarketingTab("IMAGE_LIBRARY");
+    }
+    if (activeTab === "MARKETING") {
+      setMarketingSection("POST_BUILDER");
     }
   }, [activeTab]);
 
@@ -2713,11 +2762,14 @@ export default function SettingsPage() {
     }
     if (activeTab === "PRODUCTS" && marketingTab === "COMPANY") {
       if (org) {
+        const activeLogo =
+          org.images?.find((img) => !img.archived_at)?.image_url ?? "";
         setCompanyDraft({
           company_description_text: org.company_description_text ?? "",
           mission_text: org.mission_text ?? "",
           tutoring_style_text: org.tutoring_style_text ?? "",
           about_us_text: org.about_us_text ?? org.about_text ?? "",
+          company_logo_url: activeLogo,
         });
       }
     }
@@ -4283,15 +4335,62 @@ export default function SettingsPage() {
     }
   }
 
+  async function fetchWithFreshAuth(input: string, init: RequestInit = {}) {
+    const withToken = async (accessToken: string) => {
+      const headers = new Headers(init.headers ?? {});
+      headers.set("Authorization", `Bearer ${accessToken}`);
+      return fetch(input, {
+        ...init,
+        headers,
+      });
+    };
+
+    let accessToken = token;
+    if (!accessToken) {
+      const sessionRes = await supabase.auth.getSession();
+      accessToken = sessionRes.data.session?.access_token ?? null;
+    }
+    if (!accessToken) {
+      const refreshRes = await supabase.auth.refreshSession();
+      accessToken = refreshRes.data.session?.access_token ?? null;
+    }
+    if (!accessToken) {
+      return {
+        res: null as Response | null,
+        error: "Session expired. Please log in again.",
+      };
+    }
+
+    if (accessToken !== token) setToken(accessToken);
+
+    let res = await withToken(accessToken);
+    if (res.status !== 401) {
+      return { res, error: null as string | null };
+    }
+
+    const refreshRes = await supabase.auth.refreshSession();
+    const refreshedToken = refreshRes.data.session?.access_token ?? null;
+    if (!refreshedToken) {
+      return {
+        res: null as Response | null,
+        error: "Session expired. Please log in again.",
+      };
+    }
+    if (refreshedToken !== token) setToken(refreshedToken);
+    res = await withToken(refreshedToken);
+    return { res, error: null as string | null };
+  }
+
   async function loadCatalogMedia(params: {
     kind: "product" | "subject" | "topic" | "service";
     id: string;
+    scope?: "global";
     product_id?: string;
     subject_id?: string;
     topic_id?: string;
     service_code?: string;
   }) {
-    if (!token || !params.id) return;
+    if (!params.id) return;
     const key = catalogMediaKey(params.kind, params.id);
     setCatalogMediaLoading((prev) => ({ ...prev, [key]: true }));
     const sp = new URLSearchParams();
@@ -4299,9 +4398,15 @@ export default function SettingsPage() {
     if (params.subject_id) sp.set("subject_id", params.subject_id);
     if (params.topic_id) sp.set("topic_id", params.topic_id);
     if (params.service_code) sp.set("service_code", params.service_code);
-    const res = await fetch(`/catalog-media?${sp.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    if (params.scope) sp.set("scope", params.scope);
+    const { res, error } = await fetchWithFreshAuth(
+      `/catalog-media?${sp.toString()}`,
+    );
+    if (!res) {
+      setCatalogMediaLoading((prev) => ({ ...prev, [key]: false }));
+      if (error) setStatus(error);
+      return;
+    }
     if (res.ok) {
       const rows = (await res.json()) as CatalogMedia[];
       setCatalogMediaByKey((prev) => ({ ...prev, [key]: rows }));
@@ -4312,6 +4417,7 @@ export default function SettingsPage() {
   async function addCatalogMedia(params: {
     kind: "product" | "subject" | "topic" | "service";
     id: string;
+    scope?: "global";
     media_url: string;
     media_type: "PHOTO" | "VIDEO";
     product_id?: string;
@@ -4319,7 +4425,6 @@ export default function SettingsPage() {
     topic_id?: string;
     service_code?: string;
   }) {
-    if (!token) return;
     const payload: Record<string, any> = {
       media_url: params.media_url,
       media_type: params.media_type,
@@ -4328,14 +4433,17 @@ export default function SettingsPage() {
     if (params.subject_id) payload.subject_id = params.subject_id;
     if (params.topic_id) payload.topic_id = params.topic_id;
     if (params.service_code) payload.service_code = params.service_code;
-    const res = await fetch("/catalog-media", {
+    const { res, error } = await fetchWithFreshAuth("/catalog-media", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
         "content-type": "application/json",
       },
       body: JSON.stringify(payload),
     });
+    if (!res) {
+      if (error) setStatus(error);
+      return;
+    }
     if (!res.ok) {
       const text = await res.text();
       setStatus(`Media upload failed (${res.status}): ${text}`);
@@ -4347,6 +4455,7 @@ export default function SettingsPage() {
   async function handleMediaFileUpload(params: {
     kind: "product" | "subject" | "topic" | "service";
     id: string;
+    scope?: "global";
     file: File;
     media_type: "PHOTO" | "VIDEO";
     product_id?: string;
@@ -4363,15 +4472,17 @@ export default function SettingsPage() {
   }
 
   async function removeCatalogMedia(id: string, reload?: () => Promise<void>) {
-    if (!token) return;
-    const res = await fetch("/catalog-media", {
+    const { res, error } = await fetchWithFreshAuth("/catalog-media", {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${token}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({ id }),
     });
+    if (!res) {
+      if (error) setStatus(error);
+      return;
+    }
     if (!res.ok) {
       const text = await res.text();
       setStatus(`Remove media failed (${res.status}): ${text}`);
@@ -4890,6 +5001,7 @@ export default function SettingsPage() {
         mission_text: companyDraft.mission_text,
         tutoring_style_text: companyDraft.tutoring_style_text,
         about_us_text: companyDraft.about_us_text,
+        company_logo_url: companyDraft.company_logo_url || null,
       }),
     });
     if (!res.ok) {
@@ -5208,6 +5320,395 @@ export default function SettingsPage() {
     }));
     setStatus("Room archived.");
   }
+    const settingsTabCtx = {
+    accountForm,
+    accountInitial,
+    activeEmailInboxes,
+    activeLeadCount,
+    activeLocations,
+    activeTab,
+    activeTutorCount,
+    addCatalogMedia,
+    addEmailInbox,
+    addRoom,
+    addService,
+    addSubject,
+    addTopic,
+    aiRewriteLoading,
+    aiRewrites,
+    ALL_TABS,
+    anyDirty,
+    anyDirtyRef,
+    AppHeader,
+    ARCHIVE_LABELS,
+    ARCHIVE_OPTIONS,
+    archiveEdits,
+    archiveEditsForType,
+    archiveEmailInbox,
+    archiveHasChanges,
+    ArchiveIcon,
+    archiveLocation,
+    archiveMaps,
+    archiveRoom,
+    archiveRows,
+    archiveSort,
+    archiveTutor,
+    archiveType,
+    ArrowDown01Icon,
+    ArrowUp01Icon,
+    billableLocations,
+    BookOpen01Icon,
+    bufferDraft,
+    Building04Icon,
+    buildProductDraft,
+    buildSubjectDrafts,
+    businessForm,
+    businessInitial,
+    Calendar01Icon,
+    canAddLocation,
+    canAddTutor,
+    Cancel01Icon,
+    cancelEditLocation,
+    cancelEditRoom,
+    catalogMediaByKey,
+    catalogMediaKey,
+    catalogMediaLoading,
+    centsToDollars,
+    CheckmarkCircle01Icon,
+    checkoutHref,
+    checkoutHrefFor,
+    childPrompt,
+    childPromptResolverRef,
+    ClampedCell,
+    clearAiRewrite,
+    clearSocialBuilder,
+    CLIENT_FIELDS_STORAGE_KEY,
+    clientsForm,
+    closeChildUnarchivePrompt,
+    closePasswordPrompt,
+    companyDirty,
+    companyDraft,
+    confirmWithPassword,
+    connectGoogleInbox,
+    CONNECTION_PROVIDERS,
+    connectionCardGradient,
+    connections,
+    connectionsDirty,
+    connectionSnapshots,
+    connectionStatusById,
+    connectionStatusLabel,
+    CONTENT_STUDIO_TABS,
+    Copy01Icon,
+    CreditCardIcon,
+    DATE_FORMAT_OPTIONS,
+    dateFormat,
+    DEFAULT_DATE_FORMAT,
+    DEFAULT_SERVICE_NAMES,
+    DEFAULT_SUBJECTS,
+    DEFAULT_TUTOR_COLOR,
+    defaultClientFieldPrefs,
+    defaultPipelineSources,
+    dirtyTabs,
+    discardActive,
+    discardSocialCopy,
+    dollarsToCents,
+    dynamic,
+    editLocationDraft,
+    editLocationId,
+    editRoomDraft,
+    editRoomId,
+    emailInboxes,
+    EMPTY_PRODUCT_DRAFT,
+    EMPTY_SOCIAL_DRAFT,
+    formatCurrencyFromCents,
+    formatDateWithPattern,
+    formatPlanLimit,
+    Fragment,
+    generateSocialCopy,
+    generateSocialImage,
+    getConnectionProvider,
+    getNewRoomDraft,
+    getSupabaseBrowserClient,
+    handleMediaFileUpload,
+    handleSocialTemplateUpload,
+    HugeiconsIcon,
+    Input,
+    isTutorOnly,
+    Label,
+    LazySettingsTabPanels,
+    leadDisplayName,
+    leadLimit,
+    leads,
+    Link01Icon,
+    loadCatalogMedia,
+    loading,
+    loadPipelineSources,
+    Location01Icon,
+    locationNameById,
+    locations,
+    locLimit,
+    makeEmailSource,
+    makeUniqueServiceCode,
+    MARKETING_SECTIONS,
+    MarketingIcon,
+    marketingSection,
+    marketingServiceByCode,
+    marketingServices,
+    marketingSubjectId,
+    marketingTab,
+    me,
+    mediaUrlDrafts,
+    mergeEmailInboxSources,
+    newEmailInbox,
+    newRoomDrafts,
+    newService,
+    newSubjectName,
+    newTopicDrafts,
+    newTutor,
+    normalizeClientFieldPrefs,
+    normalizeDateFormat,
+    normalizeKey,
+    normalizePlanKey,
+    onSave,
+    openBillingPortal,
+    openChildUnarchivePrompt,
+    openPasswordPrompt,
+    org,
+    otherPlans,
+    PackageIcon,
+    PARENT_FIELDS,
+    parentDisplayName,
+    parentNameById,
+    parents,
+    parseNonNegativeInt,
+    passwordDraft,
+    passwordPrompt,
+    passwordPromptResolverRef,
+    patchEmailInbox,
+    pipelineForm,
+    PipelineIcon,
+    plan,
+    PLAN_ORDER,
+    planCardColor,
+    planKey,
+    planLabel,
+    planLeadLimit,
+    planLocationLimit,
+    planSpecs,
+    planSpecsFor,
+    planTutorLimit,
+    productAutoSelectedRef,
+    productDirty,
+    productDraft,
+    productDraftInitial,
+    productMedia,
+    productMediaKey,
+    productMediaLoading,
+    products,
+    productTopicOptions,
+    providerLabel,
+    queryHandledRef,
+    readFileAsDataUrl,
+    removeCatalogMedia,
+    removePipelineSource,
+    removeSocialTemplate,
+    renderSortIcons,
+    rewriteWithAi,
+    roomsByLocation,
+    router,
+    saveAccount,
+    saveAllConnections,
+    saveBusiness,
+    saveClientFieldPrefs,
+    saveClientFields,
+    saveCompanyContent,
+    saveConnection,
+    saveEditLocation,
+    saveEditRoom,
+    savePipelineSettings,
+    savePipelineSources,
+    saveProducts,
+    saveSchedule,
+    saveServiceDescription,
+    saveServices,
+    saveSocialPost,
+    saveSubjectDescription,
+    saveSubjectsTopics,
+    saveTopicDescription,
+    saveTutors,
+    scheduleForm,
+    scheduleInitial,
+    searchParams,
+    selectedCarouselPresetId,
+    selectedProductService,
+    selectedServiceLocationId,
+    selectProduct,
+    sendResetEmail,
+    serviceById,
+    serviceCatalogDrafts,
+    serviceDescriptionDrafts,
+    serviceEdits,
+    ServiceIcon,
+    serviceLocationId,
+    serviceLogoDrafts,
+    serviceRows,
+    servicesByLocation,
+    serviceSort,
+    setActiveTab,
+    setAiLoading,
+    setAiRewrite,
+    setAiRewriteLoading,
+    setAiRewrites,
+    setArchiveEdits,
+    setArchiveSort,
+    setArchiveType,
+    setBufferDraft,
+    setCatalogMediaByKey,
+    setCatalogMediaLoading,
+    setChildPrompt,
+    setCompanyDraft,
+    setConnections,
+    setConnectionSnapshots,
+    setEditLocationDraft,
+    setEditLocationId,
+    setEditRoomDraft,
+    setEditRoomId,
+    setEmailInboxes,
+    setLeads,
+    setLoading,
+    setLocations,
+    setMarketingSection,
+    setMarketingSubjectId,
+    setMarketingTab,
+    setMe,
+    setMediaUrlDrafts,
+    setNewEmailInbox,
+    setNewRoomDrafts,
+    setNewService,
+    setNewSubjectName,
+    setNewTopicDrafts,
+    setNewTutor,
+    setOrg,
+    setParents,
+    setPasswordDraft,
+    setPasswordPrompt,
+    setProductDraft,
+    setProductDraftInitial,
+    setProducts,
+    setRoomsByLocation,
+    setServiceCatalogDrafts,
+    setServiceDescriptionDrafts,
+    setServiceEdits,
+    setServiceLocationId,
+    setServiceLogoDrafts,
+    setServicesByLocation,
+    setServiceSort,
+    setSocialDraft,
+    setSocialSourceType,
+    setSocialSourceTypeSelection,
+    setSocialTemplates,
+    setStatus,
+    setStudents,
+    setSubjectDescriptionDrafts,
+    setSubjectDrafts,
+    setSubjectDraftsInitialKey,
+    setSubjects,
+    setSubjectSort,
+    SETTINGS_TAB_ICON_COLORS,
+    SettingsPage,
+    setToken,
+    setTopicDescriptionDrafts,
+    setTopicsBySubject,
+    setTutorDrafts,
+    setTutors,
+    setUserEmail,
+    SOCIAL_ASPECT_RATIO_FILE_KEYS,
+    SOCIAL_ASPECT_RATIOS,
+    SOCIAL_DRAFT_STORAGE_KEY,
+    SOCIAL_LAYOUT_PRESET_FILE_KEYS,
+    SOCIAL_LAYOUT_PRESETS,
+    SOCIAL_PLATFORM_SPECS,
+    SOCIAL_PRESET_CAROUSEL_ITEMS,
+    SOCIAL_TEMPLATE_STYLES,
+    socialAspect,
+    socialDraft,
+    socialMediaOptions,
+    socialPresetCarouselRef,
+    socialPresetRefs,
+    socialPreviewMedia,
+    socialSelectedProduct,
+    socialSelectedService,
+    socialSelectedSubject,
+    socialSelectedTemplate,
+    socialSelectedTopic,
+    socialSourceType,
+    socialTemplates,
+    socialTopicOptions,
+    sortedArchiveRows,
+    sortedServiceRows,
+    sortedSubjectDrafts,
+    startConnectionOAuth,
+    startEditLocation,
+    startEditRoom,
+    status,
+    STUDENT_FIELDS,
+    studentDisplayName,
+    students,
+    studentsByParentId,
+    subjectBaselineMap,
+    subjectDescriptionDrafts,
+    subjectDrafts,
+    subjectDraftsInitialKey,
+    subjectDraftsInitialRef,
+    subjectDraftsKey,
+    subjectNameById,
+    subjects,
+    subjectSort,
+    supabase,
+    switchTab,
+    TAB_DIVIDERS,
+    TAB_HEADINGS,
+    tabs,
+    Textarea,
+    timezones,
+    toggleArchiveSort,
+    toggleServiceSort,
+    toggleSocialMedia,
+    toggleSocialPlatform,
+    toggleSubjectSort,
+    token,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+    topicDescriptionDrafts,
+    topicsBySubject,
+    tutorDrafts,
+    tutorDraftsInitialRef,
+    tutorLimit,
+    tutors,
+    UNIT_LENGTH_TOOLTIP,
+    updateArchive,
+    updateArchiveDraft,
+    updateClientField,
+    updateConnectionField,
+    updateNewRoomDraft,
+    updatePipelineSource,
+    updateServiceDraft,
+    US_STATES,
+    usageColorClass,
+    useEffect,
+    useMemo,
+    useRef,
+    userEmail,
+    UserGroupIcon,
+    useRouter,
+    useSearchParams,
+    useSettingsForm,
+    useState,
+    WebDesign01Icon,
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <AppHeader />
@@ -5312,4913 +5813,8 @@ export default function SettingsPage() {
                 </p>
               ) : null}
 
-              {!loading && activeTab === "ACCOUNT" ? (
-                <div className="grid gap-6">
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="grid gap-1">
-                      <div className="text-sm text-gray-600">Logged in as</div>
-                      <div className="text-base font-semibold">
-                        {userEmail ?? "—"}
-                      </div>
-                    </div>
-                    <div className="grid gap-1">
-                      <div className="text-sm text-gray-600">
-                        Organization ID
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <div className="font-mono text-sm text-gray-500">
-                          {org?.id ?? "—"}
-                        </div>
-                        <button
-                          type="button"
-                          className="flex w-fit items-center gap-2 rounded-full border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-500 transition hover:border-gray-300 hover:text-gray-700"
-                          disabled={!org?.id}
-                          aria-label="Copy organization id"
-                          onClick={() => {
-                            if (!org?.id) return;
-                            void navigator.clipboard?.writeText(org.id);
-                            setStatus("Organization ID copied.");
-                          }}
-                        >
-                          <HugeiconsIcon icon={Copy01Icon} size={14} />
-                          Copy ID
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid gap-1">
-                      <div className="text-sm text-gray-600">
-                        iTutorOS member since
-                      </div>
-                      <div className="text-base font-semibold">
-                        {org?.created_at
-                          ? formatDateWithPattern(org.created_at, dateFormat)
-                          : "—"}
-                      </div>
-                    </div>
-                  </div>
+              <LazySettingsTabPanels ctx={settingsTabCtx} />
 
-                  <div className="h-px bg-gray-200" />
-
-                  {!isTutorOnly ? (
-                    <div className="grid gap-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Plan
-                        </div>
-                        <button
-                          type="button"
-                          className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                          onClick={() => openBillingPortal()}
-                        >
-                          Manage billing
-                        </button>
-                      </div>
-                      <div
-                        className="rounded-2xl border border-gray-200 p-4 shadow-sm"
-                        style={{ backgroundColor: planCardColor(planKey) }}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                              Current plan
-                            </div>
-                            <div className="text-lg font-semibold text-[#0b1f5f]">
-                              {planLabel(planKey)}
-                            </div>
-                          </div>
-                          <span className="rounded-full bg-[#eef2ff] px-3 py-1 text-xs font-semibold text-[#0b1f5f]">
-                            Active
-                          </span>
-                        </div>
-                        <div className="mt-4 grid gap-2 text-sm text-gray-700 sm:grid-cols-3">
-                          {planSpecs.map((spec) => (
-                            <div
-                              key={spec.label}
-                              className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
-                            >
-                              <div className="text-xs uppercase text-gray-400">
-                                {spec.label}
-                              </div>
-                              <div className="text-base font-semibold text-gray-800">
-                                {spec.value}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="grid gap-3">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Change Plan
-                        </div>
-                        <div className="itutoros-carousel">
-                          {otherPlans.map((key) => {
-                            const specs = planSpecsFor(key);
-                            return (
-                              <div
-                                key={key}
-                                className="itutoros-card-1 itutoros-carousel-card"
-                                style={{ backgroundColor: planCardColor(key) }}
-                              >
-                                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                  Plan
-                                </div>
-                                <div className="text-lg font-semibold text-[#0b1f5f]">
-                                  {planLabel(key)}
-                                </div>
-                                <div className="mt-3 grid gap-2 text-sm text-gray-700">
-                                  {specs.map((spec) => (
-                                    <div
-                                      key={spec.label}
-                                      className="flex items-center justify-between gap-2"
-                                    >
-                                      <span className="text-gray-500">
-                                        {spec.label}
-                                      </span>
-                                      <span className="font-semibold text-gray-800">
-                                        {spec.value}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                                <button
-                                  type="button"
-                                  className="mt-4 w-full rounded-full border border-[#0b1f5f] px-3 py-2 text-sm font-semibold text-[#0b1f5f] transition hover:bg-[#0b1f5f] hover:text-white"
-                                  onClick={async () => {
-                                    const accessToken =
-                                      await confirmWithPassword();
-                                    if (!accessToken) return;
-                                    window.location.href = checkoutHrefFor(key);
-                                  }}
-                                >
-                                  Choose {planLabel(key)}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="h-px bg-gray-200" />
-
-                  <div className="grid gap-4">
-                    <div className="text-sm font-semibold text-gray-700">
-                      Account settings
-                    </div>
-                    <div className="grid max-w-[360px] gap-2">
-                      <Label htmlFor="date-format">Date format</Label>
-                      <select
-                        id="date-format"
-                        className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                        value={accountForm.formData.date_format}
-                        onChange={(e) =>
-                          accountForm.updateField(
-                            "date_format",
-                            normalizeDateFormat(e.target.value),
-                          )
-                        }
-                      >
-                        {DATE_FORMAT_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="text-xs text-gray-500">
-                        Applies across the entire app.
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                        onClick={() => sendResetEmail()}
-                      >
-                        Reset password
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "BUSINESS" ? (
-                <form
-                  className="grid w-full max-w-[720px] gap-4"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    onSave();
-                  }}
-                >
-                  <div className="grid gap-2">
-                    <Label htmlFor="business_name">Business name</Label>
-                    <Input
-                      id="business_name"
-                      value={businessForm.formData.business_name}
-                      onChange={(e) =>
-                        businessForm.updateField(
-                          "business_name",
-                          e.target.value,
-                        )
-                      }
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <select
-                      id="timezone"
-                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                      value={businessForm.formData.timezone}
-                      onChange={(e) =>
-                        businessForm.updateField("timezone", e.target.value)
-                      }
-                    >
-                      {timezones.map((tz) => (
-                        <option key={tz} value={tz}>
-                          {tz}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label htmlFor="business_phone">
-                        Business phone number
-                      </Label>
-                      <Input
-                        id="business_phone"
-                        value={businessForm.formData.business_phone}
-                        onChange={(e) =>
-                          businessForm.updateField(
-                            "business_phone",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="business_email">Business email</Label>
-                      <Input
-                        id="business_email"
-                        type="email"
-                        value={businessForm.formData.business_email}
-                        onChange={(e) =>
-                          businessForm.updateField(
-                            "business_email",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="addr1">Business address line 1</Label>
-                    <Input
-                      id="addr1"
-                      value={businessForm.formData.business_address_1}
-                      onChange={(e) =>
-                        businessForm.updateField(
-                          "business_address_1",
-                          e.target.value,
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="addr2">Business address line 2</Label>
-                    <Input
-                      id="addr2"
-                      value={businessForm.formData.business_address_2}
-                      onChange={(e) =>
-                        businessForm.updateField(
-                          "business_address_2",
-                          e.target.value,
-                        )
-                      }
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div className="grid gap-2 sm:col-span-2">
-                      <Label htmlFor="city">City</Label>
-                      <Input
-                        id="city"
-                        value={businessForm.formData.business_city}
-                        onChange={(e) =>
-                          businessForm.updateField(
-                            "business_city",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="state">State</Label>
-                      <select
-                        id="state"
-                        className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                        value={businessForm.formData.business_state}
-                        onChange={(e) =>
-                          businessForm.updateField(
-                            "business_state",
-                            e.target.value,
-                          )
-                        }
-                      >
-                        <option value="">—</option>
-                        {US_STATES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="zip">ZIP</Label>
-                    <Input
-                      id="zip"
-                      value={businessForm.formData.business_zip}
-                      onChange={(e) =>
-                        businessForm.updateField("business_zip", e.target.value)
-                      }
-                    />
-                  </div>
-                </form>
-              ) : null}
-
-              {!loading && activeTab === "LOCATIONS" ? (
-                <div className="grid gap-6">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="grid gap-2">
-                      <div className="text-sm font-semibold">
-                        Active Location Capacity
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        Plan limit:{" "}
-                        {locLimit === null ? "Unlimited" : `${locLimit}`} ·{" "}
-                        <span
-                          className={usageColorClass(
-                            billableLocations.length,
-                            locLimit,
-                          )}
-                        >
-                          Current: {billableLocations.length}
-                        </span>
-                      </div>
-                      {!canAddLocation ? (
-                        <button
-                          type="button"
-                          className="itutoros-settings-btn itutoros-settings-btn-success w-fit"
-                          onClick={() => switchTab("ACCOUNT")}
-                        >
-                          Change Plan
-                        </button>
-                      ) : null}
-                    </div>
-                    {canAddLocation ? (
-                      <a
-                        href="/setup"
-                        className="itutoros-settings-btn itutoros-settings-btn-primary inline-flex items-center justify-center no-underline"
-                      >
-                        Add location (opens Setup)
-                      </a>
-                    ) : null}
-                  </div>
-
-                  <div className="grid gap-4">
-                    {billableLocations.length === 0 ? (
-                      <p className="text-sm text-gray-600">No locations yet.</p>
-                    ) : null}
-                    {activeLocations
-                      .filter((loc) => !loc.is_system)
-                      .map((loc) => {
-                        const rooms = roomsByLocation[loc.id] ?? [];
-                        const isEditing =
-                          editLocationId === loc.id && editLocationDraft;
-                        const locationIsVirtual = isEditing
-                          ? editLocationDraft.is_virtual
-                          : loc.is_virtual;
-                        return (
-                          <div
-                            key={loc.id}
-                            className="rounded-xl border border-gray-200 p-4"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-semibold">
-                                  {loc.location_name}{" "}
-                                  {loc.archived_at ? (
-                                    <span className="text-xs text-gray-500">
-                                      (archived)
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <div className="text-xs text-gray-600">
-                                  {loc.is_virtual ? "Virtual" : "In-person"}
-                                </div>
-                              </div>
-                              {!loc.archived_at ? (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                    onClick={() => startEditLocation(loc)}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                    onClick={() => archiveLocation(loc.id)}
-                                  >
-                                    Archive
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-
-                            {isEditing ? (
-                              <div className="mt-4 grid gap-3">
-                                <div className="grid gap-2">
-                                  <Label>Location name</Label>
-                                  <Input
-                                    value={editLocationDraft.location_name}
-                                    onChange={(e) =>
-                                      setEditLocationDraft((prev) =>
-                                        prev
-                                          ? {
-                                              ...prev,
-                                              location_name: e.target.value,
-                                            }
-                                          : prev,
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <label className="flex items-center gap-2 text-sm">
-                                  <input
-                                    type="checkbox"
-                                    checked={editLocationDraft.is_virtual}
-                                    onChange={(e) =>
-                                      setEditLocationDraft((prev) =>
-                                        prev
-                                          ? {
-                                              ...prev,
-                                              is_virtual: e.target.checked,
-                                            }
-                                          : prev,
-                                      )
-                                    }
-                                  />
-                                  This is a virtual / online location
-                                </label>
-                                {editLocationDraft.is_virtual ? (
-                                  <div className="grid gap-2">
-                                    <Label>
-                                      Virtual location link (Zoom/Meet/etc.)
-                                    </Label>
-                                    <Input
-                                      value={
-                                        editLocationDraft.location_address_1
-                                      }
-                                      onChange={(e) =>
-                                        setEditLocationDraft((prev) =>
-                                          prev
-                                            ? {
-                                                ...prev,
-                                                location_address_1:
-                                                  e.target.value,
-                                              }
-                                            : prev,
-                                        )
-                                      }
-                                      placeholder="https://zoom.us/j/..."
-                                    />
-                                  </div>
-                                ) : (
-                                  <>
-                                    <div className="grid gap-2">
-                                      <Label>Address line 1</Label>
-                                      <Input
-                                        value={
-                                          editLocationDraft.location_address_1
-                                        }
-                                        onChange={(e) =>
-                                          setEditLocationDraft((prev) =>
-                                            prev
-                                              ? {
-                                                  ...prev,
-                                                  location_address_1:
-                                                    e.target.value,
-                                                }
-                                              : prev,
-                                          )
-                                        }
-                                      />
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label>Address line 2</Label>
-                                      <Input
-                                        value={
-                                          editLocationDraft.location_address_2
-                                        }
-                                        onChange={(e) =>
-                                          setEditLocationDraft((prev) =>
-                                            prev
-                                              ? {
-                                                  ...prev,
-                                                  location_address_2:
-                                                    e.target.value,
-                                                }
-                                              : prev,
-                                          )
-                                        }
-                                      />
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                      <div className="grid gap-2 sm:col-span-2">
-                                        <Label>City</Label>
-                                        <Input
-                                          value={
-                                            editLocationDraft.location_city
-                                          }
-                                          onChange={(e) =>
-                                            setEditLocationDraft((prev) =>
-                                              prev
-                                                ? {
-                                                    ...prev,
-                                                    location_city:
-                                                      e.target.value,
-                                                  }
-                                                : prev,
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                      <div className="grid gap-2">
-                                        <Label>State</Label>
-                                        <select
-                                          className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                          value={
-                                            editLocationDraft.location_state
-                                          }
-                                          onChange={(e) =>
-                                            setEditLocationDraft((prev) =>
-                                              prev
-                                                ? {
-                                                    ...prev,
-                                                    location_state:
-                                                      e.target.value,
-                                                  }
-                                                : prev,
-                                            )
-                                          }
-                                        >
-                                          <option value="">—</option>
-                                          {US_STATES.map((s) => (
-                                            <option key={s} value={s}>
-                                              {s}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                    </div>
-                                    <div className="grid gap-2">
-                                      <Label>ZIP</Label>
-                                      <Input
-                                        value={editLocationDraft.location_zip}
-                                        onChange={(e) =>
-                                          setEditLocationDraft((prev) =>
-                                            prev
-                                              ? {
-                                                  ...prev,
-                                                  location_zip: e.target.value,
-                                                }
-                                              : prev,
-                                          )
-                                        }
-                                      />
-                                    </div>
-                                  </>
-                                )}
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                    onClick={() => saveEditLocation()}
-                                  >
-                                    Save location
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                    onClick={() => cancelEditLocation()}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
-                            ) : null}
-
-                            <div className="mt-4">
-                              <div className="text-xs font-semibold text-gray-600">
-                                Rooms
-                              </div>
-                              {locationIsVirtual ? (
-                                <div className="mt-2 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
-                                  Virtual locations don't use rooms. Any
-                                  existing rooms will be archived.
-                                </div>
-                              ) : (
-                                <>
-                                  {rooms.length === 0 ? (
-                                    <div className="text-sm text-gray-600">
-                                      No rooms.
-                                    </div>
-                                  ) : null}
-                                  <ul className="mt-2 grid gap-2">
-                                    {rooms
-                                      .slice()
-                                      .sort(
-                                        (a, b) =>
-                                          Number(Boolean(a.archived_at)) -
-                                          Number(Boolean(b.archived_at)),
-                                      )
-                                      .map((room) => {
-                                        const roomEditing =
-                                          editRoomId === room.id &&
-                                          editRoomDraft;
-                                        return (
-                                          <li
-                                            key={room.id}
-                                            className="rounded-lg border border-gray-100 p-2"
-                                          >
-                                            {roomEditing ? (
-                                              <div className="grid gap-2 sm:grid-cols-4 sm:items-end">
-                                                <div className="grid gap-1 sm:col-span-2">
-                                                  <Label>Room name</Label>
-                                                  <Input
-                                                    value={
-                                                      editRoomDraft.room_name
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditRoomDraft(
-                                                        (prev) =>
-                                                          prev
-                                                            ? {
-                                                                ...prev,
-                                                                room_name:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            : prev,
-                                                      )
-                                                    }
-                                                  />
-                                                </div>
-                                                <div className="grid gap-1">
-                                                  <Label>Room #</Label>
-                                                  <Input
-                                                    value={
-                                                      editRoomDraft.room_number
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditRoomDraft(
-                                                        (prev) =>
-                                                          prev
-                                                            ? {
-                                                                ...prev,
-                                                                room_number:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            : prev,
-                                                      )
-                                                    }
-                                                  />
-                                                </div>
-                                                <div className="grid gap-1">
-                                                  <Label>Floor</Label>
-                                                  <Input
-                                                    value={
-                                                      editRoomDraft.floor_number
-                                                    }
-                                                    onChange={(e) =>
-                                                      setEditRoomDraft(
-                                                        (prev) =>
-                                                          prev
-                                                            ? {
-                                                                ...prev,
-                                                                floor_number:
-                                                                  e.target
-                                                                    .value,
-                                                              }
-                                                            : prev,
-                                                      )
-                                                    }
-                                                  />
-                                                </div>
-                                                <div className="flex gap-2 sm:col-span-4">
-                                                  <button
-                                                    type="button"
-                                                    className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                                    onClick={() =>
-                                                      saveEditRoom()
-                                                    }
-                                                  >
-                                                    Save room
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                                    onClick={() =>
-                                                      cancelEditRoom()
-                                                    }
-                                                  >
-                                                    Cancel
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            ) : (
-                                              <div className="flex items-center justify-between gap-3">
-                                                <div className="text-sm">
-                                                  {room.room_name}{" "}
-                                                  {room.archived_at ? (
-                                                    <span className="text-xs text-gray-500">
-                                                      (archived)
-                                                    </span>
-                                                  ) : null}
-                                                </div>
-                                                {!room.archived_at ? (
-                                                  <div className="flex items-center gap-2">
-                                                    <button
-                                                      type="button"
-                                                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                                      onClick={() =>
-                                                        startEditRoom(room)
-                                                      }
-                                                    >
-                                                      Edit
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                                      onClick={() =>
-                                                        archiveRoom(room)
-                                                      }
-                                                    >
-                                                      Archive
-                                                    </button>
-                                                  </div>
-                                                ) : null}
-                                              </div>
-                                            )}
-                                          </li>
-                                        );
-                                      })}
-                                  </ul>
-                                  {!loc.archived_at ? (
-                                    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                      <div className="text-xs font-semibold text-gray-600">
-                                        Add room
-                                      </div>
-                                      <div className="mt-2 grid gap-2 sm:grid-cols-4 sm:items-end">
-                                        <div className="grid gap-1 sm:col-span-2">
-                                          <Label>Room name</Label>
-                                          <Input
-                                            value={
-                                              getNewRoomDraft(loc.id).room_name
-                                            }
-                                            onChange={(e) =>
-                                              updateNewRoomDraft(loc.id, {
-                                                room_name: e.target.value,
-                                              })
-                                            }
-                                          />
-                                        </div>
-                                        <div className="grid gap-1">
-                                          <Label>Room #</Label>
-                                          <Input
-                                            value={
-                                              getNewRoomDraft(loc.id)
-                                                .room_number
-                                            }
-                                            onChange={(e) =>
-                                              updateNewRoomDraft(loc.id, {
-                                                room_number: e.target.value,
-                                              })
-                                            }
-                                          />
-                                        </div>
-                                        <div className="grid gap-1">
-                                          <Label>Floor</Label>
-                                          <Input
-                                            value={
-                                              getNewRoomDraft(loc.id)
-                                                .floor_number
-                                            }
-                                            onChange={(e) =>
-                                              updateNewRoomDraft(loc.id, {
-                                                floor_number: e.target.value,
-                                              })
-                                            }
-                                          />
-                                        </div>
-                                        <div className="flex gap-2 sm:col-span-4">
-                                          <button
-                                            type="button"
-                                            className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                            onClick={() => addRoom(loc.id)}
-                                          >
-                                            Add room
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ) : null}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "CLIENTS" ? (
-                <div className="grid gap-6">
-                  <div className="text-sm text-gray-600">
-                    Choose which fields appear in the Clients page grids. Save
-                    or discard changes before switching sections.
-                  </div>
-                  <div className="grid gap-6 md:grid-cols-2">
-                    <div>
-                      <div className="text-sm font-semibold">Parent fields</div>
-                      <div className="mt-3 grid gap-2">
-                        {PARENT_FIELDS.map((field) => (
-                          <label
-                            key={field.key}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={clientsForm.formData.parents[field.key]}
-                              onChange={(e) =>
-                                updateClientField(
-                                  "parents",
-                                  field.key,
-                                  e.target.checked,
-                                )
-                              }
-                            />
-                            {field.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">
-                        Student fields
-                      </div>
-                      <div className="mt-3 grid gap-2">
-                        {STUDENT_FIELDS.map((field) => (
-                          <label
-                            key={field.key}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={clientsForm.formData.students[field.key]}
-                              onChange={(e) =>
-                                updateClientField(
-                                  "students",
-                                  field.key,
-                                  e.target.checked,
-                                )
-                              }
-                            />
-                            {field.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "TUTORS" ? (
-                <div className="grid gap-6">
-                  <div className="grid gap-2">
-                    <div className="text-sm font-semibold">
-                      Active Tutor Capacity
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      Plan limit: {tutorLimit ?? "Unlimited"} ·{" "}
-                      <span
-                        className={usageColorClass(
-                          activeTutorCount,
-                          tutorLimit ?? null,
-                        )}
-                      >
-                        Current: {activeTutorCount}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="itutoros-settings-btn itutoros-settings-btn-success w-fit"
-                      onClick={() => switchTab("ACCOUNT")}
-                    >
-                      Change Plan
-                    </button>
-                  </div>
-                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <h2 className="text-lg font-semibold text-[#0b1f5f]">
-                      Active Tutors
-                    </h2>
-                    <div className="mt-4 grid gap-3">
-                      {tutors.length === 0 ? (
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                          No tutors yet. Add one below and click Save.
-                        </div>
-                      ) : (
-                        tutors.map((tutor) => {
-                          const name = [
-                            tutor.user?.first_name,
-                            tutor.user?.last_name,
-                          ]
-                            .filter(Boolean)
-                            .join(" ");
-                          const label = name || tutor.user?.email || "Tutor";
-                          return (
-                            <div
-                              key={tutor.id}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
-                            >
-                              <div>
-                                <div className="text-sm font-semibold text-gray-900">
-                                  {label}
-                                </div>
-                                {tutor.user?.email ? (
-                                  <div className="text-xs text-gray-500">
-                                    {tutor.user.email}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-semibold text-gray-600">
-                                    Color
-                                  </span>
-                                  <input
-                                    type="color"
-                                    value={
-                                      tutorDrafts[tutor.id] ??
-                                      DEFAULT_TUTOR_COLOR
-                                    }
-                                    onChange={(e) =>
-                                      setTutorDrafts((prev) => ({
-                                        ...prev,
-                                        [tutor.id]: e.target.value,
-                                      }))
-                                    }
-                                    className="h-9 w-9 cursor-pointer rounded-md border border-gray-200 bg-white"
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  className="itutoros-settings-btn itutoros-settings-btn-danger"
-                                  onClick={() => archiveTutor(tutor.id)}
-                                >
-                                  Archive
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                    <h2 className="text-lg font-semibold text-[#0b1f5f]">
-                      Add tutor
-                    </h2>
-                    <p className="mt-1 text-sm text-gray-600">
-                      Add a tutor profile and assign a calendar color.
-                    </p>
-                    {!canAddTutor ? (
-                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                        <span>
-                          Your plan is at the tutor limit. Upgrade to add more
-                          tutors.
-                        </span>
-                      </div>
-                    ) : null}
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label htmlFor="new-tutor-first">First name</Label>
-                        <Input
-                          id="new-tutor-first"
-                          value={newTutor.first_name}
-                          onChange={(e) =>
-                            setNewTutor((prev) => ({
-                              ...prev,
-                              first_name: e.target.value,
-                            }))
-                          }
-                          disabled={!canAddTutor}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="new-tutor-last">Last name</Label>
-                        <Input
-                          id="new-tutor-last"
-                          value={newTutor.last_name}
-                          onChange={(e) =>
-                            setNewTutor((prev) => ({
-                              ...prev,
-                              last_name: e.target.value,
-                            }))
-                          }
-                          disabled={!canAddTutor}
-                        />
-                      </div>
-                      <div className="grid gap-2 md:col-span-2">
-                        <Label htmlFor="new-tutor-email">Email</Label>
-                        <Input
-                          id="new-tutor-email"
-                          type="email"
-                          placeholder="tutor@yourbusiness.com"
-                          value={newTutor.email}
-                          onChange={(e) =>
-                            setNewTutor((prev) => ({
-                              ...prev,
-                              email: e.target.value,
-                            }))
-                          }
-                          disabled={!canAddTutor}
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="new-tutor-color">Color</Label>
-                        <input
-                          id="new-tutor-color"
-                          type="color"
-                          value={newTutor.color_hex}
-                          onChange={(e) =>
-                            setNewTutor((prev) => ({
-                              ...prev,
-                              color_hex: e.target.value,
-                            }))
-                          }
-                          className="h-10 w-16 cursor-pointer rounded-md border border-gray-200 bg-white"
-                          disabled={!canAddTutor}
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-4 text-xs text-gray-500">
-                      Click Save to add the tutor.
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "SERVICES" ? (
-                <div className="grid gap-6">
-                  <div className="text-sm text-gray-600">
-                    Active services appear first. Check a service to include it
-                    and set an hourly price.
-                  </div>
-
-                  <div className="flex flex-wrap items-end gap-4">
-                    <div className="grid gap-2">
-                      <Label>Location</Label>
-                      <select
-                        className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                        value={selectedServiceLocationId}
-                        onChange={(e) => {
-                          setServiceLocationId(e.target.value);
-                          setNewService((prev) => ({
-                            ...prev,
-                            location_id: e.target.value,
-                          }));
-                        }}
-                      >
-                        {activeLocations.length === 0 ? (
-                          <option value="">—</option>
-                        ) : null}
-                        {activeLocations.map((l) => (
-                          <option key={l.id} value={l.id}>
-                            {l.location_name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto rounded-xl border border-gray-200">
-                    <div className="max-h-[520px] overflow-y-auto">
-                      <table className="min-w-[720px] border-collapse text-sm md:min-w-[900px]">
-                        <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                          <tr>
-                            <th className="px-3 py-2 text-left whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "name" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                                onClick={() => toggleServiceSort("name")}
-                              >
-                                Service
-                                {renderSortIcons(
-                                  serviceSort.key === "name",
-                                  serviceSort.dir,
-                                )}
-                              </button>
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "active" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                                onClick={() => toggleServiceSort("active")}
-                              >
-                                Included
-                                {renderSortIcons(
-                                  serviceSort.key === "active",
-                                  serviceSort.dir,
-                                )}
-                              </button>
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "price" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                                onClick={() => toggleServiceSort("price")}
-                              >
-                                Unit price ($)
-                                {renderSortIcons(
-                                  serviceSort.key === "price",
-                                  serviceSort.dir,
-                                )}
-                              </button>
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "unit_length" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                                onClick={() => toggleServiceSort("unit_length")}
-                              >
-                                <span>Unit length (min)</span>
-                                <TooltipProvider delayDuration={200}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600">
-                                        i
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {UNIT_LENGTH_TOOLTIP}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                                {renderSortIcons(
-                                  serviceSort.key === "unit_length",
-                                  serviceSort.dir,
-                                )}
-                              </button>
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${serviceSort.key === "capacity" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                                onClick={() => toggleServiceSort("capacity")}
-                              >
-                                Capacity
-                                {renderSortIcons(
-                                  serviceSort.key === "capacity",
-                                  serviceSort.dir,
-                                )}
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortedServiceRows.map((row) => (
-                            <tr
-                              key={row.key}
-                              className="border-t border-gray-100"
-                            >
-                              <td className="px-3 py-2 font-medium">
-                                <ClampedCell text={row.name} />
-                              </td>
-                              <td className="px-3 py-2">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 accent-[#0b1f5f]"
-                                  checked={row.is_active}
-                                  onChange={(e) =>
-                                    updateServiceDraft(row, {
-                                      is_active: e.target.checked,
-                                    })
-                                  }
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <div className="flex items-center gap-2">
-                                  <Input
-                                    inputMode="decimal"
-                                    value={row.hourly_rate_dollars}
-                                    onChange={(e) =>
-                                      updateServiceDraft(row, {
-                                        hourly_rate_dollars: e.target.value,
-                                      })
-                                    }
-                                  />
-                                </div>
-                              </td>
-                              <td className="px-3 py-2">
-                                <Input
-                                  inputMode="numeric"
-                                  value={row.unit_length_minutes}
-                                  onChange={(e) =>
-                                    updateServiceDraft(row, {
-                                      unit_length_minutes: e.target.value,
-                                    })
-                                  }
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  value={row.capacity}
-                                  onChange={(e) =>
-                                    updateServiceDraft(row, {
-                                      capacity: e.target.value,
-                                    })
-                                  }
-                                />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <form
-                    onSubmit={addService}
-                    className="grid w-full max-w-[720px] gap-3 rounded-xl border border-gray-200 p-4"
-                  >
-                    <div className="text-sm font-semibold">
-                      Add a new service
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div className="grid gap-2">
-                        <Label>Location</Label>
-                        <select
-                          className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                          value={newService.location_id}
-                          onChange={(e) =>
-                            setNewService((prev) => ({
-                              ...prev,
-                              location_id: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">—</option>
-                          {activeLocations.map((l) => (
-                            <option key={l.id} value={l.id}>
-                              {l.location_name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="grid gap-2 sm:col-span-2">
-                        <Label>Service name</Label>
-                        <Input
-                          value={newService.name}
-                          onChange={(e) =>
-                            setNewService((prev) => ({
-                              ...prev,
-                              name: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div className="grid gap-2">
-                        <Label>Unit price ($)</Label>
-                        <Input
-                          inputMode="decimal"
-                          value={newService.price}
-                          onChange={(e) =>
-                            setNewService((prev) => ({
-                              ...prev,
-                              price: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label className="flex items-center gap-2">
-                          <span>Unit length (min)</span>
-                          <TooltipProvider delayDuration={200}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-600">
-                                  i
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {UNIT_LENGTH_TOOLTIP}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </Label>
-                        <Input
-                          inputMode="numeric"
-                          value={newService.unit_length_minutes}
-                          onChange={(e) =>
-                            setNewService((prev) => ({
-                              ...prev,
-                              unit_length_minutes: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Capacity</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={newService.capacity}
-                          onChange={(e) =>
-                            setNewService((prev) => ({
-                              ...prev,
-                              capacity: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="flex items-end">
-                        <button
-                          type="submit"
-                          className="itutoros-settings-btn itutoros-settings-btn-success"
-                        >
-                          Add service
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "SUBJECTS_TOPICS" ? (
-                <div className="grid gap-6">
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                    <span>
-                      Checkboxes control whether a subject/topic is included.
-                    </span>
-                    <div className="ml-auto flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleSubjectSort("included")}
-                        className={`flex items-center gap-1 whitespace-nowrap text-xs font-semibold uppercase tracking-wide ${
-                          subjectSort.key === "included"
-                            ? "text-[#ff9df9]"
-                            : "text-gray-600"
-                        }`}
-                      >
-                        Included{" "}
-                        {renderSortIcons(
-                          subjectSort.key === "included",
-                          subjectSort.dir,
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleSubjectSort("name")}
-                        className={`flex items-center gap-1 whitespace-nowrap text-xs font-semibold uppercase tracking-wide ${
-                          subjectSort.key === "name"
-                            ? "text-[#ff9df9]"
-                            : "text-gray-600"
-                        }`}
-                      >
-                        Subject{" "}
-                        {renderSortIcons(
-                          subjectSort.key === "name",
-                          subjectSort.dir,
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4">
-                    {sortedSubjectDrafts.map((subject) => {
-                      const subjectIncluded =
-                        subject.included ||
-                        subject.topics.some((t) => t.included);
-                      const baselineSubject = subjectBaselineMap.get(
-                        subject.key,
-                      );
-                      const baselineTopicsByKey = new Map(
-                        (baselineSubject?.topics ?? []).map((topic) => [
-                          topic.key,
-                          topic,
-                        ]),
-                      );
-                      const sortedTopics = [...subject.topics].sort((a, b) => {
-                        const aIncluded =
-                          baselineTopicsByKey.get(a.key)?.included ?? false;
-                        const bIncluded =
-                          baselineTopicsByKey.get(b.key)?.included ?? false;
-                        const diff = Number(bIncluded) - Number(aIncluded);
-                        if (diff !== 0) return diff;
-                        return a.name.localeCompare(b.name);
-                      });
-                      return (
-                        <div
-                          key={subject.key}
-                          className="rounded-xl border border-gray-200 p-4"
-                        >
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
-                            <div className="grid gap-2">
-                              <Label>Subject</Label>
-                              <Input
-                                value={subject.name}
-                                onChange={(e) =>
-                                  setSubjectDrafts((prev) =>
-                                    prev.map((s) =>
-                                      s.key === subject.key
-                                        ? { ...s, name: e.target.value }
-                                        : s,
-                                    ),
-                                  )
-                                }
-                              />
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Label className="text-sm">Included</Label>
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 accent-[#0b1f5f]"
-                                checked={subjectIncluded}
-                                onChange={(e) =>
-                                  setSubjectDrafts((prev) =>
-                                    prev.map((s) => {
-                                      if (s.key !== subject.key) return s;
-                                      const included = e.target.checked;
-                                      return {
-                                        ...s,
-                                        included,
-                                        topics: included
-                                          ? s.topics
-                                          : s.topics.map((t) => ({
-                                              ...t,
-                                              included: false,
-                                            })),
-                                      };
-                                    }),
-                                  )
-                                }
-                              />
-                            </div>
-                          </div>
-
-                          <div className="mt-4 grid gap-2">
-                            <div className="text-xs font-semibold text-gray-600">
-                              Topics
-                            </div>
-                            <div className="grid gap-2">
-                              {sortedTopics.map((topic) => (
-                                <div
-                                  key={topic.key}
-                                  className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center"
-                                >
-                                  <Input
-                                    value={topic.name}
-                                    onChange={(e) =>
-                                      setSubjectDrafts((prev) =>
-                                        prev.map((s) => {
-                                          if (s.key !== subject.key) return s;
-                                          return {
-                                            ...s,
-                                            topics: s.topics.map((t) =>
-                                              t.key === topic.key
-                                                ? { ...t, name: e.target.value }
-                                                : t,
-                                            ),
-                                          };
-                                        }),
-                                      )
-                                    }
-                                    disabled={!subjectIncluded}
-                                  />
-                                  <div className="flex items-center gap-2">
-                                    <Label className="text-sm">Included</Label>
-                                    <input
-                                      type="checkbox"
-                                      className="h-4 w-4 accent-[#0b1f5f]"
-                                      checked={topic.included}
-                                      disabled={!subjectIncluded}
-                                      onChange={(e) =>
-                                        setSubjectDrafts((prev) =>
-                                          prev.map((s) => {
-                                            if (s.key !== subject.key) return s;
-                                            return {
-                                              ...s,
-                                              included: e.target.checked
-                                                ? true
-                                                : s.included,
-                                              topics: s.topics.map((t) =>
-                                                t.key === topic.key
-                                                  ? {
-                                                      ...t,
-                                                      included:
-                                                        e.target.checked,
-                                                    }
-                                                  : t,
-                                              ),
-                                            };
-                                          }),
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Input
-                                placeholder="Add a topic…"
-                                value={newTopicDrafts[subject.key] ?? ""}
-                                onChange={(e) =>
-                                  setNewTopicDrafts((prev) => ({
-                                    ...prev,
-                                    [subject.key]: e.target.value,
-                                  }))
-                                }
-                                disabled={!subjectIncluded}
-                                className="max-w-[420px]"
-                              />
-                              <button
-                                type="button"
-                                className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                onClick={() => addTopic(subject.key)}
-                                disabled={!subjectIncluded}
-                              >
-                                Add topic
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <form onSubmit={addSubject} className="flex flex-wrap gap-2">
-                    <Input
-                      placeholder="Add a subject…"
-                      value={newSubjectName}
-                      onChange={(e) => setNewSubjectName(e.target.value)}
-                      className="max-w-[420px]"
-                    />
-                    <button
-                      type="submit"
-                      className="itutoros-settings-btn itutoros-settings-btn-primary"
-                    >
-                      Add subject
-                    </button>
-                  </form>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "ARCHIVE" ? (
-                <div className="grid gap-6">
-                  <div className="text-sm text-gray-600">
-                    Check items to archive them. Uncheck to restore. Archiving
-                    parents, locations, or subjects will also archive their
-                    related records.
-                  </div>
-
-                  <div className="flex flex-wrap items-end gap-4">
-                    <div className="grid gap-2">
-                      <Label>Record type</Label>
-                      <select
-                        className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                        value={archiveType}
-                        onChange={(e) =>
-                          setArchiveType(e.target.value as ArchiveType)
-                        }
-                      >
-                        {ARCHIVE_OPTIONS.map((option) => (
-                          <option key={option.key} value={option.key}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      className="itutoros-settings-btn itutoros-settings-btn-danger"
-                      onClick={() => void updateArchive()}
-                      disabled={!archiveHasChanges}
-                    >
-                      Update Archive
-                    </button>
-                  </div>
-
-                  <div className="overflow-x-auto rounded-xl border border-gray-200">
-                    <div className="max-h-[520px] overflow-y-auto">
-                      <table className="min-w-[640px] border-collapse text-sm md:min-w-[820px]">
-                        <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                          <tr>
-                            <th className="px-3 py-2 text-left whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${archiveSort.key === "name" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                                onClick={() => toggleArchiveSort("name")}
-                              >
-                                Item
-                                {renderSortIcons(
-                                  archiveSort.key === "name",
-                                  archiveSort.dir,
-                                )}
-                              </button>
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap">
-                              <button
-                                type="button"
-                                className={`flex items-center gap-1 whitespace-nowrap font-semibold ${archiveSort.key === "archived" ? "text-[#ff9df9]" : "text-gray-900"}`}
-                                onClick={() => toggleArchiveSort("archived")}
-                              >
-                                Archived
-                                {renderSortIcons(
-                                  archiveSort.key === "archived",
-                                  archiveSort.dir,
-                                )}
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortedArchiveRows.length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan={2}
-                                className="px-3 py-6 text-center text-sm text-gray-500"
-                              >
-                                No records found.
-                              </td>
-                            </tr>
-                          ) : (
-                            sortedArchiveRows.map((row) => (
-                              <tr
-                                key={row.id}
-                                className="border-t border-gray-100"
-                              >
-                                <td className="px-3 py-2 font-medium">
-                                  <ClampedCell text={row.label} />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 accent-[#ff9df9]"
-                                    checked={
-                                      archiveEditsForType[row.id] ??
-                                      row.archived
-                                    }
-                                    disabled={row.locked}
-                                    onChange={(e) =>
-                                      updateArchiveDraft(row, e.target.checked)
-                                    }
-                                  />
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "SCHEDULE" ? (
-                <div className="grid max-w-[520px] gap-2">
-                  <Label htmlFor="buffer">
-                    Default schedule buffer (minutes)
-                  </Label>
-                  <Input
-                    id="buffer"
-                    type="number"
-                    min={0}
-                    value={bufferDraft}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setBufferDraft(next);
-                      if (!next.trim()) return;
-                      const parsed = Number.parseInt(next, 10);
-                      if (!Number.isNaN(parsed)) {
-                        scheduleForm.updateField(
-                          "default_buffer_minutes",
-                          Math.max(0, parsed),
-                        );
-                      }
-                    }}
-                    onBlur={() => {
-                      const normalized = parseNonNegativeInt(
-                        bufferDraft,
-                        scheduleForm.formData.default_buffer_minutes ?? 0,
-                      );
-                      setBufferDraft(String(normalized));
-                      scheduleForm.updateField(
-                        "default_buffer_minutes",
-                        normalized,
-                      );
-                    }}
-                  />
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "PIPELINE" ? (
-                <div className="grid gap-6">
-                  <div className="grid gap-2">
-                    <div className="text-sm font-semibold text-gray-900">
-                      Lead pipeline capacity
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      Plan limit:{" "}
-                      {leadLimit === null ? "Unlimited" : String(leadLimit)} ·{" "}
-                      <span
-                        className={usageColorClass(activeLeadCount, leadLimit)}
-                      >
-                        Current: {activeLeadCount}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="itutoros-settings-btn itutoros-settings-btn-success w-fit"
-                      onClick={() => switchTab("ACCOUNT")}
-                    >
-                      Change Plan
-                    </button>
-                  </div>
-
-                  <div className="grid gap-3">
-                    <div>
-                      <div className="text-base font-semibold text-gray-900">
-                        Lead sources
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Choose which sources to include for imports.
-                      </div>
-                    </div>
-                    <div className="overflow-x-auto rounded-xl border border-gray-200">
-                      <table className="min-w-[640px] border-collapse text-sm">
-                        <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                          <tr>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Include
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Source
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Connected
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pipelineForm.formData.sources.map((source) => {
-                            const status = connectionStatusLabel(source);
-                            const statusTone =
-                              status === "Connected"
-                                ? "text-emerald-600"
-                                : "text-amber-600";
-                            return (
-                              <tr
-                                key={source.id}
-                                className="border-t border-gray-100"
-                              >
-                                <td className="px-3 py-2">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 accent-[#ff9df9]"
-                                    checked={source.enabled}
-                                    onChange={(e) =>
-                                      updatePipelineSource(source.id, {
-                                        enabled: e.target.checked,
-                                      })
-                                    }
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <ClampedCell
-                                    text={`${source.label} ${source.type}`}
-                                  >
-                                    <span className="font-semibold text-gray-900">
-                                      {source.label}
-                                    </span>
-                                    <br />
-                                    <span className="text-xs uppercase tracking-wide text-gray-500">
-                                      {source.type}
-                                    </span>
-                                  </ClampedCell>
-                                </td>
-                                <td className="px-3 py-2">
-                                  <span
-                                    className={`text-xs font-semibold ${statusTone}`}
-                                  >
-                                    {status}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3">
-                    <div>
-                      <div className="text-base font-semibold text-gray-900">
-                        Email inboxes
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Connect Gmail, Outlook, or IMAP and enable a daily scan
-                        to auto-stage leads. Use Pipeline {"\u2192"} Import New
-                        Leads to stage with a custom date range.
-                      </div>
-                    </div>
-                    <div className="overflow-x-auto rounded-xl border border-gray-200">
-                      <table className="min-w-[980px] border-collapse text-sm">
-                        <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
-                          <tr>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Include
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Provider
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Address
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Daily Scan
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Time
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Last Scan
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Status
-                            </th>
-                            <th className="px-3 py-2 text-left whitespace-nowrap font-semibold">
-                              Actions
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activeEmailInboxes.length === 0 ? (
-                            <tr>
-                              <td
-                                colSpan={8}
-                                className="px-3 py-6 text-center text-sm text-gray-500"
-                              >
-                                No email inboxes connected yet.
-                              </td>
-                            </tr>
-                          ) : (
-                            activeEmailInboxes.map((inbox) => (
-                              <tr
-                                key={inbox.id}
-                                className="border-t border-gray-100"
-                              >
-                                <td className="px-3 py-2">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 accent-[#ff9df9]"
-                                    checked={inbox.enabled}
-                                    onChange={(e) =>
-                                      patchEmailInbox(inbox.id, {
-                                        enabled: e.target.checked,
-                                      })
-                                    }
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <ClampedCell
-                                    text={providerLabel(inbox.provider)}
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <ClampedCell text={inbox.address} />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4 accent-[#ff9df9]"
-                                    checked={inbox.daily_scan_enabled}
-                                    onChange={(e) =>
-                                      patchEmailInbox(inbox.id, {
-                                        daily_scan_enabled: e.target.checked,
-                                      })
-                                    }
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <Input
-                                    type="time"
-                                    value={inbox.daily_scan_time ?? "08:00"}
-                                    onChange={(e) =>
-                                      patchEmailInbox(inbox.id, {
-                                        daily_scan_time: e.target.value,
-                                      })
-                                    }
-                                    className="h-9"
-                                    disabled={!inbox.daily_scan_enabled}
-                                  />
-                                </td>
-                                <td className="px-3 py-2 text-xs text-gray-600">
-                                  {inbox.last_scan_at
-                                    ? formatDateWithPattern(
-                                        inbox.last_scan_at,
-                                        dateFormat,
-                                      )
-                                    : "Never"}
-                                </td>
-                                <td className="px-3 py-2">
-                                  <span
-                                    className={
-                                      inbox.has_credentials
-                                        ? "text-xs text-emerald-600"
-                                        : "text-xs text-rose-500"
-                                    }
-                                  >
-                                    {inbox.has_credentials
-                                      ? "Connected"
-                                      : "Needs connection"}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    {inbox.provider === "GMAIL" ? (
-                                      <button
-                                        type="button"
-                                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                        onClick={() =>
-                                          connectGoogleInbox(inbox.id)
-                                        }
-                                        disabled={!inbox.enabled}
-                                      >
-                                        {inbox.has_credentials
-                                          ? "Reconnect"
-                                          : "Connect"}
-                                      </button>
-                                    ) : inbox.provider === "OUTLOOK" ? (
-                                      <button
-                                        type="button"
-                                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                        disabled
-                                      >
-                                        Connect
-                                      </button>
-                                    ) : null}
-                                    <button
-                                      type="button"
-                                      className="text-xs font-semibold text-rose-500"
-                                      onClick={() =>
-                                        archiveEmailInbox(inbox.id)
-                                      }
-                                    >
-                                      Archive
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4">
-                    <div className="text-sm font-semibold text-gray-700">
-                      Add email inbox
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="grid gap-2">
-                        <Label>Provider</Label>
-                        <select
-                          className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                          value={newEmailInbox.provider}
-                          onChange={(e) =>
-                            setNewEmailInbox((prev) => ({
-                              ...prev,
-                              provider: e.target
-                                .value as EmailInbox["provider"],
-                            }))
-                          }
-                        >
-                          <option value="GMAIL">Gmail (OAuth)</option>
-                          <option value="OUTLOOK">Outlook (OAuth)</option>
-                          <option value="IMAP">Generic IMAP</option>
-                        </select>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Label</Label>
-                        <Input
-                          value={newEmailInbox.label}
-                          onChange={(e) =>
-                            setNewEmailInbox((prev) => ({
-                              ...prev,
-                              label: e.target.value,
-                            }))
-                          }
-                          placeholder="Admissions inbox"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Email address</Label>
-                        <Input
-                          type="email"
-                          value={newEmailInbox.address}
-                          onChange={(e) =>
-                            setNewEmailInbox((prev) => ({
-                              ...prev,
-                              address: e.target.value,
-                            }))
-                          }
-                          placeholder="info@yourtutoringbusiness.com"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="grid gap-2">
-                        <Label>Daily scan</Label>
-                        <label className="flex items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-[#ff9df9]"
-                            checked={newEmailInbox.daily_scan_enabled}
-                            onChange={(e) =>
-                              setNewEmailInbox((prev) => ({
-                                ...prev,
-                                daily_scan_enabled: e.target.checked,
-                              }))
-                            }
-                          />
-                          Enable daily scan
-                        </label>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Scan time</Label>
-                        <Input
-                          type="time"
-                          value={newEmailInbox.daily_scan_time}
-                          onChange={(e) =>
-                            setNewEmailInbox((prev) => ({
-                              ...prev,
-                              daily_scan_time: e.target.value,
-                            }))
-                          }
-                          className="h-10"
-                          disabled={!newEmailInbox.daily_scan_enabled}
-                        />
-                      </div>
-                      <div className="text-xs text-gray-500 sm:pt-7">
-                        Uses your business timezone.
-                      </div>
-                    </div>
-                    {newEmailInbox.provider === "IMAP" ? (
-                      <div className="grid gap-3 sm:grid-cols-4">
-                        <div className="grid gap-2 sm:col-span-2">
-                          <Label>IMAP host</Label>
-                          <Input
-                            value={newEmailInbox.imap_host}
-                            onChange={(e) =>
-                              setNewEmailInbox((prev) => ({
-                                ...prev,
-                                imap_host: e.target.value,
-                              }))
-                            }
-                            placeholder="imap.gmail.com"
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Port</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            value={newEmailInbox.imap_port}
-                            onChange={(e) =>
-                              setNewEmailInbox((prev) => ({
-                                ...prev,
-                                imap_port: e.target.value,
-                              }))
-                            }
-                            placeholder="993"
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Security</Label>
-                          <select
-                            className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                            value={
-                              newEmailInbox.imap_secure ? "secure" : "insecure"
-                            }
-                            onChange={(e) =>
-                              setNewEmailInbox((prev) => ({
-                                ...prev,
-                                imap_secure: e.target.value === "secure",
-                              }))
-                            }
-                          >
-                            <option value="secure">SSL / TLS</option>
-                            <option value="insecure">None</option>
-                          </select>
-                        </div>
-                        <div className="grid gap-2 sm:col-span-2">
-                          <Label>Password / token</Label>
-                          <Input
-                            type="password"
-                            value={newEmailInbox.password}
-                            onChange={(e) =>
-                              setNewEmailInbox((prev) => ({
-                                ...prev,
-                                password: e.target.value,
-                              }))
-                            }
-                            placeholder="App password"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                        OAuth connection will be required after saving. Use the
-                        Connect action in the table above.
-                      </div>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                        onClick={addEmailInbox}
-                      >
-                        Add email inbox
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading && activeTab === "CONNECTIONS" ? (
-                <div className="grid gap-4">
-                  <div>
-                    <div className="text-base font-semibold text-gray-900">
-                      Connections
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Add the API credentials required to publish content and
-                      read inbound messages.
-                    </div>
-                  </div>
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    {CONNECTION_PROVIDERS.map((provider) => {
-                      const values = connections[provider.id] ?? {};
-                      const snapshot = connectionSnapshots[provider.id];
-                      const savedFields = snapshot?.fields ?? {};
-                      const connected =
-                        connectionStatusById[provider.id] ?? false;
-                      const statusLabel = connected
-                        ? "Connected"
-                        : "Need to Establish Connection";
-                      const statusTone = connected
-                        ? "text-emerald-600"
-                        : "text-amber-600";
-                      const lastSaved = snapshot?.updated_at
-                        ? new Date(snapshot.updated_at).toLocaleString()
-                        : null;
-                      const oauthReady = Boolean(
-                        provider.oauthSupported &&
-                        provider.fields
-                          .filter((field) => field.required)
-                          .every((field) => savedFields[field.key]?.has_value),
-                      );
-                      return (
-                        <div
-                          key={provider.id}
-                          className="relative overflow-hidden rounded-xl border border-gray-200 p-4 shadow-sm"
-                          style={{
-                            background: connectionCardGradient(provider.id),
-                          }}
-                        >
-                          <div className="absolute inset-0 bg-white/70" />
-                          <div className="relative z-10">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                                <div className="text-sm font-semibold text-gray-900 leading-5">
-                                  {provider.label}
-                                </div>
-                                <div className="text-xs text-gray-600 leading-5">
-                                  {provider.description}
-                                </div>
-                                <div
-                                  className={`text-xs font-semibold leading-5 ${statusTone}`}
-                                >
-                                  {statusLabel}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-3 grid gap-3">
-                              {provider.fields.map((field) => (
-                                <div
-                                  key={`${provider.id}-${field.key}`}
-                                  className="grid gap-2"
-                                >
-                                  <Label>
-                                    {field.label}
-                                    {field.required ? (
-                                      <span className="text-rose-500"> *</span>
-                                    ) : null}
-                                  </Label>
-                                  <Input
-                                    type={field.type ?? "text"}
-                                    value={
-                                      values[field.key] ??
-                                      (field.type === "password"
-                                        ? ""
-                                        : (savedFields[field.key]?.value ?? ""))
-                                    }
-                                    onChange={(e) =>
-                                      updateConnectionField(
-                                        provider.id,
-                                        field.key,
-                                        e.target.value,
-                                      )
-                                    }
-                                    placeholder={
-                                      savedFields[field.key]?.has_value &&
-                                      !values[field.key]
-                                        ? "Saved"
-                                        : field.placeholder
-                                    }
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
-                              <span>
-                                {lastSaved
-                                  ? `Last saved ${lastSaved}`
-                                  : "Not saved yet."}
-                              </span>
-                              <div className="flex flex-wrap items-center gap-2">
-                                {provider.oauthSupported ? (
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                    onClick={() =>
-                                      startConnectionOAuth(provider.id)
-                                    }
-                                    disabled={!oauthReady}
-                                    title={
-                                      oauthReady
-                                        ? "Start OAuth connection"
-                                        : "Fill required fields and save before connecting"
-                                    }
-                                  >
-                                    Connect
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                  onClick={() => saveConnection(provider.id)}
-                                >
-                                  Save
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-                    Most platforms require app review, business verification,
-                    and OAuth/webhook setup before live posting or inbox
-                    syncing. Save credentials here, then use Connect to complete
-                    OAuth where supported.
-                  </div>
-                </div>
-              ) : null}
-
-              {!loading &&
-                (activeTab === "PRODUCTS" || activeTab === "MARKETING") && (
-                  <div className="grid gap-6">
-                    {activeTab === "PRODUCTS" ? (
-                      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                        <div className="flex flex-wrap gap-2">
-                          {CONTENT_STUDIO_TABS.map((tab) => (
-                            <button
-                              key={tab.key}
-                              type="button"
-                              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                                marketingTab === tab.key
-                                  ? "bg-[#0b1f5f] text-white"
-                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                              }`}
-                              onClick={() => setMarketingTab(tab.key)}
-                            >
-                              {tab.label}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="mt-3 text-sm text-gray-600">
-                          Manage content used across marketing, website, and
-                          scheduling.
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {activeTab === "PRODUCTS" && marketingTab === "PRODUCTS" ? (
-                      <div className="grid gap-6">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <div className="text-lg font-semibold text-[#0b1f5f]">
-                              Products
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              Create marketing-ready offerings tied to your
-                              active service types.
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                            onClick={() => selectProduct(null)}
-                          >
-                            New product
-                          </button>
-                        </div>
-
-                        <div className="itutoros-carousel">
-                          {products.map((product) => {
-                            const isActive = productDraft.id === product.id;
-                            const service = product.service_code
-                              ? marketingServiceByCode.get(product.service_code)
-                              : null;
-                            const initials = product.product_name
-                              ? product.product_name.slice(0, 2).toUpperCase()
-                              : "PR";
-                            return (
-                              <button
-                                key={product.id}
-                                type="button"
-                                className={`itutoros-card-1 itutoros-carousel-card text-left ${
-                                  isActive ? "ring-2 ring-[#0b1f5f]" : ""
-                                }`}
-                                onClick={() => selectProduct(product)}
-                              >
-                                <div className="flex items-center gap-3">
-                                  {product.product_logo_url ? (
-                                    <img
-                                      src={product.product_logo_url}
-                                      alt={product.product_name}
-                                      className="h-10 w-10 rounded-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#eef2ff] text-xs font-semibold text-[#0b1f5f]">
-                                      {initials}
-                                    </div>
-                                  )}
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-semibold text-gray-900">
-                                      {product.product_name}
-                                    </div>
-                                    <div className="truncate text-xs text-gray-500">
-                                      {product.product_slogan_text ||
-                                        "Add a product slogan"}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-                                  Service type
-                                </div>
-                                <div className="text-sm font-semibold text-[#0b1f5f]">
-                                  {service?.display_name ??
-                                    product.service_code ??
-                                    "Not set"}
-                                </div>
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            className="itutoros-card-1 itutoros-carousel-card border-dashed text-left"
-                            onClick={() => selectProduct(null)}
-                          >
-                            <div className="text-sm font-semibold text-[#0b1f5f]">
-                              Add new product
-                            </div>
-                            <div className="mt-1 text-xs text-gray-500">
-                              Start a new product card for marketing and
-                              scheduling.
-                            </div>
-                          </button>
-                        </div>
-
-                        <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:col-span-2">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <div className="text-lg font-semibold text-[#0b1f5f]">
-                                  Product details
-                                </div>
-                                <div className="text-sm text-gray-600">
-                                  Use Save above to store changes.
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-4 grid gap-4">
-                              <div className="grid gap-2">
-                                <Label>Product name</Label>
-                                <Input
-                                  value={productDraft.product_name}
-                                  onChange={(e) =>
-                                    setProductDraft((prev) => ({
-                                      ...prev,
-                                      product_name: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="SAT Bootcamp"
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <div className="flex items-center justify-between">
-                                  <Label>Product slogan</Label>
-                                  {(() => {
-                                    const aiKey = "product:slogan";
-                                    const isLoading = Boolean(
-                                      aiRewriteLoading[aiKey],
-                                    );
-                                    const hasPending = Boolean(
-                                      aiRewrites[aiKey],
-                                    );
-                                    return (
-                                      <button
-                                        type="button"
-                                        className={[
-                                          "text-xs font-semibold",
-                                          isLoading || hasPending
-                                            ? "cursor-default text-gray-400"
-                                            : "cursor-pointer text-[#0b1f5f]",
-                                        ].join(" ")}
-                                        disabled={isLoading || hasPending}
-                                        onClick={async () => {
-                                          if (isLoading || hasPending) return;
-                                          const previous =
-                                            productDraft.product_slogan_text;
-                                          setAiLoading(aiKey, true);
-                                          try {
-                                            const next = await rewriteWithAi(
-                                              "Rewrite this product slogan for clarity and marketing appeal.",
-                                              previous,
-                                            );
-                                            setProductDraft((prev) => ({
-                                              ...prev,
-                                              product_slogan_text: next,
-                                            }));
-                                            setAiRewrite(aiKey, previous, next);
-                                          } finally {
-                                            setAiLoading(aiKey, false);
-                                          }
-                                        }}
-                                      >
-                                        {isLoading
-                                          ? "Thinking..."
-                                          : hasPending
-                                            ? "Accept?"
-                                            : "Rewrite with AI"}
-                                      </button>
-                                    );
-                                  })()}
-                                </div>
-                                <Input
-                                  value={productDraft.product_slogan_text}
-                                  onChange={(e) =>
-                                    setProductDraft((prev) => ({
-                                      ...prev,
-                                      product_slogan_text: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Help students ace the SAT with confidence."
-                                />
-                                {aiRewrites["product:slogan"] ? (
-                                  <div className="flex items-center gap-3 text-xs">
-                                    <button
-                                      type="button"
-                                      className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                      onClick={() =>
-                                        clearAiRewrite("product:slogan")
-                                      }
-                                    >
-                                      <HugeiconsIcon
-                                        icon={CheckmarkCircle01Icon}
-                                        size={14}
-                                        className="text-green-600"
-                                      />
-                                      Accept
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                      onClick={() => {
-                                        const previous =
-                                          aiRewrites["product:slogan"]
-                                            ?.previous ?? "";
-                                        setProductDraft((prev) => ({
-                                          ...prev,
-                                          product_slogan_text: previous,
-                                        }));
-                                        clearAiRewrite("product:slogan");
-                                      }}
-                                    >
-                                      <HugeiconsIcon
-                                        icon={Cancel01Icon}
-                                        size={14}
-                                        className="text-red-600"
-                                      />
-                                      Reject
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                              <div className="grid gap-2">
-                                <div className="flex items-center justify-between">
-                                  <Label>Product description</Label>
-                                  {(() => {
-                                    const aiKey = "product:description";
-                                    const isLoading = Boolean(
-                                      aiRewriteLoading[aiKey],
-                                    );
-                                    const hasPending = Boolean(
-                                      aiRewrites[aiKey],
-                                    );
-                                    return (
-                                      <button
-                                        type="button"
-                                        className={[
-                                          "text-xs font-semibold",
-                                          isLoading || hasPending
-                                            ? "cursor-default text-gray-400"
-                                            : "cursor-pointer text-[#0b1f5f]",
-                                        ].join(" ")}
-                                        disabled={isLoading || hasPending}
-                                        onClick={async () => {
-                                          if (isLoading || hasPending) return;
-                                          const previous =
-                                            productDraft.product_description_text;
-                                          setAiLoading(aiKey, true);
-                                          try {
-                                            const next = await rewriteWithAi(
-                                              "Rewrite this product description for a polished marketing tone.",
-                                              previous,
-                                            );
-                                            setProductDraft((prev) => ({
-                                              ...prev,
-                                              product_description_text: next,
-                                            }));
-                                            setAiRewrite(aiKey, previous, next);
-                                          } finally {
-                                            setAiLoading(aiKey, false);
-                                          }
-                                        }}
-                                      >
-                                        {isLoading
-                                          ? "Thinking..."
-                                          : hasPending
-                                            ? "Accept?"
-                                            : "Rewrite with AI"}
-                                      </button>
-                                    );
-                                  })()}
-                                </div>
-                                <Textarea
-                                  value={productDraft.product_description_text}
-                                  onChange={(e) =>
-                                    setProductDraft((prev) => ({
-                                      ...prev,
-                                      product_description_text: e.target.value,
-                                    }))
-                                  }
-                                  rows={5}
-                                  placeholder="Describe the outcomes, format, and who this product serves."
-                                />
-                                {aiRewrites["product:description"] ? (
-                                  <div className="flex items-center gap-3 text-xs">
-                                    <button
-                                      type="button"
-                                      className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                      onClick={() =>
-                                        clearAiRewrite("product:description")
-                                      }
-                                    >
-                                      <HugeiconsIcon
-                                        icon={CheckmarkCircle01Icon}
-                                        size={14}
-                                        className="text-green-600"
-                                      />
-                                      Accept
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                      onClick={() => {
-                                        const previous =
-                                          aiRewrites["product:description"]
-                                            ?.previous ?? "";
-                                        setProductDraft((prev) => ({
-                                          ...prev,
-                                          product_description_text: previous,
-                                        }));
-                                        clearAiRewrite("product:description");
-                                      }}
-                                    >
-                                      <HugeiconsIcon
-                                        icon={Cancel01Icon}
-                                        size={14}
-                                        className="text-red-600"
-                                      />
-                                      Reject
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Service type</Label>
-                                <select
-                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                  value={productDraft.service_code}
-                                  onChange={(e) =>
-                                    setProductDraft((prev) => ({
-                                      ...prev,
-                                      service_code: e.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="">
-                                    Select a service type
-                                  </option>
-                                  {marketingServices.map((svc) => (
-                                    <option
-                                      key={svc.service_code}
-                                      value={svc.service_code}
-                                    >
-                                      {svc.display_name ?? svc.service_code}
-                                    </option>
-                                  ))}
-                                </select>
-                                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
-                                  <div>
-                                    Unit length:{" "}
-                                    {selectedProductService?.unit_length_minutes
-                                      ? `${selectedProductService.unit_length_minutes} minutes`
-                                      : "--"}
-                                  </div>
-                                  <div>
-                                    Unit price:{" "}
-                                    {selectedProductService
-                                      ? formatCurrencyFromCents(
-                                          selectedProductService.hourly_rate_cents,
-                                        )
-                                      : "--"}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="grid gap-4">
-                                <div className="grid gap-2">
-                                  <Label>Subject (optional)</Label>
-                                  <select
-                                    className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                    value={productDraft.subject_id}
-                                    onChange={(e) =>
-                                      setProductDraft((prev) => ({
-                                        ...prev,
-                                        subject_id: e.target.value,
-                                        topic_id: "",
-                                      }))
-                                    }
-                                  >
-                                    <option value="">Select a subject</option>
-                                    {subjects
-                                      .filter((subject) => !subject.archived_at)
-                                      .map((subject) => (
-                                        <option
-                                          key={subject.id}
-                                          value={subject.id}
-                                        >
-                                          {subject.subject_name}
-                                        </option>
-                                      ))}
-                                  </select>
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label>Topic (optional)</Label>
-                                  <select
-                                    className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                    value={productDraft.topic_id}
-                                    onChange={(e) =>
-                                      setProductDraft((prev) => ({
-                                        ...prev,
-                                        topic_id: e.target.value,
-                                      }))
-                                    }
-                                    disabled={!productDraft.subject_id}
-                                  >
-                                    <option value="">Select a topic</option>
-                                    {productTopicOptions.map((topic) => (
-                                      <option key={topic.id} value={topic.id}>
-                                        {topic.topic_name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Product logo</Label>
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <Input
-                                    value={productDraft.product_logo_url}
-                                    onChange={(e) =>
-                                      setProductDraft((prev) => ({
-                                        ...prev,
-                                        product_logo_url: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Paste logo URL or upload below"
-                                  />
-                                  <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                    Upload logo
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      className="hidden"
-                                      onChange={async (e) => {
-                                        const file = e.target.files?.[0];
-                                        if (!file) return;
-                                        const dataUrl =
-                                          await readFileAsDataUrl(file);
-                                        setProductDraft((prev) => ({
-                                          ...prev,
-                                          product_logo_url: dataUrl,
-                                        }));
-                                      }}
-                                    />
-                                  </label>
-                                </div>
-                                {productDraft.product_logo_url ? (
-                                  <img
-                                    src={productDraft.product_logo_url}
-                                    alt="Product logo"
-                                    className="h-16 w-16 rounded-xl border border-gray-200 object-cover"
-                                  />
-                                ) : (
-                                  <div className="text-xs text-gray-500">
-                                    No logo uploaded yet.
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="mt-6 border-t border-gray-200 pt-4">
-                              <div className="text-lg font-semibold text-[#0b1f5f]">
-                                Product media
-                                {productDraft.product_name
-                                  ? ` for ${productDraft.product_name}`
-                                  : ""}
-                              </div>
-                              <div className="text-sm text-gray-600">
-                                Upload photos and videos specific to this
-                                product so it&apos;s clear what you&apos;re
-                                sharing.
-                              </div>
-                              <div className="mt-4 grid gap-3">
-                                {productDraft.id ? (
-                                  <>
-                                    {productMediaLoading ? (
-                                      <div className="text-sm text-gray-500">
-                                        Loading media...
-                                      </div>
-                                    ) : null}
-                                    {productMedia.length === 0 &&
-                                    !productMediaLoading ? (
-                                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                        No media yet. Upload photos or videos
-                                        for this product.
-                                      </div>
-                                    ) : null}
-                                    {productMedia.length ? (
-                                      <div className="grid gap-3 sm:grid-cols-2">
-                                        {productMedia.map((media) => (
-                                          <div
-                                            key={media.id}
-                                            className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
-                                          >
-                                            {media.media_type === "VIDEO" ? (
-                                              <video
-                                                src={media.media_url}
-                                                controls
-                                                className="h-40 w-full object-cover"
-                                              />
-                                            ) : (
-                                              <img
-                                                src={media.media_url}
-                                                alt=""
-                                                className="h-40 w-full object-cover"
-                                              />
-                                            )}
-                                            <button
-                                              type="button"
-                                              className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
-                                              onClick={() =>
-                                                removeCatalogMedia(
-                                                  media.id,
-                                                  () =>
-                                                    loadCatalogMedia({
-                                                      kind: "product",
-                                                      id: productDraft.id!,
-                                                      product_id:
-                                                        productDraft.id!,
-                                                    }),
-                                                )
-                                              }
-                                            >
-                                              Remove
-                                            </button>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                    <div className="flex flex-wrap gap-2">
-                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                        Upload photo
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          className="hidden"
-                                          multiple
-                                          onChange={(e) => {
-                                            const files = Array.from(
-                                              e.target.files ?? [],
-                                            );
-                                            files.forEach((file) =>
-                                              handleMediaFileUpload({
-                                                kind: "product",
-                                                id: productDraft.id!,
-                                                file,
-                                                media_type: "PHOTO",
-                                                product_id: productDraft.id!,
-                                              }),
-                                            );
-                                          }}
-                                        />
-                                      </label>
-                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                        Upload video
-                                        <input
-                                          type="file"
-                                          accept="video/*"
-                                          className="hidden"
-                                          multiple
-                                          onChange={(e) => {
-                                            const files = Array.from(
-                                              e.target.files ?? [],
-                                            );
-                                            files.forEach((file) =>
-                                              handleMediaFileUpload({
-                                                kind: "product",
-                                                id: productDraft.id!,
-                                                file,
-                                                media_type: "VIDEO",
-                                                product_id: productDraft.id!,
-                                              }),
-                                            );
-                                          }}
-                                        />
-                                      </label>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                    Save the product first to upload media.
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                    {activeTab === "PRODUCTS" && marketingTab === "SERVICES" ? (
-                      <div className="grid gap-6">
-                        <div className="text-sm text-gray-600">
-                          Add marketing descriptions and media for each active
-                          service type.
-                        </div>
-                        {marketingServices.length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                            No active services yet. Enable services in the
-                            Services tab first.
-                          </div>
-                        ) : (
-                          <div className="grid gap-4">
-                            {marketingServices.map((svc) => {
-                              const mediaKey = catalogMediaKey(
-                                "service",
-                                svc.service_code,
-                              );
-                              const media = catalogMediaByKey[mediaKey] ?? [];
-                              const loadingMedia = Boolean(
-                                catalogMediaLoading[mediaKey],
-                              );
-                              const aiKey = `service:${svc.service_code}`;
-                              return (
-                                <div
-                                  key={svc.service_code}
-                                  className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-                                >
-                                  <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                        Service
-                                      </div>
-                                      <div className="text-lg font-semibold text-[#0b1f5f]">
-                                        {svc.display_name ?? svc.service_code}
-                                      </div>
-                                      <div className="text-xs text-gray-500">
-                                        Unit length{" "}
-                                        {svc.unit_length_minutes ?? 60} min -
-                                        Unit price{" "}
-                                        {formatCurrencyFromCents(
-                                          svc.hourly_rate_cents,
-                                        )}
-                                      </div>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                      onClick={() =>
-                                        saveServiceDescription(svc.service_code)
-                                      }
-                                    >
-                                      Save
-                                    </button>
-                                  </div>
-                                  <div className="mt-4 grid gap-2">
-                                    <div className="flex items-center justify-between">
-                                      <Label>Description</Label>
-                                      {(() => {
-                                        const isLoading = Boolean(
-                                          aiRewriteLoading[aiKey],
-                                        );
-                                        const hasPending = Boolean(
-                                          aiRewrites[aiKey],
-                                        );
-                                        return (
-                                          <button
-                                            type="button"
-                                            className={[
-                                              "text-xs font-semibold",
-                                              isLoading || hasPending
-                                                ? "cursor-default text-gray-400"
-                                                : "cursor-pointer text-[#0b1f5f]",
-                                            ].join(" ")}
-                                            disabled={isLoading || hasPending}
-                                            onClick={async () => {
-                                              if (isLoading || hasPending)
-                                                return;
-                                              const current =
-                                                serviceDescriptionDrafts[
-                                                  svc.service_code
-                                                ] ?? "";
-                                              setAiLoading(aiKey, true);
-                                              try {
-                                                const next =
-                                                  await rewriteWithAi(
-                                                    `Rewrite the marketing description for ${svc.display_name ?? svc.service_code}.`,
-                                                    current,
-                                                  );
-                                                setServiceDescriptionDrafts(
-                                                  (prev) => ({
-                                                    ...prev,
-                                                    [svc.service_code]: next,
-                                                  }),
-                                                );
-                                                setAiRewrite(
-                                                  aiKey,
-                                                  current,
-                                                  next,
-                                                );
-                                              } finally {
-                                                setAiLoading(aiKey, false);
-                                              }
-                                            }}
-                                          >
-                                            {isLoading
-                                              ? "Thinking..."
-                                              : hasPending
-                                                ? "Accept?"
-                                                : "Rewrite with AI"}
-                                          </button>
-                                        );
-                                      })()}
-                                    </div>
-                                    <Textarea
-                                      rows={4}
-                                      value={
-                                        serviceDescriptionDrafts[
-                                          svc.service_code
-                                        ] ?? ""
-                                      }
-                                      onChange={(e) =>
-                                        setServiceDescriptionDrafts((prev) => ({
-                                          ...prev,
-                                          [svc.service_code]: e.target.value,
-                                        }))
-                                      }
-                                      placeholder="Describe what makes this service special."
-                                    />
-                                    {aiRewrites[aiKey] ? (
-                                      <div className="flex items-center gap-3 text-xs">
-                                        <button
-                                          type="button"
-                                          className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                          onClick={() => clearAiRewrite(aiKey)}
-                                        >
-                                          <HugeiconsIcon
-                                            icon={CheckmarkCircle01Icon}
-                                            size={14}
-                                            className="text-green-600"
-                                          />
-                                          Accept
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                          onClick={() => {
-                                            const previous =
-                                              aiRewrites[aiKey]?.previous ?? "";
-                                            setServiceDescriptionDrafts(
-                                              (prev) => ({
-                                                ...prev,
-                                                [svc.service_code]: previous,
-                                              }),
-                                            );
-                                            clearAiRewrite(aiKey);
-                                          }}
-                                        >
-                                          <HugeiconsIcon
-                                            icon={Cancel01Icon}
-                                            size={14}
-                                            className="text-red-600"
-                                          />
-                                          Reject
-                                        </button>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                  <div className="mt-4 grid gap-2">
-                                    <Label>Service branding/logo</Label>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                      <Input
-                                        value={
-                                          serviceLogoDrafts[svc.service_code] ??
-                                          ""
-                                        }
-                                        onChange={(e) =>
-                                          setServiceLogoDrafts((prev) => ({
-                                            ...prev,
-                                            [svc.service_code]: e.target.value,
-                                          }))
-                                        }
-                                        placeholder="Paste logo URL or upload below"
-                                      />
-                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                        Upload logo
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          className="hidden"
-                                          onChange={async (e) => {
-                                            const file = e.target.files?.[0];
-                                            if (!file) return;
-                                            const dataUrl =
-                                              await readFileAsDataUrl(file);
-                                            setServiceLogoDrafts((prev) => ({
-                                              ...prev,
-                                              [svc.service_code]: dataUrl,
-                                            }));
-                                          }}
-                                        />
-                                      </label>
-                                    </div>
-                                    {serviceLogoDrafts[svc.service_code] ? (
-                                      <img
-                                        src={
-                                          serviceLogoDrafts[svc.service_code]
-                                        }
-                                        alt={`${svc.display_name ?? svc.service_code} logo`}
-                                        className="h-16 w-16 rounded-xl border border-gray-200 object-cover"
-                                      />
-                                    ) : (
-                                      <div className="text-xs text-gray-500">
-                                        No service logo uploaded yet.
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="mt-4 grid gap-3">
-                                    <div className="text-sm font-semibold text-gray-700">
-                                      Media gallery
-                                    </div>
-                                    {loadingMedia ? (
-                                      <div className="text-sm text-gray-500">
-                                        Loading media...
-                                      </div>
-                                    ) : null}
-                                    {media.length === 0 && !loadingMedia ? (
-                                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                        Add photos or videos to showcase this
-                                        service.
-                                      </div>
-                                    ) : null}
-                                    {media.length ? (
-                                      <div className="grid gap-3 sm:grid-cols-2">
-                                        {media.map((item) => (
-                                          <div
-                                            key={item.id}
-                                            className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
-                                          >
-                                            {item.media_type === "VIDEO" ? (
-                                              <video
-                                                src={item.media_url}
-                                                controls
-                                                className="h-36 w-full object-cover"
-                                              />
-                                            ) : (
-                                              <img
-                                                src={item.media_url}
-                                                alt=""
-                                                className="h-36 w-full object-cover"
-                                              />
-                                            )}
-                                            <button
-                                              type="button"
-                                              className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
-                                              onClick={() =>
-                                                removeCatalogMedia(
-                                                  item.id,
-                                                  () =>
-                                                    loadCatalogMedia({
-                                                      kind: "service",
-                                                      id: svc.service_code,
-                                                      service_code:
-                                                        svc.service_code,
-                                                    }),
-                                                )
-                                              }
-                                            >
-                                              Remove
-                                            </button>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                    <div className="flex flex-wrap gap-2">
-                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                        Upload photo
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          className="hidden"
-                                          multiple
-                                          onChange={(e) => {
-                                            const files = Array.from(
-                                              e.target.files ?? [],
-                                            );
-                                            files.forEach((file) =>
-                                              handleMediaFileUpload({
-                                                kind: "service",
-                                                id: svc.service_code,
-                                                file,
-                                                media_type: "PHOTO",
-                                                service_code: svc.service_code,
-                                              }),
-                                            );
-                                          }}
-                                        />
-                                      </label>
-                                      <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                        Upload video
-                                        <input
-                                          type="file"
-                                          accept="video/*"
-                                          className="hidden"
-                                          multiple
-                                          onChange={(e) => {
-                                            const files = Array.from(
-                                              e.target.files ?? [],
-                                            );
-                                            files.forEach((file) =>
-                                              handleMediaFileUpload({
-                                                kind: "service",
-                                                id: svc.service_code,
-                                                file,
-                                                media_type: "VIDEO",
-                                                service_code: svc.service_code,
-                                              }),
-                                            );
-                                          }}
-                                        />
-                                      </label>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                    {activeTab === "PRODUCTS" && marketingTab === "SUBJECTS" ? (
-                      <div className="grid gap-6">
-                        <div className="text-sm text-gray-600">
-                          Add marketing descriptions and media for your active
-                          subjects.
-                        </div>
-                        {subjects.filter((s) => !s.archived_at).length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                            No active subjects yet. Enable subjects first.
-                          </div>
-                        ) : (
-                          <div className="grid gap-4">
-                            {subjects
-                              .filter((subject) => !subject.archived_at)
-                              .map((subject) => {
-                                const mediaKey = catalogMediaKey(
-                                  "subject",
-                                  subject.id,
-                                );
-                                const media = catalogMediaByKey[mediaKey] ?? [];
-                                const loadingMedia = Boolean(
-                                  catalogMediaLoading[mediaKey],
-                                );
-                                const aiKey = `subject:${subject.id}`;
-                                return (
-                                  <div
-                                    key={subject.id}
-                                    className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-                                  >
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                      <div>
-                                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                          Subject
-                                        </div>
-                                        <div className="text-lg font-semibold text-[#0b1f5f]">
-                                          {subject.subject_name}
-                                        </div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                        onClick={() =>
-                                          saveSubjectDescription(subject.id)
-                                        }
-                                      >
-                                        Save
-                                      </button>
-                                    </div>
-                                    <div className="mt-4 grid gap-2">
-                                      <div className="flex items-center justify-between">
-                                        <Label>Description</Label>
-                                        {(() => {
-                                          const isLoading = Boolean(
-                                            aiRewriteLoading[aiKey],
-                                          );
-                                          const hasPending = Boolean(
-                                            aiRewrites[aiKey],
-                                          );
-                                          return (
-                                            <button
-                                              type="button"
-                                              className={[
-                                                "text-xs font-semibold",
-                                                isLoading || hasPending
-                                                  ? "cursor-default text-gray-400"
-                                                  : "cursor-pointer text-[#0b1f5f]",
-                                              ].join(" ")}
-                                              disabled={isLoading || hasPending}
-                                              onClick={async () => {
-                                                if (isLoading || hasPending)
-                                                  return;
-                                                const current =
-                                                  subjectDescriptionDrafts[
-                                                    subject.id
-                                                  ] ?? "";
-                                                setAiLoading(aiKey, true);
-                                                try {
-                                                  const next =
-                                                    await rewriteWithAi(
-                                                      `Rewrite the marketing description for ${subject.subject_name}.`,
-                                                      current,
-                                                    );
-                                                  setSubjectDescriptionDrafts(
-                                                    (prev) => ({
-                                                      ...prev,
-                                                      [subject.id]: next,
-                                                    }),
-                                                  );
-                                                  setAiRewrite(
-                                                    aiKey,
-                                                    current,
-                                                    next,
-                                                  );
-                                                } finally {
-                                                  setAiLoading(aiKey, false);
-                                                }
-                                              }}
-                                            >
-                                              {isLoading
-                                                ? "Thinking..."
-                                                : hasPending
-                                                  ? "Accept?"
-                                                  : "Rewrite with AI"}
-                                            </button>
-                                          );
-                                        })()}
-                                      </div>
-                                      <Textarea
-                                        rows={4}
-                                        value={
-                                          subjectDescriptionDrafts[
-                                            subject.id
-                                          ] ?? ""
-                                        }
-                                        onChange={(e) =>
-                                          setSubjectDescriptionDrafts(
-                                            (prev) => ({
-                                              ...prev,
-                                              [subject.id]: e.target.value,
-                                            }),
-                                          )
-                                        }
-                                        placeholder="Share the outcomes and focus areas for this subject."
-                                      />
-                                      {aiRewrites[aiKey] ? (
-                                        <div className="flex items-center gap-3 text-xs">
-                                          <button
-                                            type="button"
-                                            className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                            onClick={() =>
-                                              clearAiRewrite(aiKey)
-                                            }
-                                          >
-                                            <HugeiconsIcon
-                                              icon={CheckmarkCircle01Icon}
-                                              size={14}
-                                              className="text-green-600"
-                                            />
-                                            Accept
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                            onClick={() => {
-                                              const previous =
-                                                aiRewrites[aiKey]?.previous ??
-                                                "";
-                                              setSubjectDescriptionDrafts(
-                                                (prev) => ({
-                                                  ...prev,
-                                                  [subject.id]: previous,
-                                                }),
-                                              );
-                                              clearAiRewrite(aiKey);
-                                            }}
-                                          >
-                                            <HugeiconsIcon
-                                              icon={Cancel01Icon}
-                                              size={14}
-                                              className="text-red-600"
-                                            />
-                                            Reject
-                                          </button>
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                    <div className="mt-4 grid gap-3">
-                                      <div className="text-sm font-semibold text-gray-700">
-                                        Media gallery
-                                      </div>
-                                      {loadingMedia ? (
-                                        <div className="text-sm text-gray-500">
-                                          Loading media...
-                                        </div>
-                                      ) : null}
-                                      {media.length === 0 && !loadingMedia ? (
-                                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                          Add photos or videos to highlight this
-                                          subject.
-                                        </div>
-                                      ) : null}
-                                      {media.length ? (
-                                        <div className="grid gap-3 sm:grid-cols-2">
-                                          {media.map((item) => (
-                                            <div
-                                              key={item.id}
-                                              className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
-                                            >
-                                              {item.media_type === "VIDEO" ? (
-                                                <video
-                                                  src={item.media_url}
-                                                  controls
-                                                  className="h-36 w-full object-cover"
-                                                />
-                                              ) : (
-                                                <img
-                                                  src={item.media_url}
-                                                  alt=""
-                                                  className="h-36 w-full object-cover"
-                                                />
-                                              )}
-                                              <button
-                                                type="button"
-                                                className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
-                                                onClick={() =>
-                                                  removeCatalogMedia(
-                                                    item.id,
-                                                    () =>
-                                                      loadCatalogMedia({
-                                                        kind: "subject",
-                                                        id: subject.id,
-                                                        subject_id: subject.id,
-                                                      }),
-                                                  )
-                                                }
-                                              >
-                                                Remove
-                                              </button>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : null}
-                                      <div className="flex flex-wrap gap-2">
-                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                          Upload photo
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            multiple
-                                            onChange={(e) => {
-                                              const files = Array.from(
-                                                e.target.files ?? [],
-                                              );
-                                              files.forEach((file) =>
-                                                handleMediaFileUpload({
-                                                  kind: "subject",
-                                                  id: subject.id,
-                                                  file,
-                                                  media_type: "PHOTO",
-                                                  subject_id: subject.id,
-                                                }),
-                                              );
-                                            }}
-                                          />
-                                        </label>
-                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                          Upload video
-                                          <input
-                                            type="file"
-                                            accept="video/*"
-                                            className="hidden"
-                                            multiple
-                                            onChange={(e) => {
-                                              const files = Array.from(
-                                                e.target.files ?? [],
-                                              );
-                                              files.forEach((file) =>
-                                                handleMediaFileUpload({
-                                                  kind: "subject",
-                                                  id: subject.id,
-                                                  file,
-                                                  media_type: "VIDEO",
-                                                  subject_id: subject.id,
-                                                }),
-                                              );
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                    {activeTab === "PRODUCTS" && marketingTab === "TOPICS" ? (
-                      <div className="grid gap-6">
-                        <div className="text-sm text-gray-600">
-                          Add marketing descriptions for the topics within a
-                          subject.
-                        </div>
-                        <div className="grid gap-2">
-                          <Label>Subject</Label>
-                          <select
-                            className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                            value={marketingSubjectId}
-                            onChange={(e) =>
-                              setMarketingSubjectId(e.target.value)
-                            }
-                          >
-                            <option value="">Select a subject</option>
-                            {subjects
-                              .filter((subject) => !subject.archived_at)
-                              .map((subject) => (
-                                <option key={subject.id} value={subject.id}>
-                                  {subject.subject_name}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                        {!marketingSubjectId ? (
-                          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                            Choose a subject to see its topics.
-                          </div>
-                        ) : null}
-                        {marketingSubjectId ? (
-                          <div className="grid gap-4">
-                            {(topicsBySubject[marketingSubjectId] ?? [])
-                              .filter((topic) => !topic.archived_at)
-                              .map((topic) => {
-                                const mediaKey = catalogMediaKey(
-                                  "topic",
-                                  topic.id,
-                                );
-                                const media = catalogMediaByKey[mediaKey] ?? [];
-                                const loadingMedia = Boolean(
-                                  catalogMediaLoading[mediaKey],
-                                );
-                                const aiKey = `topic:${topic.id}`;
-                                return (
-                                  <div
-                                    key={topic.id}
-                                    className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
-                                  >
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                      <div>
-                                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                                          Topic
-                                        </div>
-                                        <div className="text-lg font-semibold text-[#0b1f5f]">
-                                          {topic.topic_name}
-                                        </div>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className="itutoros-settings-btn itutoros-settings-btn-primary"
-                                        onClick={() =>
-                                          saveTopicDescription(topic.id)
-                                        }
-                                      >
-                                        Save
-                                      </button>
-                                    </div>
-                                    <div className="mt-4 grid gap-2">
-                                      <div className="flex items-center justify-between">
-                                        <Label>Description</Label>
-                                        {(() => {
-                                          const isLoading = Boolean(
-                                            aiRewriteLoading[aiKey],
-                                          );
-                                          const hasPending = Boolean(
-                                            aiRewrites[aiKey],
-                                          );
-                                          return (
-                                            <button
-                                              type="button"
-                                              className={[
-                                                "text-xs font-semibold",
-                                                isLoading || hasPending
-                                                  ? "cursor-default text-gray-400"
-                                                  : "cursor-pointer text-[#0b1f5f]",
-                                              ].join(" ")}
-                                              disabled={isLoading || hasPending}
-                                              onClick={async () => {
-                                                if (isLoading || hasPending)
-                                                  return;
-                                                const current =
-                                                  topicDescriptionDrafts[
-                                                    topic.id
-                                                  ] ?? "";
-                                                setAiLoading(aiKey, true);
-                                                try {
-                                                  const next =
-                                                    await rewriteWithAi(
-                                                      `Rewrite the marketing description for ${topic.topic_name}.`,
-                                                      current,
-                                                    );
-                                                  setTopicDescriptionDrafts(
-                                                    (prev) => ({
-                                                      ...prev,
-                                                      [topic.id]: next,
-                                                    }),
-                                                  );
-                                                  setAiRewrite(
-                                                    aiKey,
-                                                    current,
-                                                    next,
-                                                  );
-                                                } finally {
-                                                  setAiLoading(aiKey, false);
-                                                }
-                                              }}
-                                            >
-                                              {isLoading
-                                                ? "Thinking..."
-                                                : hasPending
-                                                  ? "Accept?"
-                                                  : "Rewrite with AI"}
-                                            </button>
-                                          );
-                                        })()}
-                                      </div>
-                                      <Textarea
-                                        rows={3}
-                                        value={
-                                          topicDescriptionDrafts[topic.id] ?? ""
-                                        }
-                                        onChange={(e) =>
-                                          setTopicDescriptionDrafts((prev) => ({
-                                            ...prev,
-                                            [topic.id]: e.target.value,
-                                          }))
-                                        }
-                                        placeholder="Describe the focus and outcomes for this topic."
-                                      />
-                                      {aiRewrites[aiKey] ? (
-                                        <div className="flex items-center gap-3 text-xs">
-                                          <button
-                                            type="button"
-                                            className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                            onClick={() =>
-                                              clearAiRewrite(aiKey)
-                                            }
-                                          >
-                                            <HugeiconsIcon
-                                              icon={CheckmarkCircle01Icon}
-                                              size={14}
-                                              className="text-green-600"
-                                            />
-                                            Accept
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                            onClick={() => {
-                                              const previous =
-                                                aiRewrites[aiKey]?.previous ??
-                                                "";
-                                              setTopicDescriptionDrafts(
-                                                (prev) => ({
-                                                  ...prev,
-                                                  [topic.id]: previous,
-                                                }),
-                                              );
-                                              clearAiRewrite(aiKey);
-                                            }}
-                                          >
-                                            <HugeiconsIcon
-                                              icon={Cancel01Icon}
-                                              size={14}
-                                              className="text-red-600"
-                                            />
-                                            Reject
-                                          </button>
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                    <div className="mt-4 grid gap-3">
-                                      <div className="text-sm font-semibold text-gray-700">
-                                        Media gallery
-                                      </div>
-                                      {loadingMedia ? (
-                                        <div className="text-sm text-gray-500">
-                                          Loading media...
-                                        </div>
-                                      ) : null}
-                                      {media.length === 0 && !loadingMedia ? (
-                                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                                          Add optional visuals for this topic.
-                                        </div>
-                                      ) : null}
-                                      {media.length ? (
-                                        <div className="grid gap-3 sm:grid-cols-2">
-                                          {media.map((item) => (
-                                            <div
-                                              key={item.id}
-                                              className="relative overflow-hidden rounded-xl border border-gray-200 bg-white"
-                                            >
-                                              {item.media_type === "VIDEO" ? (
-                                                <video
-                                                  src={item.media_url}
-                                                  controls
-                                                  className="h-32 w-full object-cover"
-                                                />
-                                              ) : (
-                                                <img
-                                                  src={item.media_url}
-                                                  alt=""
-                                                  className="h-32 w-full object-cover"
-                                                />
-                                              )}
-                                              <button
-                                                type="button"
-                                                className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-gray-700"
-                                                onClick={() =>
-                                                  removeCatalogMedia(
-                                                    item.id,
-                                                    () =>
-                                                      loadCatalogMedia({
-                                                        kind: "topic",
-                                                        id: topic.id,
-                                                        topic_id: topic.id,
-                                                      }),
-                                                  )
-                                                }
-                                              >
-                                                Remove
-                                              </button>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : null}
-                                      <div className="flex flex-wrap gap-2">
-                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                          Upload photo
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            multiple
-                                            onChange={(e) => {
-                                              const files = Array.from(
-                                                e.target.files ?? [],
-                                              );
-                                              files.forEach((file) =>
-                                                handleMediaFileUpload({
-                                                  kind: "topic",
-                                                  id: topic.id,
-                                                  file,
-                                                  media_type: "PHOTO",
-                                                  topic_id: topic.id,
-                                                }),
-                                              );
-                                            }}
-                                          />
-                                        </label>
-                                        <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                          Upload video
-                                          <input
-                                            type="file"
-                                            accept="video/*"
-                                            className="hidden"
-                                            multiple
-                                            onChange={(e) => {
-                                              const files = Array.from(
-                                                e.target.files ?? [],
-                                              );
-                                              files.forEach((file) =>
-                                                handleMediaFileUpload({
-                                                  kind: "topic",
-                                                  id: topic.id,
-                                                  file,
-                                                  media_type: "VIDEO",
-                                                  topic_id: topic.id,
-                                                }),
-                                              );
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {activeTab === "PRODUCTS" && marketingTab === "COMPANY" ? (
-                      <div className="grid gap-6">
-                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                          <div className="text-lg font-semibold text-[#0b1f5f]">
-                            Company content
-                          </div>
-                          <div className="mt-1 text-sm text-gray-600">
-                            This content is reused by Marketing post generation
-                            and Website development.
-                          </div>
-                          <div className="mt-4 grid gap-4">
-                            <div className="grid gap-2">
-                              <Label>Company description</Label>
-                              <Textarea
-                                rows={4}
-                                value={companyDraft.company_description_text}
-                                onChange={(e) =>
-                                  setCompanyDraft((prev) => ({
-                                    ...prev,
-                                    company_description_text: e.target.value,
-                                  }))
-                                }
-                                placeholder="Describe your tutoring business and who you serve."
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Mission statement</Label>
-                              <Textarea
-                                rows={3}
-                                value={companyDraft.mission_text}
-                                onChange={(e) =>
-                                  setCompanyDraft((prev) => ({
-                                    ...prev,
-                                    mission_text: e.target.value,
-                                  }))
-                                }
-                                placeholder="Share your mission and educational purpose."
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Teaching style</Label>
-                              <Textarea
-                                rows={3}
-                                value={companyDraft.tutoring_style_text}
-                                onChange={(e) =>
-                                  setCompanyDraft((prev) => ({
-                                    ...prev,
-                                    tutoring_style_text: e.target.value,
-                                  }))
-                                }
-                                placeholder="Explain your instructional approach."
-                              />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>About us</Label>
-                              <Textarea
-                                rows={4}
-                                value={companyDraft.about_us_text}
-                                onChange={(e) =>
-                                  setCompanyDraft((prev) => ({
-                                    ...prev,
-                                    about_us_text: e.target.value,
-                                  }))
-                                }
-                                placeholder="Team background, values, and why families choose you."
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                    {activeTab === "MARKETING" && (
-                      <div className="grid gap-6">
-                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                          <div className="flex flex-wrap gap-2">
-                            {MARKETING_SECTIONS.map((section) => (
-                              <button
-                                key={section.key}
-                                type="button"
-                                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                                  marketingSection === section.key
-                                    ? "bg-[#0b1f5f] text-white"
-                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                }`}
-                                onClick={() => setMarketingSection(section.key)}
-                              >
-                                {section.label}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="mt-3 text-sm text-gray-600">
-                            {marketingSection === "PLATFORMS"
-                              ? "Choose where you market and track connection readiness."
-                              : "Build AI-assisted social posts using content from Content Studio."}
-                          </div>
-                        </div>
-
-                        <div
-                          className={
-                            marketingSection === "PLATFORMS" ? "" : "hidden"
-                          }
-                        >
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                            <div className="text-base font-semibold text-[#0b1f5f]">
-                              Platforms
-                            </div>
-                            <div className="mt-1 text-sm text-gray-600">
-                              Choose the platforms you want to post to.
-                              Connections enable direct posting later, but you
-                              can still generate content now.
-                            </div>
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {CONNECTION_PROVIDERS.map((provider) => {
-                                const connected =
-                                  connectionStatusById[provider.id] ?? false;
-                                const checked =
-                                  socialDraft.platform_ids.includes(
-                                    provider.id,
-                                  );
-                                return (
-                                  <label
-                                    key={provider.id}
-                                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm ${
-                                      connected
-                                        ? "border-gray-200 bg-white"
-                                        : "border-gray-200 bg-white/80"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="checkbox"
-                                        className="h-4 w-4 accent-[#ff9df9]"
-                                        checked={checked}
-                                        onChange={() =>
-                                          toggleSocialPlatform(provider.id)
-                                        }
-                                      />
-                                      <div>
-                                        <div className="font-semibold text-gray-800">
-                                          {provider.label}
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                          {connected ? (
-                                            "Connected"
-                                          ) : (
-                                            <>
-                                              Not connected (manual posting
-                                              only) go to{" "}
-                                              <button
-                                                type="button"
-                                                className="cursor-pointer font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
-                                                onClick={() =>
-                                                  void switchTab("CONNECTIONS")
-                                                }
-                                              >
-                                                Connections screen
-                                              </button>{" "}
-                                              to connect {provider.label}
-                                            </>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                            <div className="mt-4 grid gap-2">
-                              {socialDraft.platform_ids.length === 0 ? (
-                                <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-                                  Select at least one connected platform to view
-                                  platform specs.
-                                </div>
-                              ) : (
-                                socialDraft.platform_ids.map((platformId) => {
-                                  const spec =
-                                    SOCIAL_PLATFORM_SPECS[platformId];
-                                  const label =
-                                    getConnectionProvider(platformId)?.label ??
-                                    platformId;
-                                  return (
-                                    <div
-                                      key={platformId}
-                                      className="rounded-xl border border-gray-200 bg-white/80 p-3 text-xs text-gray-600"
-                                    >
-                                      <div className="font-semibold text-gray-700">
-                                        {label}
-                                      </div>
-                                      <div>
-                                        Suggested sizes:{" "}
-                                        {spec.sizes.join(" | ")}
-                                      </div>
-                                      <div>
-                                        Aspect ratios: {spec.ratios.join(" | ")}
-                                      </div>
-                                      <div>{spec.notes.join(" | ")}</div>
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div
-                          className={
-                            marketingSection === "POST_BUILDER"
-                              ? "grid gap-6"
-                              : "hidden"
-                          }
-                        >
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                            <div className="text-lg font-semibold text-[#0b1f5f]">
-                              Social post builder
-                            </div>
-                            <div className="mt-1 text-sm text-gray-600">
-                              Build AI-assisted social posts using your saved
-                              products, subjects, topics, and uploaded media.
-                            </div>
-                          </div>
-
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                            <div className="text-base font-semibold text-[#0b1f5f]">
-                              Content sources
-                            </div>
-                            <div className="mt-4 grid gap-4 md:grid-cols-2">
-                              <div className="grid gap-2">
-                                <Label>Content Source Type</Label>
-                                <select
-                                  className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                  value={socialSourceType}
-                                  onChange={(e) =>
-                                    setSocialSourceTypeSelection(
-                                      e.target.value as SocialSourceType,
-                                    )
-                                  }
-                                >
-                                  <option value="">Make a selection</option>
-                                  <option value="PRODUCTS">Product</option>
-                                  <option value="SERVICES">Service Type</option>
-                                  <option value="SUBJECTS">Subject</option>
-                                  <option value="TOPICS">Topic</option>
-                                </select>
-                              </div>
-                              {socialSourceType ? (
-                                <div className="grid gap-2">
-                                  <Label>
-                                    {socialSourceType === "PRODUCTS"
-                                      ? "Products"
-                                      : socialSourceType === "SERVICES"
-                                        ? "Services"
-                                        : socialSourceType === "SUBJECTS"
-                                          ? "Subjects"
-                                          : "Topics"}
-                                  </Label>
-                                  {socialSourceType === "PRODUCTS" ? (
-                                    <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                      value={socialDraft.product_id}
-                                      onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          product_id: e.target.value,
-                                          service_code: "",
-                                          subject_id: "",
-                                          topic_id: "",
-                                          selected_media_ids: [],
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Select a product</option>
-                                      {products.map((product) => (
-                                        <option
-                                          key={product.id}
-                                          value={product.id}
-                                        >
-                                          {product.product_name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : null}
-                                  {socialSourceType === "SERVICES" ? (
-                                    <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                      value={socialDraft.service_code}
-                                      onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          product_id: "",
-                                          service_code: e.target.value,
-                                          subject_id: "",
-                                          topic_id: "",
-                                          selected_media_ids: [],
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Select a service</option>
-                                      {marketingServices.map((svc) => (
-                                        <option
-                                          key={svc.service_code}
-                                          value={svc.service_code}
-                                        >
-                                          {svc.display_name ?? svc.service_code}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : null}
-                                  {socialSourceType === "SUBJECTS" ? (
-                                    <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                      value={socialDraft.subject_id}
-                                      onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          product_id: "",
-                                          service_code: "",
-                                          subject_id: e.target.value,
-                                          topic_id: "",
-                                          selected_media_ids: [],
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Select a subject</option>
-                                      {subjects
-                                        .filter(
-                                          (subject) => !subject.archived_at,
-                                        )
-                                        .map((subject) => (
-                                          <option
-                                            key={subject.id}
-                                            value={subject.id}
-                                          >
-                                            {subject.subject_name}
-                                          </option>
-                                        ))}
-                                    </select>
-                                  ) : null}
-                                  {socialSourceType === "TOPICS" ? (
-                                    <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                      value={socialDraft.topic_id}
-                                      onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          product_id: "",
-                                          service_code: "",
-                                          subject_id: "",
-                                          topic_id: e.target.value,
-                                          selected_media_ids: [],
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Select a topic</option>
-                                      {socialTopicOptions.map((topic) => (
-                                        <option key={topic.id} value={topic.id}>
-                                          {topic.topic_name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                            <div className="text-base font-semibold text-[#0b1f5f]">
-                              Offer details
-                            </div>
-                            <div className="mt-4 grid gap-4 md:grid-cols-2">
-                              <div className="grid gap-2 md:col-span-2">
-                                <Label>Headline</Label>
-                                <Input
-                                  value={socialDraft.headline}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      headline: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Registration is open!"
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Start date</Label>
-                                <Input
-                                  type="date"
-                                  value={socialDraft.start_date}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      start_date: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>End date</Label>
-                                <Input
-                                  type="date"
-                                  value={socialDraft.end_date}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      end_date: e.target.value,
-                                    }))
-                                  }
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Age range</Label>
-                                <Input
-                                  value={socialDraft.age_range}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      age_range: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Grades 3-5, ages 8-10"
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Price / offer</Label>
-                                <Input
-                                  value={socialDraft.price_detail}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      price_detail: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="$200 for 4 sessions"
-                                />
-                              </div>
-                              <div className="grid gap-2 md:col-span-2">
-                                <Label>Location / format</Label>
-                                <Input
-                                  value={socialDraft.location_detail}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      location_detail: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Irvington campus or virtual"
-                                />
-                              </div>
-                              <div className="grid gap-2 md:col-span-2">
-                                <Label>Enrollment link</Label>
-                                <Input
-                                  value={socialDraft.enrollment_link}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      enrollment_link: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="https://..."
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Call to action</Label>
-                                <Input
-                                  value={socialDraft.call_to_action}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      call_to_action: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Book a spot today"
-                                />
-                              </div>
-                              <div className="grid gap-2">
-                                <Label>Hashtags</Label>
-                                <Input
-                                  value={socialDraft.hashtags}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      hashtags: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="#tutoring #learning"
-                                />
-                              </div>
-                              <div className="grid gap-2 md:col-span-2">
-                                <Label>Extra notes</Label>
-                                <Textarea
-                                  rows={3}
-                                  value={socialDraft.extra_notes}
-                                  onChange={(e) =>
-                                    setSocialDraft((prev) => ({
-                                      ...prev,
-                                      extra_notes: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Any extra details you want included."
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                            <div className="text-base font-semibold text-[#0b1f5f]">
-                              Media & templates
-                            </div>
-                            <div className="mt-4 grid gap-4">
-                              {socialMediaOptions.length > 0 ? (
-                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                  {socialMediaOptions.map((media) => {
-                                    const checked =
-                                      socialDraft.selected_media_ids.includes(
-                                        media.id,
-                                      );
-                                    return (
-                                      <label
-                                        key={media.id}
-                                        className="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          className="absolute right-2 top-2 h-4 w-4 accent-[#ff9df9]"
-                                          checked={checked}
-                                          onChange={() =>
-                                            toggleSocialMedia(media.id)
-                                          }
-                                        />
-                                        {media.type === "VIDEO" ? (
-                                          <video
-                                            src={media.url}
-                                            className="h-36 w-full object-cover"
-                                          />
-                                        ) : (
-                                          <img
-                                            src={media.url}
-                                            alt=""
-                                            className="h-36 w-full object-cover"
-                                          />
-                                        )}
-                                        <div className="p-2 text-xs text-gray-600">
-                                          {media.label}
-                                        </div>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              ) : null}
-                              <div className="grid gap-6 lg:grid-cols-2">
-                                <div className="grid gap-4">
-                                  <div className="grid gap-2">
-                                    <Label>Template style</Label>
-                                    <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                      value={socialDraft.template_style}
-                                      onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          template_style: e.target.value,
-                                        }))
-                                      }
-                                    >
-                                      {SOCIAL_TEMPLATE_STYLES.map((style) => (
-                                        <option key={style} value={style}>
-                                          {style}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div className="grid gap-2">
-                                    <Label>Layout preset</Label>
-                                    <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                      value={socialDraft.layout_preset}
-                                      onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          layout_preset: e.target.value,
-                                        }))
-                                      }
-                                    >
-                                      {SOCIAL_LAYOUT_PRESETS.map((preset) => (
-                                        <option key={preset} value={preset}>
-                                          {preset}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div className="grid gap-2">
-                                    <Label>Aspect ratio</Label>
-                                    <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
-                                      value={socialDraft.aspect_ratio}
-                                      onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          aspect_ratio: e.target.value,
-                                        }))
-                                      }
-                                    >
-                                      {SOCIAL_ASPECT_RATIOS.map((ratio) => (
-                                        <option
-                                          key={ratio.value}
-                                          value={ratio.value}
-                                        >
-                                          {ratio.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                </div>
-                                <div className="grid gap-2">
-                                  <Label>Presets</Label>
-                                  <div
-                                    ref={socialPresetCarouselRef}
-                                    className="itutoros-carousel px-[2px] py-[2px]"
-                                  >
-                                    <div
-                                      aria-hidden
-                                      className="shrink-0"
-                                      style={{
-                                        flex: "0 0 max(8px, calc(50% - 129px))",
-                                      }}
-                                    />
-                                    {SOCIAL_PRESET_CAROUSEL_ITEMS.map(
-                                      (item) => {
-                                        const selected =
-                                          item.id === selectedCarouselPresetId;
-                                        return (
-                                          <button
-                                            key={item.id}
-                                            type="button"
-                                            ref={(node) => {
-                                              socialPresetRefs.current[
-                                                item.id
-                                              ] = node;
-                                            }}
-                                            className={`itutoros-carousel-card !basis-[258px] relative min-w-[178px] overflow-hidden rounded-xl border bg-white text-left shadow-sm transition ${
-                                              selected
-                                                ? "border-[#ff9df9] ring-2 ring-[#ff9df9]"
-                                                : "border-gray-200"
-                                            }`}
-                                            style={{
-                                              scrollSnapAlign: "center",
-                                            }}
-                                            onClick={() =>
-                                              setSocialDraft((prev) => ({
-                                                ...prev,
-                                                layout_preset:
-                                                  item.layout_preset,
-                                                aspect_ratio: item.aspect_ratio,
-                                              }))
-                                            }
-                                          >
-                                            <img
-                                              src={
-                                                selected
-                                                  ? item.selected_src
-                                                  : item.unselected_src
-                                              }
-                                              alt={item.label}
-                                              className="h-[110px] w-full bg-gray-50 p-2 object-contain"
-                                            />
-                                            <div className="px-2 py-2 text-xs text-gray-600">
-                                              {item.label}
-                                            </div>
-                                          </button>
-                                        );
-                                      },
-                                    )}
-                                    <div
-                                      aria-hidden
-                                      className="shrink-0"
-                                      style={{
-                                        flex: "0 0 max(8px, calc(50% - 129px))",
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                <label className="itutoros-settings-btn itutoros-settings-btn-secondary cursor-pointer">
-                                  Upload template image
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file)
-                                        void handleSocialTemplateUpload(file);
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                              {socialTemplates.length ? (
-                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                  {socialTemplates.map((template) => {
-                                    const selected =
-                                      socialDraft.selected_template_id ===
-                                      template.id;
-                                    return (
-                                      <button
-                                        key={template.id}
-                                        type="button"
-                                        className={`relative overflow-hidden rounded-xl border bg-white text-left shadow-sm transition ${
-                                          selected
-                                            ? "border-[#ff9df9] ring-2 ring-[#ff9df9]"
-                                            : "border-gray-200"
-                                        }`}
-                                        onClick={() =>
-                                          setSocialDraft((prev) => ({
-                                            ...prev,
-                                            selected_template_id: selected
-                                              ? ""
-                                              : template.id,
-                                          }))
-                                        }
-                                      >
-                                        <img
-                                          src={template.data_url}
-                                          alt={template.name}
-                                          className="h-32 w-full object-cover"
-                                        />
-                                        <div className="flex items-center justify-between gap-2 p-2 text-xs text-gray-600">
-                                          <span className="truncate">
-                                            {template.name}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            className="text-xs font-semibold text-rose-600"
-                                            onClick={(event) => {
-                                              event.stopPropagation();
-                                              removeSocialTemplate(template.id);
-                                            }}
-                                          >
-                                            Remove
-                                          </button>
-                                        </div>
-                                        {selected ? (
-                                          <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-semibold text-[#c00f5e]">
-                                            Selected
-                                          </span>
-                                        ) : null}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              ) : null}
-                              <div className="rounded-xl border border-gray-200 bg-white p-3">
-                                <div className="text-sm font-semibold text-gray-700">
-                                  Preview
-                                </div>
-                                <div className="mt-3">
-                                  <div
-                                    className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50"
-                                    style={{
-                                      aspectRatio: `${socialAspect.width} / ${socialAspect.height}`,
-                                    }}
-                                  >
-                                    {socialPreviewMedia ? (
-                                      socialPreviewMedia.type === "VIDEO" ? (
-                                        <video
-                                          src={socialPreviewMedia.url}
-                                          className="h-full w-full object-cover"
-                                        />
-                                      ) : (
-                                        <img
-                                          src={socialPreviewMedia.url}
-                                          alt=""
-                                          className="h-full w-full object-cover"
-                                        />
-                                      )
-                                    ) : (
-                                      <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
-                                        Select media or a template to preview.
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black/20" />
-                                    {socialDraft.layout_preset ===
-                                    "Bold headline" ? (
-                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-white">
-                                        <div className="text-2xl font-extrabold drop-shadow">
-                                          {socialDraft.headline ||
-                                            socialSelectedProduct?.product_name ||
-                                            "Your headline"}
-                                        </div>
-                                        <div className="text-sm font-semibold drop-shadow">
-                                          {socialDraft.call_to_action ||
-                                            socialDraft.start_date ||
-                                            "Call to action"}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {socialDraft.layout_preset ===
-                                    "Band rows" ? (
-                                      <div className="absolute inset-0 flex flex-col justify-center gap-3 px-4 text-white">
-                                        {[
-                                          socialDraft.headline ||
-                                            socialSelectedProduct?.product_name ||
-                                            "Headline",
-                                          socialDraft.start_date ||
-                                            "Dates / schedule",
-                                          socialDraft.age_range ||
-                                            "Age range / audience",
-                                          socialDraft.call_to_action ||
-                                            "Call to action",
-                                        ].map((line, idx) => (
-                                          <div
-                                            key={String(idx)}
-                                            className="rounded-lg bg-[#ff9df9]/70 px-3 py-2 text-base font-semibold shadow"
-                                          >
-                                            {line}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                    {socialDraft.layout_preset ===
-                                    "Photo + footer" ? (
-                                      <div className="absolute inset-x-0 bottom-0 bg-[#0b1f5f]/80 px-4 py-3 text-white">
-                                        <div className="text-lg font-bold">
-                                          {socialDraft.headline ||
-                                            socialSelectedProduct?.product_name ||
-                                            "Program spotlight"}
-                                        </div>
-                                        <div className="text-sm font-semibold">
-                                          {socialDraft.call_to_action ||
-                                            socialDraft.location_detail ||
-                                            "Join us"}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {socialDraft.layout_preset ===
-                                    "Schedule list" ? (
-                                      <div className="absolute inset-0 flex flex-col gap-3 px-4 py-4 text-white">
-                                        <div className="rounded-lg bg-black/50 px-3 py-2 text-base font-semibold">
-                                          {socialDraft.start_date
-                                            ? `Dates: ${socialDraft.start_date}${socialDraft.end_date ? ` - ${socialDraft.end_date}` : ""}`
-                                            : "Dates / schedule"}
-                                        </div>
-                                        <div className="rounded-lg bg-black/40 px-3 py-2 text-sm">
-                                          {(
-                                            socialDraft.extra_notes ||
-                                            "Monday: Activity\nTuesday: Activity\nWednesday: Activity"
-                                          )
-                                            .split("\n")
-                                            .slice(0, 4)
-                                            .map((line) => (
-                                              <div key={line}>{line}</div>
-                                            ))}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <div className="text-base font-semibold text-[#0b1f5f]">
-                                  Post Text
-                                </div>
-                                <div className="text-sm text-gray-600">
-                                  Generate copy with AI, then tweak it before
-                                  posting.
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                {(() => {
-                                  const aiKey = "social:copy";
-                                  const isLoading = Boolean(
-                                    aiRewriteLoading[aiKey],
-                                  );
-                                  return (
-                                    <button
-                                      type="button"
-                                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                      onClick={generateSocialCopy}
-                                      disabled={isLoading}
-                                    >
-                                      {isLoading
-                                        ? "Generating..."
-                                        : socialDraft.generated_copy.trim()
-                                          ? "Regenerate with AI"
-                                          : "Generate with AI"}
-                                    </button>
-                                  );
-                                })()}
-                                <button
-                                  type="button"
-                                  className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                                  onClick={discardSocialCopy}
-                                  disabled={!socialDraft.generated_copy.trim()}
-                                >
-                                  Discard Text
-                                </button>
-                              </div>
-                            </div>
-                            <div className="mt-4 grid gap-2">
-                              <Textarea
-                                rows={8}
-                                value={socialDraft.generated_copy}
-                                onChange={(e) =>
-                                  setSocialDraft((prev) => ({
-                                    ...prev,
-                                    generated_copy: e.target.value,
-                                  }))
-                                }
-                                placeholder="Generated copy will appear here."
-                              />
-                              {aiRewrites["social:copy"] ? (
-                                <div className="flex items-center gap-3 text-xs">
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
-                                    onClick={() =>
-                                      clearAiRewrite("social:copy")
-                                    }
-                                  >
-                                    <HugeiconsIcon
-                                      icon={CheckmarkCircle01Icon}
-                                      size={14}
-                                      className="text-green-600"
-                                    />
-                                    Accept
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
-                                    onClick={() => {
-                                      const previous =
-                                        aiRewrites["social:copy"]?.previous ??
-                                        "";
-                                      setSocialDraft((prev) => ({
-                                        ...prev,
-                                        generated_copy: previous,
-                                      }));
-                                      clearAiRewrite("social:copy");
-                                    }}
-                                  >
-                                    <HugeiconsIcon
-                                      icon={Cancel01Icon}
-                                      size={14}
-                                      className="text-red-600"
-                                    />
-                                    Reject
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap justify-end gap-2">
-                            <button
-                              type="button"
-                              className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                              onClick={() => void saveSocialPost("DRAFT")}
-                            >
-                              Save Draft
-                            </button>
-                            <button
-                              type="button"
-                              className="itutoros-settings-btn itutoros-settings-btn-primary"
-                              onClick={() => void saveSocialPost("READY")}
-                            >
-                              Save Post
-                            </button>
-                            <button
-                              type="button"
-                              className="itutoros-settings-btn itutoros-settings-btn-secondary"
-                              onClick={() => {
-                                const confirmed = window.confirm(
-                                  "Discard this post builder draft and clear all fields?",
-                                );
-                                if (!confirmed) return;
-                                clearSocialBuilder();
-                              }}
-                            >
-                              Discard
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-              {!loading && activeTab === "WEBSITE" ? (
-                <div className="grid gap-6">
-                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                    <div className="text-lg font-semibold text-[#0b1f5f]">
-                      Website content sources
-                    </div>
-                    <div className="mt-1 text-sm text-gray-600">
-                      Website builder content is sourced from Content Studio and
-                      Company content.
-                    </div>
-                    <div className="mt-4 grid gap-3 text-sm text-gray-700 md:grid-cols-2">
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Products
-                        </div>
-                        <div className="mt-1 text-base font-semibold">
-                          {products.length}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Services
-                        </div>
-                        <div className="mt-1 text-base font-semibold">
-                          {marketingServices.length}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Subjects
-                        </div>
-                        <div className="mt-1 text-base font-semibold">
-                          {
-                            subjects.filter((subject) => !subject.archived_at)
-                              .length
-                          }
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Topics
-                        </div>
-                        <div className="mt-1 text-base font-semibold">
-                          {
-                            Object.values(topicsBySubject)
-                              .flat()
-                              .filter((topic) => !topic.archived_at).length
-                          }
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                    <div className="text-base font-semibold text-[#0b1f5f]">
-                      Company profile for website copy
-                    </div>
-                    <div className="mt-4 grid gap-4">
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Company description
-                        </div>
-                        <div className="mt-1 text-sm text-gray-700">
-                          {org?.company_description_text?.trim() || "Not set"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Mission statement
-                        </div>
-                        <div className="mt-1 text-sm text-gray-700">
-                          {org?.mission_text?.trim() || "Not set"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          Teaching style
-                        </div>
-                        <div className="mt-1 text-sm text-gray-700">
-                          {org?.tutoring_style_text?.trim() || "Not set"}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                          About us
-                        </div>
-                        <div className="mt-1 text-sm text-gray-700">
-                          {org?.about_us_text?.trim() ||
-                            org?.about_text?.trim() ||
-                            "Not set"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
             </div>
           </section>
         </div>
@@ -10332,5 +5928,13 @@ export default function SettingsPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <SettingsPageContent />
+    </Suspense>
   );
 }

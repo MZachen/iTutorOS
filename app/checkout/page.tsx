@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import BrandLogo from "@/app/_components/BrandLogo";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ const PLANS = [
   { id: "enterprise", name: "Enterprise", price: "$99.95/month" },
 ];
 
-export default function CheckoutPage() {
+function CheckoutPageContent() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const searchParams = useSearchParams();
   const selectedPlanId = searchParams.get("plan") ?? "basic";
@@ -95,5 +95,13 @@ export default function CheckoutPage() {
         </Button>
       </div>
     </main>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <CheckoutPageContent />
+    </Suspense>
   );
 }

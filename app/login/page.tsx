@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import MarketingFooter from "@/app/_components/MarketingFooter";
@@ -19,7 +19,7 @@ async function userIsRegistered(accessToken: string): Promise<boolean> {
   throw new Error(`Unexpected response from /organizations: ${res.status}`);
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -127,5 +127,13 @@ export default function LoginPage() {
 
       <MarketingFooter />
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

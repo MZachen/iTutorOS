@@ -22,10 +22,11 @@ export async function GET(req: Request) {
     const subject_id = sp.get("subject_id");
     const topic_id = sp.get("topic_id");
     const service_code = sp.get("service_code");
+    const scope = sp.get("scope");
     const archivedParam = sp.get("archived");
     const archivedFilter = archivedParam === "all" ? {} : { archived_at: null };
 
-    const rows = await prisma.catalogMedia.findMany({
+    let rows = await prisma.catalogMedia.findMany({
       where: {
         organization_id: auth.organization_id,
         ...archivedFilter,
@@ -33,9 +34,28 @@ export async function GET(req: Request) {
         ...(subject_id ? { subject_id } : {}),
         ...(topic_id ? { topic_id } : {}),
         ...(service_code ? { service_code } : {}),
+        ...(scope === "global"
+          ? {
+              product_id: null,
+              subject_id: null,
+              topic_id: null,
+              service_code: null,
+            }
+          : {}),
       },
       orderBy: [{ sort_order: "asc" }, { created_at: "asc" }],
     });
+
+    // Global library should display unique media assets by URL/type.
+    if (scope === "global") {
+      const seen = new Set<string>();
+      rows = rows.filter((row) => {
+        const key = `${row.media_type}|${row.media_url}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
 
     return NextResponse.json(rows);
   });
@@ -57,10 +77,6 @@ export async function POST(req: Request) {
     const subject_id = typeof body.subject_id === "string" ? body.subject_id : null;
     const topic_id = typeof body.topic_id === "string" ? body.topic_id : null;
     const service_code = typeof body.service_code === "string" ? body.service_code.trim() : null;
-
-    if (!product_id && !subject_id && !topic_id && !service_code) {
-      badRequest("Provide product_id, subject_id, topic_id, or service_code");
-    }
 
     if (product_id) {
       const product = await prisma.product.findUnique({
@@ -124,6 +140,36 @@ export async function POST(req: Request) {
         sort_order: typeof body.sort_order === "number" ? body.sort_order : null,
       },
     });
+
+    const hasAssociation = Boolean(
+      product_id || subject_id || topic_id || service_code,
+    );
+    if (hasAssociation) {
+      const existingGlobal = await prisma.catalogMedia.findFirst({
+        where: {
+          organization_id: auth.organization_id,
+          media_url,
+          media_type,
+          product_id: null,
+          subject_id: null,
+          topic_id: null,
+          service_code: null,
+          archived_at: null,
+        },
+        select: { id: true },
+      });
+      if (!existingGlobal) {
+        await prisma.catalogMedia.create({
+          data: {
+            organization_id: auth.organization_id,
+            media_type,
+            media_url,
+            caption_text: normalizeText(body.caption_text),
+            sort_order: typeof body.sort_order === "number" ? body.sort_order : null,
+          },
+        });
+      }
+    }
 
     return NextResponse.json(created, { status: 201 });
   });

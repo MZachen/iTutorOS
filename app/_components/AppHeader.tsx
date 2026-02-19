@@ -2,8 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import BrandLogo from "@/app/_components/BrandLogo";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+
+const APP_HEADER_CACHE_TTL_MS = 5 * 60 * 1000;
+type AppHeaderCache = {
+  roleLabel: string;
+  businessName: string | null;
+  businessLogoUrl: string | null;
+  fetchedAt: number;
+};
+let appHeaderCache: AppHeaderCache | null = null;
 
 export default function AppHeader() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -23,6 +33,15 @@ export default function AppHeader() {
   useEffect(() => {
     let cancelled = false;
 
+    if (appHeaderCache && Date.now() - appHeaderCache.fetchedAt < APP_HEADER_CACHE_TTL_MS) {
+      setRoleLabel(appHeaderCache.roleLabel);
+      setBusinessName(appHeaderCache.businessName);
+      setBusinessLogoUrl(appHeaderCache.businessLogoUrl);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     async function run() {
       const { data } = await supabase.auth.getSession();
       if (!data.session?.access_token) return;
@@ -32,11 +51,11 @@ export default function AppHeader() {
       });
       const orgs = orgRes.ok ? await orgRes.json() : [];
       const org = orgs?.[0];
-      if (org) {
+      const logo = Array.isArray(org?.images)
+        ? org.images.find((img: any) => img.image_type === "BUSINESS_LOGO" && !img.archived_at)?.image_url
+        : null;
+      if (org && !cancelled) {
         setBusinessName(typeof org.business_name === "string" ? org.business_name : null);
-        const logo = Array.isArray(org.images)
-          ? org.images.find((img: any) => img.image_type === "BUSINESS_LOGO" && !img.archived_at)?.image_url
-          : null;
         setBusinessLogoUrl(typeof logo === "string" ? logo : null);
       }
       // Fetch user roles
@@ -46,7 +65,22 @@ export default function AppHeader() {
       if (meRes.ok) {
         const me = await meRes.json();
         const label = me.isOwner ? "Owner" : me.isAdmin ? "Admin" : me.isTutor ? "Tutor" : "User";
-        setRoleLabel(label);
+        if (!cancelled) {
+          setRoleLabel(label);
+          appHeaderCache = {
+            roleLabel: label,
+            businessName: typeof org?.business_name === "string" ? org.business_name : null,
+            businessLogoUrl: typeof logo === "string" ? logo : null,
+            fetchedAt: Date.now(),
+          };
+        }
+      } else if (!cancelled) {
+        appHeaderCache = {
+          roleLabel,
+          businessName: typeof org?.business_name === "string" ? org.business_name : null,
+          businessLogoUrl: typeof logo === "string" ? logo : null,
+          fetchedAt: Date.now(),
+        };
       }
     }
 
@@ -66,13 +100,14 @@ export default function AppHeader() {
   return (
     <header className="sticky top-0 z-50 w-full bg-[#dff8ff] shadow-[0_10px_30px_rgba(0,0,0,0.12)]">
       <div className="mx-auto flex min-h-[56px] w-full max-w-[1200px] items-center justify-between px-4 py-2 sm:px-6">
-        {businessName ? (
-          <a href="/dashboard" className="flex items-center gap-2 text-lg font-bold text-black">
-            {businessLogoUrl ? (
-              <img src={businessLogoUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
-            ) : null}
-            <span>{businessName}</span>
-          </a>
+        {businessLogoUrl ? (
+          <Link href="/dashboard" className="inline-flex items-center">
+            <img
+              src={businessLogoUrl}
+              alt={businessName ? `${businessName} logo` : "Business logo"}
+              className="block h-10 w-auto max-h-10 max-w-[220px] object-contain"
+            />
+          </Link>
         ) : (
           <BrandLogo href="/dashboard" width={150} />
         )}
@@ -98,35 +133,34 @@ export default function AppHeader() {
             <a href="/" target="_blank" rel="noreferrer">
               <img src="/itutoros_icon.png" alt="iTutorOS" className="h-5 w-auto object-contain" />
             </a>
-            <a href="/dashboard" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
+            <Link href="/dashboard" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
               Dashboard
-            </a>
+            </Link>
           </span>
-          <a href="/clients" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
+          <Link href="/clients" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
             Clients
-          </a>
-          <a href="/pipeline" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
+          </Link>
+          <Link href="/pipeline" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
             Pipeline
-          </a>
-          <a href="/schedule" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
+          </Link>
+          <Link href="/schedule" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
             Schedule
-          </a>
-          <a href="/marketing" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
+          </Link>
+          <Link href="/marketing" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
             Marketing
-          </a>
-          <a href="/settings" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
+          </Link>
+          <Link href="/settings" className="text-[#7200dc] transition-colors hover:text-[#00c5dc]">
             {settingsLabel}
-          </a>
-          <a
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
               onLogout();
             }}
             className="text-[#7200dc] transition-colors hover:text-[#00c5dc]"
           >
             Log out
-          </a>
+          </button>
         </nav>
       </div>
       {menuOpen ? (
@@ -136,60 +170,59 @@ export default function AppHeader() {
               <a href="/" target="_blank" rel="noreferrer" className="inline-flex">
                 <img src="/itutoros_icon.png" alt="iTutorOS" className="h-5 w-auto object-contain" />
               </a>
-              <a
+              <Link
                 href="/dashboard"
                 className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
                 onClick={() => setMenuOpen(false)}
               >
                 Dashboard
-              </a>
+              </Link>
             </div>
-            <a
+            <Link
               href="/clients"
               className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
               onClick={() => setMenuOpen(false)}
             >
               Clients
-            </a>
-            <a
+            </Link>
+            <Link
               href="/pipeline"
               className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
               onClick={() => setMenuOpen(false)}
             >
               Pipeline
-            </a>
-            <a
+            </Link>
+            <Link
               href="/schedule"
               className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
               onClick={() => setMenuOpen(false)}
             >
               Schedule
-            </a>
-            <a
+            </Link>
+            <Link
               href="/marketing"
               className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
               onClick={() => setMenuOpen(false)}
             >
               Marketing
-            </a>
-            <a
+            </Link>
+            <Link
               href="/settings"
               className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
               onClick={() => setMenuOpen(false)}
             >
               {settingsLabel}
-            </a>
-            <a
-              href="/"
-              onClick={(e) => {
-                e.preventDefault();
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
                 onLogout();
                 setMenuOpen(false);
               }}
-              className="rounded-lg px-2 py-1 text-[#7200dc] hover:bg-[#00c5dc]/10"
+              className="rounded-lg px-2 py-1 text-left text-[#7200dc] hover:bg-[#00c5dc]/10"
             >
               Log out
-            </a>
+            </button>
           </nav>
         </div>
       ) : null}

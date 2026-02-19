@@ -5,27 +5,76 @@ import { requireAuth, requireOrgMatch } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
+function parsePositiveInt(
+  raw: string | null,
+  { fallback, min, max }: { fallback: number; min: number; max: number },
+) {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 export async function GET(req: Request) {
   return handleRoute(async () => {
     const auth = await requireAuth(req);
-    const organizationIdParam = new URL(req.url).searchParams.get("organization_id");
+    const searchParams = new URL(req.url).searchParams;
+    const organizationIdParam = searchParams.get("organization_id");
     requireOrgMatch(organizationIdParam, auth.organization_id);
-    const archivedParam = new URL(req.url).searchParams.get("archived");
-
-    const parents = await prisma.parent.findMany({
-      where: {
-        organization_id: auth.organization_id,
-        ...(archivedParam === "all" ? {} : { archived_at: null }),
-      },
-      orderBy: { created_at: "desc" },
-      include: {
-        students: {
-          select: { id: true, first_name: true, last_name: true, archived_at: true, location_id: true },
+    const archivedParam = searchParams.get("archived");
+    const shouldPaginate = searchParams.has("page") || searchParams.has("page_size");
+    const page = parsePositiveInt(searchParams.get("page"), { fallback: 1, min: 1, max: 100000 });
+    const pageSize = parsePositiveInt(searchParams.get("page_size"), {
+      fallback: 50,
+      min: 1,
+      max: 200,
+    });
+    const where = {
+      organization_id: auth.organization_id,
+      ...(archivedParam === "all" ? {} : { archived_at: null }),
+    };
+    const include = {
+      students: {
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          archived_at: true,
+          location_id: true,
         },
       },
+    } as const;
+
+    if (!shouldPaginate) {
+      const parents = await prisma.parent.findMany({
+        where,
+        orderBy: { created_at: "desc" },
+        include,
+      });
+      return NextResponse.json(parents);
+    }
+
+    const total = await prisma.parent.count({ where });
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const normalizedPage = Math.min(page, pageCount);
+    const skip = (normalizedPage - 1) * pageSize;
+    const parents = await prisma.parent.findMany({
+      where,
+      orderBy: { created_at: "desc" },
+      include,
+      skip,
+      take: pageSize,
     });
 
-    return NextResponse.json(parents);
+    return NextResponse.json({
+      items: parents,
+      total,
+      page: normalizedPage,
+      page_size: pageSize,
+      page_count: pageCount,
+      has_prev: normalizedPage > 1,
+      has_next: normalizedPage < pageCount,
+    });
   });
 }
 

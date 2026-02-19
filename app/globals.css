@@ -141,6 +141,16 @@ body {
   .itutoros-post-login textarea {
     background-color: #f4f4f5 !important;
   }
+
+  .itutoros-post-login .itutoros-transparent-input,
+  .itutoros-post-login .itutoros-transparent-textarea,
+  .itutoros-transparent-input,
+  .itutoros-transparent-textarea {
+    background-color: transparent !important;
+    box-shadow: none !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }
 
 @layer utilities {

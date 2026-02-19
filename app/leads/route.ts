@@ -5,6 +5,16 @@ import { requireAuth, requireLocationInOrg, requireOrgMatch } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
+function parsePositiveInt(
+  raw: string | null,
+  { fallback, min, max }: { fallback: number; min: number; max: number },
+) {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 function normalizeLeadStudents(input: any): Record<string, any>[] | null {
   if (input == null) return null;
   if (!Array.isArray(input)) badRequest("lead_students must be an array");
@@ -108,23 +118,54 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   return handleRoute(async () => {
     const auth = await requireAuth(req);
-    const organizationIdParam = new URL(req.url).searchParams.get("organization_id");
+    const searchParams = new URL(req.url).searchParams;
+    const organizationIdParam = searchParams.get("organization_id");
     requireOrgMatch(organizationIdParam, auth.organization_id);
-    const archivedParam = new URL(req.url).searchParams.get("archived");
+    const archivedParam = searchParams.get("archived");
+    const shouldPaginate = searchParams.has("page") || searchParams.has("page_size");
+    const page = parsePositiveInt(searchParams.get("page"), { fallback: 1, min: 1, max: 100000 });
+    const pageSize = parsePositiveInt(searchParams.get("page_size"), {
+      fallback: 50,
+      min: 1,
+      max: 200,
+    });
     const organizationId = auth.organization_id;
+    const where = {
+      organization_id: organizationId,
+      ...(archivedParam === "all"
+        ? {}
+        : archivedParam === "only"
+          ? { archived_at: { not: null } }
+          : { archived_at: null }),
+    };
 
+    if (!shouldPaginate) {
+      const leads = await prisma.lead.findMany({
+        where,
+        orderBy: { created_at: "desc" },
+      });
+      return NextResponse.json(leads);
+    }
+
+    const total = await prisma.lead.count({ where });
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const normalizedPage = Math.min(page, pageCount);
+    const skip = (normalizedPage - 1) * pageSize;
     const leads = await prisma.lead.findMany({
-      where: {
-        organization_id: organizationId,
-        ...(archivedParam === "all"
-          ? {}
-          : archivedParam === "only"
-            ? { archived_at: { not: null } }
-            : { archived_at: null }),
-      },
+      where,
       orderBy: { created_at: "desc" },
+      skip,
+      take: pageSize,
     });
 
-    return NextResponse.json(leads);
+    return NextResponse.json({
+      items: leads,
+      total,
+      page: normalizedPage,
+      page_size: pageSize,
+      page_count: pageCount,
+      has_prev: normalizedPage > 1,
+      has_next: normalizedPage < pageCount,
+    });
   });
 }

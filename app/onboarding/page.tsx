@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import BrandLogo from "@/app/_components/BrandLogo";
@@ -15,7 +15,7 @@ const PLANS = [
   { id: "enterprise", name: "Enterprise", price: "$99.95/month" },
 ];
 
-export default function OnboardingPage() {
+function OnboardingPageContent() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -77,7 +77,7 @@ export default function OnboardingPage() {
         router.replace("/dashboard");
       }
     });
-  }, [router, supabase, timezones]);
+  }, [router, searchParams, supabase, timezones]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -316,5 +316,13 @@ export default function OnboardingPage() {
         {status ? <p className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm">{status}</p> : null}
       </div>
     </main>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <OnboardingPageContent />
+    </Suspense>
   );
 }

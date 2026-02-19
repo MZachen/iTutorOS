@@ -116,6 +116,24 @@ const CLIENT_TAB_ICON_COLORS: Record<ClientTab, string> = {
   STUDENT_RECORDS: "#7a572e",
 };
 
+const CLIENT_GRID_PAGE_SIZE = 50;
+
+function paginateRows<T>(rows: T[], page: number, pageSize: number) {
+  const total = rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(page, 1), pageCount);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, total);
+  return {
+    items: rows.slice(startIndex, endIndex),
+    total,
+    pageCount,
+    page: currentPage,
+    startIndex,
+    endIndex,
+  };
+}
+
 export default function ClientsPage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const router = useRouter();
@@ -138,6 +156,8 @@ export default function ClientsPage() {
     key: "last_name",
     dir: "asc",
   });
+  const [parentPage, setParentPage] = useState(1);
+  const [studentPage, setStudentPage] = useState(1);
   const [parentView, setParentView] = useState<"active" | "archived">("active");
   const [studentView, setStudentView] = useState<"active" | "archived">("active");
   const [parentEditMode, setParentEditMode] = useState(false);
@@ -532,6 +552,35 @@ export default function ClientsPage() {
     });
     return rows;
   }, [students, studentSort, locationMap, studentView]);
+
+  useEffect(() => {
+    setParentPage(1);
+  }, [parentView, parentSort.key, parentSort.dir]);
+
+  useEffect(() => {
+    setStudentPage(1);
+  }, [studentView, studentSort.key, studentSort.dir]);
+
+  const parentPagination = useMemo(
+    () => paginateRows(sortedParents, parentPage, CLIENT_GRID_PAGE_SIZE),
+    [sortedParents, parentPage],
+  );
+  const studentPagination = useMemo(
+    () => paginateRows(sortedStudents, studentPage, CLIENT_GRID_PAGE_SIZE),
+    [sortedStudents, studentPage],
+  );
+
+  useEffect(() => {
+    if (parentPagination.page !== parentPage) {
+      setParentPage(parentPagination.page);
+    }
+  }, [parentPagination.page, parentPage]);
+
+  useEffect(() => {
+    if (studentPagination.page !== studentPage) {
+      setStudentPage(studentPagination.page);
+    }
+  }, [studentPagination.page, studentPage]);
 
   const selectedStudent = useMemo(
     () => (selectedStudentId ? students.find((s) => s.id === selectedStudentId) ?? null : null),
@@ -1483,7 +1532,7 @@ export default function ClientsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedParents.map((parent) => (
+                      {parentPagination.items.map((parent) => (
                         <tr key={parent.id} className="border-t border-gray-100">
                           {visibleParentFields.map((field) => {
                             const draft = parentEdits[parent.id] ?? {};
@@ -1529,6 +1578,54 @@ export default function ClientsPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+                  <div>
+                    Showing{" "}
+                    {parentPagination.total
+                      ? `${parentPagination.startIndex + 1}-${parentPagination.endIndex}`
+                      : "0"}{" "}
+                    of {parentPagination.total} parents
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() => setParentPage(1)}
+                      disabled={parentPagination.page <= 1}
+                    >
+                      First
+                    </button>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() => setParentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={parentPagination.page <= 1}
+                    >
+                      Previous
+                    </button>
+                    <span className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700">
+                      Page {parentPagination.page} of {parentPagination.pageCount}
+                    </span>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() =>
+                        setParentPage((prev) => Math.min(parentPagination.pageCount, prev + 1))
+                      }
+                      disabled={parentPagination.page >= parentPagination.pageCount}
+                    >
+                      Next
+                    </button>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() => setParentPage(parentPagination.pageCount)}
+                      disabled={parentPagination.page >= parentPagination.pageCount}
+                    >
+                      Last
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1596,7 +1693,7 @@ export default function ClientsPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedStudents.map((student) => (
+                        {studentPagination.items.map((student) => (
                           <tr key={student.id} className="border-t border-gray-100">
                             {visibleStudentFields.map((field) => {
                               const draft = studentEdits[student.id] ?? {};
@@ -1666,6 +1763,54 @@ export default function ClientsPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+                  <div>
+                    Showing{" "}
+                    {studentPagination.total
+                      ? `${studentPagination.startIndex + 1}-${studentPagination.endIndex}`
+                      : "0"}{" "}
+                    of {studentPagination.total} students
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() => setStudentPage(1)}
+                      disabled={studentPagination.page <= 1}
+                    >
+                      First
+                    </button>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() => setStudentPage((prev) => Math.max(1, prev - 1))}
+                      disabled={studentPagination.page <= 1}
+                    >
+                      Previous
+                    </button>
+                    <span className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700">
+                      Page {studentPagination.page} of {studentPagination.pageCount}
+                    </span>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() =>
+                        setStudentPage((prev) => Math.min(studentPagination.pageCount, prev + 1))
+                      }
+                      disabled={studentPagination.page >= studentPagination.pageCount}
+                    >
+                      Next
+                    </button>
+                    <button
+                      type="button"
+                      className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                      onClick={() => setStudentPage(studentPagination.pageCount)}
+                      disabled={studentPagination.page >= studentPagination.pageCount}
+                    >
+                      Last
+                    </button>
                   </div>
                 </div>
               </div>

@@ -134,6 +134,24 @@ function planLeadLimit(plan: string | null | undefined) {
   return null;
 }
 
+const PIPELINE_GRID_PAGE_SIZE = 50;
+
+function paginateRows<T>(rows: T[], page: number, pageSize: number) {
+  const total = rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(page, 1), pageCount);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, total);
+  return {
+    items: rows.slice(startIndex, endIndex),
+    total,
+    pageCount,
+    page: currentPage,
+    startIndex,
+    endIndex,
+  };
+}
+
 
 function leadSourceLabel(lead: Lead) {
   if (lead.source_detail) return lead.source_detail;
@@ -207,6 +225,7 @@ export default function PipelinePage() {
     key: "created_at",
     dir: "desc",
   });
+  const [leadPage, setLeadPage] = useState(1);
   const [leadView, setLeadView] = useState<"active" | "archived">("active");
   const [leadEditMode, setLeadEditMode] = useState(false);
   const [leadEdits, setLeadEdits] = useState<Record<string, Partial<Lead>>>({});
@@ -383,6 +402,21 @@ export default function PipelinePage() {
     });
     return rows;
   }, [visibleLeads, leadSort, locationMap]);
+
+  useEffect(() => {
+    setLeadPage(1);
+  }, [leadView, leadSort.key, leadSort.dir]);
+
+  const leadPagination = useMemo(
+    () => paginateRows(sortedLeads, leadPage, PIPELINE_GRID_PAGE_SIZE),
+    [sortedLeads, leadPage],
+  );
+
+  useEffect(() => {
+    if (leadPagination.page !== leadPage) {
+      setLeadPage(leadPagination.page);
+    }
+  }, [leadPagination.page, leadPage]);
 
   const sortedImportRows = useMemo(() => {
     const rows = [...importRows];
@@ -980,7 +1014,7 @@ export default function PipelinePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {sortedLeads.map((lead) => (
+                          {leadPagination.items.map((lead) => (
                             <tr key={lead.id} className="border-t border-gray-100">
                               <td className="px-3 py-2">
                                 {leadEditMode ? (
@@ -1146,6 +1180,54 @@ export default function PipelinePage() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
+                    <div>
+                      Showing{" "}
+                      {leadPagination.total
+                        ? `${leadPagination.startIndex + 1}-${leadPagination.endIndex}`
+                        : "0"}{" "}
+                      of {leadPagination.total} leads
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                        onClick={() => setLeadPage(1)}
+                        disabled={leadPagination.page <= 1}
+                      >
+                        First
+                      </button>
+                      <button
+                        type="button"
+                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                        onClick={() => setLeadPage((prev) => Math.max(1, prev - 1))}
+                        disabled={leadPagination.page <= 1}
+                      >
+                        Previous
+                      </button>
+                      <span className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700">
+                        Page {leadPagination.page} of {leadPagination.pageCount}
+                      </span>
+                      <button
+                        type="button"
+                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                        onClick={() =>
+                          setLeadPage((prev) => Math.min(leadPagination.pageCount, prev + 1))
+                        }
+                        disabled={leadPagination.page >= leadPagination.pageCount}
+                      >
+                        Next
+                      </button>
+                      <button
+                        type="button"
+                        className="itutoros-settings-btn itutoros-settings-btn-secondary"
+                        onClick={() => setLeadPage(leadPagination.pageCount)}
+                        disabled={leadPagination.page >= leadPagination.pageCount}
+                      >
+                        Last
+                      </button>
                     </div>
                   </div>
                 </div>

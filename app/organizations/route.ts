@@ -29,6 +29,8 @@ export async function POST(req: Request) {
     const mission_text = typeof body.mission_text === "string" ? body.mission_text.trim() || null : null;
     const tutoring_style_text =
       typeof body.tutoring_style_text === "string" ? body.tutoring_style_text.trim() || null : null;
+    const company_logo_url =
+      typeof body.company_logo_url === "string" ? body.company_logo_url.trim() || null : null;
 
     const business_phone = typeof body.business_phone === "string" ? body.business_phone.trim() : null;
     const business_address_1 = typeof body.business_address_1 === "string" ? body.business_address_1.trim() : null;
@@ -76,7 +78,27 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(org, { status: 201 });
+    if (company_logo_url) {
+      await prisma.image.create({
+        data: {
+          organization_id: org.id,
+          image_type: "BUSINESS_LOGO",
+          image_url: company_logo_url,
+        },
+      });
+    }
+
+    const created = await prisma.organization.findUnique({
+      where: { id: org.id },
+      include: {
+        images: {
+          where: { image_type: "BUSINESS_LOGO", archived_at: null },
+          select: { id: true, image_url: true, image_type: true, archived_at: true },
+        },
+      },
+    });
+
+    return NextResponse.json(created ?? org, { status: 201 });
   });
 }
 
@@ -89,7 +111,7 @@ export async function GET(req: Request) {
         include: {
           images: {
             where: { image_type: "BUSINESS_LOGO", archived_at: null },
-            select: { image_url: true, image_type: true, archived_at: true },
+            select: { id: true, image_url: true, image_type: true, archived_at: true },
           },
         },
       });
@@ -140,6 +162,7 @@ export async function PATCH(req: Request) {
     }
 
     const data: Record<string, any> = {};
+    let company_logo_url: string | null | undefined = undefined;
 
     if ("business_name" in body) {
       const business_name = typeof body.business_name === "string" ? body.business_name.trim() : "";
@@ -236,14 +259,77 @@ export async function PATCH(req: Request) {
       data.tutoring_style_text = tutoring_style_text;
     }
 
-    if (Object.keys(data).length === 0) badRequest("No fields to update");
+    if ("company_logo_url" in body) {
+      company_logo_url =
+        typeof body.company_logo_url === "string"
+          ? body.company_logo_url.trim() || null
+          : null;
+    }
 
-    const org = await prisma.organization.update({
-      where: { id: auth.organization_id },
-      data: {
-        ...data,
-        updated_by_user_id: auth.userId,
-      },
+    if (Object.keys(data).length === 0 && company_logo_url === undefined) {
+      badRequest("No fields to update");
+    }
+
+    const org = await prisma.$transaction(async (tx) => {
+      await tx.organization.update({
+        where: { id: auth.organization_id },
+        data: {
+          ...data,
+          updated_by_user_id: auth.userId,
+        },
+      });
+
+      if (company_logo_url !== undefined) {
+        const activeLogos = await tx.image.findMany({
+          where: {
+            organization_id: auth.organization_id,
+            image_type: "BUSINESS_LOGO",
+            archived_at: null,
+          },
+          orderBy: { created_at: "asc" },
+          select: { id: true },
+        });
+
+        if (company_logo_url) {
+          if (activeLogos[0]) {
+            await tx.image.update({
+              where: { id: activeLogos[0].id },
+              data: { image_url: company_logo_url, archived_at: null },
+            });
+          } else {
+            await tx.image.create({
+              data: {
+                organization_id: auth.organization_id,
+                image_type: "BUSINESS_LOGO",
+                image_url: company_logo_url,
+              },
+            });
+          }
+          if (activeLogos.length > 1) {
+            await tx.image.updateMany({
+              where: { id: { in: activeLogos.slice(1).map((row) => row.id) } },
+              data: { archived_at: new Date() },
+            });
+          }
+        } else {
+          if (activeLogos.length > 0) {
+            await tx.image.updateMany({
+              where: { id: { in: activeLogos.map((row) => row.id) } },
+              data: { archived_at: new Date() },
+            });
+          }
+        }
+      }
+
+      return tx.organization.findUnique({
+        where: { id: auth.organization_id },
+        include: {
+          images: {
+            where: { image_type: "BUSINESS_LOGO", archived_at: null },
+            select: { id: true, image_url: true, image_type: true, archived_at: true },
+          },
+        },
+      });
     });
 
     return NextResponse.json(org);

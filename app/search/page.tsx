@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import MarketingFooter from "@/app/_components/MarketingFooter";
 import MarketingHeader from "@/app/_components/MarketingHeader";
@@ -8,7 +8,7 @@ import { searchSiteIndex } from "@/lib/site-search";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AiSearchIcon } from "@hugeicons/core-free-icons";
 
-export default function SearchPage() {
+function SearchPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const query = (searchParams.get("q") ?? "").trim();
@@ -78,5 +78,13 @@ export default function SearchPage() {
       </main>
       <MarketingFooter />
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <SearchPageContent />
+    </Suspense>
   );
 }

@@ -4,7 +4,20 @@ export const runtime = "nodejs";
 
 const SYSTEM_PROMPT = `You are the iTutorOS Marketing Copilot.
 Rewrite the provided text for clarity, warmth, and marketing appeal.
-Keep it concise, avoid exaggeration, and return only the rewritten text.`;
+Keep it concise, avoid exaggeration, and return only the rewritten text.
+Never prepend labels such as "Headline:", "Subject:", "Subheadline:", or "Title:".`;
+
+function sanitizeAiMessage(value: string) {
+  const text = typeof value === "string" ? value : "";
+  const cleaned = text
+    .replace(
+      /^\s*(?:\*\*|__)?(?:headline|subject|subheadline|title)\s*[:\-]\s*/gim,
+      "",
+    )
+    .replace(/^\s*(?:\*\*|__)?platform\s*[:\-]\s*/gim, "")
+    .trim();
+  return cleaned || text.trim();
+}
 
 export async function POST(req: Request) {
   let body: any;
@@ -98,5 +111,5 @@ export async function POST(req: Request) {
   }
 
   const message = data?.choices?.[0]?.message?.content ?? "";
-  return NextResponse.json({ message });
+  return NextResponse.json({ message: sanitizeAiMessage(message) });
 }

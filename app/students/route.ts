@@ -5,30 +5,73 @@ import { requireAuth, requireLocationInOrg } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
+function parsePositiveInt(
+  raw: string | null,
+  { fallback, min, max }: { fallback: number; min: number; max: number },
+) {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
 export async function GET(req: Request) {
   return handleRoute(async () => {
     const auth = await requireAuth(req);
-    const locationId = new URL(req.url).searchParams.get("location_id");
-    const archivedParam = new URL(req.url).searchParams.get("archived");
+    const searchParams = new URL(req.url).searchParams;
+    const locationId = searchParams.get("location_id");
+    const archivedParam = searchParams.get("archived");
+    const shouldPaginate = searchParams.has("page") || searchParams.has("page_size");
+    const page = parsePositiveInt(searchParams.get("page"), { fallback: 1, min: 1, max: 100000 });
+    const pageSize = parsePositiveInt(searchParams.get("page_size"), {
+      fallback: 50,
+      min: 1,
+      max: 200,
+    });
     if (locationId) {
       await requireLocationInOrg(locationId, auth.organization_id);
     }
 
+    const where = {
+      organization_id: auth.organization_id,
+      ...(archivedParam === "all"
+        ? {}
+        : archivedParam === "only"
+          ? { archived_at: { not: null } }
+          : { archived_at: null }),
+      ...(locationId ? { location_id: locationId } : {}),
+    };
+
+    if (!shouldPaginate) {
+      const students = await prisma.student.findMany({
+        where,
+        orderBy: { created_at: "desc" },
+        include: { parent: true },
+      });
+      return NextResponse.json(students);
+    }
+
+    const total = await prisma.student.count({ where });
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const normalizedPage = Math.min(page, pageCount);
+    const skip = (normalizedPage - 1) * pageSize;
     const students = await prisma.student.findMany({
-      where: {
-        organization_id: auth.organization_id,
-        ...(archivedParam === "all"
-          ? {}
-          : archivedParam === "only"
-            ? { archived_at: { not: null } }
-            : { archived_at: null }),
-        ...(locationId ? { location_id: locationId } : {}),
-      },
+      where,
       orderBy: { created_at: "desc" },
       include: { parent: true },
+      skip,
+      take: pageSize,
     });
 
-    return NextResponse.json(students);
+    return NextResponse.json({
+      items: students,
+      total,
+      page: normalizedPage,
+      page_size: pageSize,
+      page_count: pageCount,
+      has_prev: normalizedPage > 1,
+      has_next: normalizedPage < pageCount,
+    });
   });
 }
 
