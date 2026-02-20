@@ -10,7 +10,10 @@ import {
   CursorTextIcon,
   Image01Icon,
   Layers01Icon,
+  MapsIcon,
+  MapPinIcon,
   LockIcon,
+  PinLocation01Icon,
   RedoIcon,
   StrokeCenterIcon,
   StrokeInsideIcon,
@@ -465,6 +468,28 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialFooterBrandSide, setSocialFooterBrandSide] = useState<"left" | "right">(
     "left",
   );
+  const [socialDateComponentSide, setSocialDateComponentSide] = useState<
+    "left" | "right"
+  >("left");
+  const [socialDateTextFormat, setSocialDateTextFormat] = useState<
+    "start" | "range"
+  >("start");
+  const [socialDateTextAlign, setSocialDateTextAlign] = useState<
+    "left" | "center"
+  >("center");
+  const [socialFooterInfoSource, setSocialFooterInfoSource] = useState<
+    "age" | "location" | "cta"
+  >("age");
+  const [socialFooterInfoLocationIcon, setSocialFooterInfoLocationIcon] =
+    useState<"map-pin" | "pin-location" | "maps">("map-pin");
+  const [socialFooterInfoEmptyMode, setSocialFooterInfoEmptyMode] = useState<
+    "blank" | "name" | "hash-name" | "tutoring"
+  >("blank");
+  const [socialFooterInfoEmptyName, setSocialFooterInfoEmptyName] = useState("");
+  const [socialFooterInfoTextColor, setSocialFooterInfoTextColor] =
+    useState("#ffffff");
+  const [socialFooterInfoShadowColor, setSocialFooterInfoShadowColor] =
+    useState("#000000");
   const [socialPreviewDropActive, setSocialPreviewDropActive] = useState(false);
   const socialPreviewRef = useRef(null);
   const [socialShadowPopupOpen, setSocialShadowPopupOpen] = useState(false);
@@ -500,10 +525,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     shape: "Shape",
     headline: "Headline",
     start: "Start Date",
-    cta: "Call To Action",
+    cta: "Footer Info",
     footer: "Footer",
     brand: "Brand",
     contact: "Contact",
+    datebox: "Date Box",
   };
   const clampLayerValue = (value, min, max) => Math.max(min, Math.min(max, value));
   const socialFrameToStyle = (frame) => ({
@@ -548,6 +574,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   useEffect(() => {
     const defaults = buildDefaultLayerFrames(socialDraft.layout_preset);
     setSocialLayerFrames((prev) => ({
+      ...prev,
       shape: prev.shape ?? defaults.shape,
       headline: prev.headline ?? defaults.headline,
       start: prev.start ?? defaults.start,
@@ -682,107 +709,146 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           }
         }
 
+        const nextFooterFrame = resolveAnnouncementFooterFrame();
         const footerCurrent = next[SOCIAL_FOOTER_LAYER_ID] ?? {
-          x: 0,
-          y: 920,
-          width: 1000,
-          height: 80,
+          ...nextFooterFrame,
         };
         if (
-          footerCurrent.x !== 0 ||
-          footerCurrent.y !== 920 ||
-          footerCurrent.width !== 1000 ||
-          footerCurrent.height !== 80
+          footerCurrent.x !== nextFooterFrame.x ||
+          footerCurrent.y !== nextFooterFrame.y ||
+          footerCurrent.width !== nextFooterFrame.width ||
+          footerCurrent.height !== nextFooterFrame.height
         ) {
           next[SOCIAL_FOOTER_LAYER_ID] = {
             ...footerCurrent,
-            x: 0,
-            y: 920,
-            width: 1000,
-            height: 80,
+            ...nextFooterFrame,
           };
           changed = true;
         }
 
         const contactCurrent = next[SOCIAL_CONTACT_LAYER_ID] ?? {
-          x: 0,
-          y: 920,
-          width: 1000,
-          height: 80,
+          ...nextFooterFrame,
         };
         if (
-          contactCurrent.x !== 0 ||
-          contactCurrent.y !== 920 ||
-          contactCurrent.width !== 1000 ||
-          contactCurrent.height !== 80
+          contactCurrent.x !== nextFooterFrame.x ||
+          contactCurrent.y !== nextFooterFrame.y ||
+          contactCurrent.width !== nextFooterFrame.width ||
+          contactCurrent.height !== nextFooterFrame.height
         ) {
           next[SOCIAL_CONTACT_LAYER_ID] = {
             ...contactCurrent,
-            x: 0,
-            y: 920,
-            width: 1000,
-            height: 80,
+            ...nextFooterFrame,
+          };
+          changed = true;
+        }
+
+        const dateBoxX = socialDateComponentSide === "right" ? 650 : 50;
+        const headerFrameForDate = next[SOCIAL_HEADER_LAYER_ID] ?? next.headline;
+        const headerBottom =
+          (headerFrameForDate?.y ?? 0) + (headerFrameForDate?.height ?? 0);
+        const dateBoxY = clampLayerValue(headerBottom + 50, 0, 670);
+        const dateBoxCurrent = next[SOCIAL_DATE_BOX_LAYER_ID] ?? {
+          x: dateBoxX,
+          y: dateBoxY,
+          width: 300,
+          height: 250,
+        };
+        if (
+          dateBoxCurrent.x !== dateBoxX ||
+          dateBoxCurrent.y !== dateBoxY ||
+          dateBoxCurrent.width !== 300 ||
+          dateBoxCurrent.height !== 250
+        ) {
+          next[SOCIAL_DATE_BOX_LAYER_ID] = {
+            ...dateBoxCurrent,
+            x: dateBoxX,
+            y: dateBoxY,
+            width: 300,
+            height: 250,
+          };
+          changed = true;
+        }
+
+        const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
+        const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
+          text: footerInfoText,
+          isLocation: Boolean(socialAnnouncementFooterInfo.isLocation),
+          footerFrame: next[SOCIAL_FOOTER_LAYER_ID],
+        });
+        const footerInfoCurrent = next.cta ?? {
+          ...footerInfoFrame,
+        };
+        if (
+          footerInfoCurrent.x !== footerInfoFrame.x ||
+          footerInfoCurrent.y !== footerInfoFrame.y ||
+          footerInfoCurrent.width !== footerInfoFrame.width ||
+          footerInfoCurrent.height !== footerInfoFrame.height
+        ) {
+          next.cta = {
+            ...footerInfoCurrent,
+            ...footerInfoFrame,
+          };
+          changed = true;
+        }
+
+        const dateTextCurrent = next.start ?? {
+          x: dateBoxX,
+          y: dateBoxY,
+          width: 300,
+          height: 250,
+        };
+        if (
+          dateTextCurrent.x !== dateBoxX ||
+          dateTextCurrent.y !== dateBoxY ||
+          dateTextCurrent.width !== 300 ||
+          dateTextCurrent.height !== 250
+        ) {
+          next.start = {
+            ...dateTextCurrent,
+            x: dateBoxX,
+            y: dateBoxY,
+            width: 300,
+            height: 250,
           };
           changed = true;
         }
 
         if (socialLayerVisible[SOCIAL_BRAND_LAYER_ID]) {
           if (socialHasBrandLogo) {
+            const nextBrandLogoFrame = resolveAnnouncementBrandLogoFrame();
             const brandCurrent = next[SOCIAL_BRAND_LAYER_ID] ?? {
-              x: 20,
-              y: 925,
-              width: 960,
-              height: 70,
+              ...nextBrandLogoFrame,
             };
             if (
-              brandCurrent.x !== 20 ||
-              brandCurrent.y !== 925 ||
-              brandCurrent.width !== 960 ||
-              brandCurrent.height !== 70
+              brandCurrent.x !== nextBrandLogoFrame.x ||
+              brandCurrent.y !== nextBrandLogoFrame.y ||
+              brandCurrent.width !== nextBrandLogoFrame.width ||
+              brandCurrent.height !== nextBrandLogoFrame.height
             ) {
               next[SOCIAL_BRAND_LAYER_ID] = {
                 ...brandCurrent,
-                x: 20,
-                y: 925,
-                width: 960,
-                height: 70,
+                ...nextBrandLogoFrame,
               };
               changed = true;
             }
           } else {
-            const measuredBrand = measureWrappedSocialText({
-              text: socialCompanyNameText,
-              fontSize: 30,
-              fontWeight: 700,
-              fontFamily:
-                socialFontFamily && socialFontFamily !== "inherit"
-                  ? socialFontFamily
-                  : "Poppins, sans-serif",
-              maxWidth: 1000,
-              minWidth: 1000,
-              paddingX: 0,
-              paddingY: 0,
-              lineHeightMultiplier: 1.1,
-              outlineWidth: 0,
-            });
-            const brandHeight = clampLayerValue(measuredBrand.height, 80, 995);
+            const brandHeight = nextFooterFrame.height;
             const brandCurrent = next[SOCIAL_BRAND_LAYER_ID] ?? {
               x: 0,
-              y: 1000 - brandHeight,
+              y: nextFooterFrame.y,
               width: 1000,
               height: brandHeight,
             };
-            const nextBrandY = clampLayerValue(1000 - brandHeight, 0, 995);
             if (
               brandCurrent.x !== 0 ||
-              brandCurrent.y !== nextBrandY ||
+              brandCurrent.y !== nextFooterFrame.y ||
               brandCurrent.width !== 1000 ||
               brandCurrent.height !== brandHeight
             ) {
               next[SOCIAL_BRAND_LAYER_ID] = {
                 ...brandCurrent,
                 x: 0,
-                y: nextBrandY,
+                y: nextFooterFrame.y,
                 width: 1000,
                 height: brandHeight,
               };
@@ -810,11 +876,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     org?.business_phone,
     org?.business_email,
     org?.business_name,
+    socialDateComponentSide,
     socialLayerVisible.brand,
     socialLayerVisible.shape,
     socialLayerVisible.footer,
     socialLayerVisible.contact,
-    socialLayerVisible.shape,
+    socialLayerVisible.datebox,
     socialLayerVisible.cta,
     socialLayerVisible.headline,
     socialLayerVisible.start,
@@ -822,7 +889,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     socialTextFontSizes.headline,
     socialTextFontSizes.start,
     socialToolOutlineWidth,
+    socialDraft.age_range,
+    socialFooterInfoSource,
+    socialFooterInfoEmptyMode,
+    socialFooterInfoEmptyName,
     socialSelectedProduct?.product_name,
+    socialAspect?.height,
+    socialAspect?.width,
   ]);
   const imageLibraryTotalPages = Math.max(
     1,
@@ -1029,6 +1102,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialShapeStyles,
         socialImageLayers,
         socialFooterBrandSide,
+        socialDateComponentSide,
+        socialDateTextFormat,
+        socialDateTextAlign,
+        socialFooterInfoSource,
+        socialFooterInfoLocationIcon,
+        socialFooterInfoEmptyMode,
+        socialFooterInfoEmptyName,
+        socialFooterInfoTextColor,
+        socialFooterInfoShadowColor,
         socialPreviewOverrideUrl,
       }),
     [
@@ -1058,6 +1140,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialShapeStyles,
       socialImageLayers,
       socialFooterBrandSide,
+      socialDateComponentSide,
+      socialDateTextFormat,
+      socialDateTextAlign,
+      socialFooterInfoSource,
+      socialFooterInfoLocationIcon,
+      socialFooterInfoEmptyMode,
+      socialFooterInfoEmptyName,
+      socialFooterInfoTextColor,
+      socialFooterInfoShadowColor,
       socialPreviewOverrideUrl,
     ],
   );
@@ -1140,6 +1231,37 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     );
     setSocialImageLayers(snap.socialImageLayers ?? {});
     setSocialFooterBrandSide(snap.socialFooterBrandSide === "right" ? "right" : "left");
+    setSocialDateComponentSide(snap.socialDateComponentSide === "right" ? "right" : "left");
+    setSocialDateTextFormat(snap.socialDateTextFormat === "range" ? "range" : "start");
+    setSocialDateTextAlign(snap.socialDateTextAlign === "left" ? "left" : "center");
+    setSocialFooterInfoSource(
+      snap.socialFooterInfoSource === "location"
+        ? "location"
+        : snap.socialFooterInfoSource === "cta"
+          ? "cta"
+          : "age",
+    );
+    setSocialFooterInfoLocationIcon(
+      snap.socialFooterInfoLocationIcon === "pin-location"
+        ? "pin-location"
+        : snap.socialFooterInfoLocationIcon === "maps"
+          ? "maps"
+          : "map-pin",
+    );
+    setSocialFooterInfoEmptyMode(
+      snap.socialFooterInfoEmptyMode === "name"
+        ? "name"
+        : snap.socialFooterInfoEmptyMode === "hash-name"
+          ? "hash-name"
+          : snap.socialFooterInfoEmptyMode === "tutoring"
+            ? "tutoring"
+            : "blank",
+    );
+    setSocialFooterInfoEmptyName(String(snap.socialFooterInfoEmptyName ?? ""));
+    setSocialFooterInfoTextColor(String(snap.socialFooterInfoTextColor ?? "#ffffff"));
+    setSocialFooterInfoShadowColor(
+      String(snap.socialFooterInfoShadowColor ?? "#000000"),
+    );
     setSocialPreviewOverrideUrl(snap.socialPreviewOverrideUrl ?? "");
     setTimeout(() => {
       socialApplyingHistoryRef.current = false;
@@ -1253,7 +1375,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const SOCIAL_FOOTER_LAYER_ID = "footer";
   const SOCIAL_BRAND_LAYER_ID = "brand";
   const SOCIAL_CONTACT_LAYER_ID = "contact";
+  const SOCIAL_DATE_BOX_LAYER_ID = "datebox";
   const SOCIAL_ANNOUNCEMENT_LAYER_ORDER = [
+    "cta",
+    "start",
+    SOCIAL_DATE_BOX_LAYER_ID,
     SOCIAL_CONTACT_LAYER_ID,
     SOCIAL_BRAND_LAYER_ID,
     SOCIAL_FOOTER_LAYER_ID,
@@ -1279,6 +1405,168 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ).trim();
   const socialFooterContactText =
     socialBusinessPhoneText || socialBusinessEmailText || "#tutoring";
+  const computeAnnouncementFooterInfo = ({
+    source,
+    ageRange,
+    locationDetail,
+    callToAction,
+    fallbackMode,
+    fallbackName,
+  }) => {
+    const ageText = String(ageRange ?? "").trim();
+    const locationText = String(locationDetail ?? "").trim();
+    const ctaText = String(callToAction ?? "").trim();
+    const allEmpty = !ageText && !locationText && !ctaText;
+
+    if (!allEmpty) {
+      if (source === "age") return { text: ageText, isLocation: false };
+      if (source === "location") return { text: locationText, isLocation: true };
+      return { text: ctaText, isLocation: false };
+    }
+
+    const cleanFallbackName = String(fallbackName ?? "").trim();
+    if (fallbackMode === "name") {
+      return {
+        text: cleanFallbackName || "#tutoring",
+        isLocation: false,
+      };
+    }
+    if (fallbackMode === "hash-name") {
+      return {
+        text: cleanFallbackName
+          ? `#${cleanFallbackName.replace(/^#+/, "")}`
+          : "#tutoring",
+        isLocation: false,
+      };
+    }
+    if (fallbackMode === "tutoring") {
+      return { text: "#tutoring", isLocation: false };
+    }
+    return { text: "", isLocation: false };
+  };
+  const socialAnnouncementFallbackNames = useMemo(
+    () =>
+      [
+        socialSelectedProduct?.product_name,
+        socialSelectedService?.display_name ?? socialSelectedService?.service_code,
+        socialSelectedSubject?.subject_name,
+        socialSelectedTopic?.topic_name,
+      ]
+        .map((v) => String(v ?? "").trim())
+        .filter(Boolean),
+    [
+      socialSelectedProduct?.product_name,
+      socialSelectedService?.display_name,
+      socialSelectedService?.service_code,
+      socialSelectedSubject?.subject_name,
+      socialSelectedTopic?.topic_name,
+    ],
+  );
+  const socialAnnouncementFooterInfo = useMemo(
+    () =>
+      computeAnnouncementFooterInfo({
+        source: socialFooterInfoSource,
+        ageRange: socialDraft.age_range,
+        locationDetail: socialDraft.location_detail,
+        callToAction: socialDraft.call_to_action,
+        fallbackMode: socialFooterInfoEmptyMode,
+        fallbackName: socialFooterInfoEmptyName,
+      }),
+    [
+      socialFooterInfoSource,
+      socialFooterInfoEmptyMode,
+      socialFooterInfoEmptyName,
+      socialDraft.age_range,
+      socialDraft.location_detail,
+      socialDraft.call_to_action,
+    ],
+  );
+  const measureAnnouncementFooterInfoHeight = ({
+    text,
+    isLocation,
+    footerTopY = 920,
+    footerGap = 25,
+  }: {
+    text: string;
+    isLocation: boolean;
+    footerTopY?: number;
+    footerGap?: number;
+  }) => {
+    const measured = measureWrappedSocialText({
+      text: String(text ?? ""),
+      fontSize: 120,
+      fontWeight: 800,
+      fontFamily:
+        socialFontFamily && socialFontFamily !== "inherit"
+          ? socialFontFamily
+          : "Poppins, sans-serif",
+      maxWidth: 1000,
+      minWidth: 1000,
+      paddingX: 12,
+      paddingY: 10,
+      lineHeightMultiplier: 1.05,
+      outlineWidth: 0,
+    });
+    const iconStackHeight = isLocation ? 132 : 0; // 120 icon + 12 gap
+    const rawHeight = measured.height + iconStackHeight + 16; // safety pad to avoid clipping
+    const maxVisibleHeight = Math.max(120, Math.floor(footerTopY - footerGap));
+    return clampLayerValue(rawHeight, 120, maxVisibleHeight);
+  };
+  const resolveAnnouncementFooterInfoFrame = ({
+    text,
+    isLocation,
+    footerFrame,
+  }: {
+    text: string;
+    isLocation: boolean;
+    footerFrame?: { x?: number; y?: number; width?: number; height?: number } | null;
+  }) => {
+    const normalizedFooterY = footerFrame?.y ?? 920;
+    const aspectWidth = Number(socialAspect?.width) || 1;
+    const aspectHeight = Number(socialAspect?.height) || 1;
+    const normalizedScaleY = Math.max(0.01, aspectHeight / aspectWidth);
+    const footerGap = Math.max(1, 25 / normalizedScaleY);
+    const height = measureAnnouncementFooterInfoHeight({
+      text,
+      isLocation,
+      footerTopY: normalizedFooterY,
+      footerGap,
+    });
+    const y = Math.max(0, normalizedFooterY - footerGap - height);
+    return {
+      x: 0,
+      y,
+      width: 1000,
+      height,
+    };
+  };
+  const resolveAnnouncementFooterFrame = () => {
+    const width = Number(socialAspect?.width) || 1;
+    const height = Number(socialAspect?.height) || 1;
+    const normalizedScaleY = Math.max(0.01, height / width);
+    const footerHeight = clampLayerValue(Math.round(80 / normalizedScaleY), 24, 200);
+    const y = clampLayerValue(1000 - footerHeight, 0, 1000 - footerHeight);
+    return {
+      x: 0,
+      y,
+      width: 1000,
+      height: footerHeight,
+    };
+  };
+  const resolveAnnouncementBrandLogoFrame = () => {
+    const width = Number(socialAspect?.width) || 1;
+    const height = Number(socialAspect?.height) || 1;
+    const normalizedScaleY = Math.max(0.01, height / width);
+    const logoHeight = clampLayerValue(Math.round(70 / normalizedScaleY), 20, 200);
+    const bottomPadding = Math.max(1, Math.round(5 / normalizedScaleY));
+    const y = clampLayerValue(1000 - bottomPadding - logoHeight, 0, 1000 - logoHeight);
+    return {
+      x: 20,
+      y,
+      width: 960,
+      height: logoHeight,
+    };
+  };
   const isSocialImageLayer = (layerId) =>
     layerId === "media" ||
     (layerId === SOCIAL_BRAND_LAYER_ID && socialHasBrandLogo) ||
@@ -1286,6 +1574,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const isSocialShapeLayer = (layerId) =>
     layerId === SOCIAL_HEADER_LAYER_ID ||
     layerId === SOCIAL_FOOTER_LAYER_ID ||
+    layerId === SOCIAL_DATE_BOX_LAYER_ID ||
     String(layerId || "").startsWith(SOCIAL_SHAPE_LAYER_PREFIX);
   const buildSocialShapeLayerId = () =>
     `${SOCIAL_SHAPE_LAYER_PREFIX}${Date.now()}-${socialShapeCounterRef.current++}`;
@@ -1364,7 +1653,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const generateBlankSocialPost = () => {
     const templateStyle = "Class announcement";
     const layoutPreset = "Bold headline";
-    const aspectRatio = "1:1";
+    const aspectRatio = SOCIAL_ASPECT_RATIOS.some(
+      (ratio) => ratio.value === socialDraft.aspect_ratio,
+    )
+      ? socialDraft.aspect_ratio
+      : "1:1";
     const isCompanyLogoMedia = (media) => media?.id === "company-logo";
     const allImages = socialMediaOptions.filter((media) => media.type === "PHOTO");
     const allBackgroundImages = allImages.filter((media) => !isCompanyLogoMedia(media));
@@ -1398,6 +1691,76 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const randomRectColor =
       colorChoices[Math.floor(Math.random() * colorChoices.length)] ?? "#0ea5e9";
     const randomBrandSide = Math.random() < 0.5 ? "left" : "right";
+    const randomDateSide = Math.random() < 0.5 ? "left" : "right";
+    const randomDateAlign = Math.random() < 0.5 ? "left" : "center";
+    const randomDateFormat: "start" | "range" = Math.random() < 0.5 ? "start" : "range";
+    const dateX = randomDateSide === "right" ? 650 : 50;
+    const dateWidth = 300;
+    const dateHeight = 250;
+    const dateColorChoices = [
+      "#0ea5e9",
+      "#22c55e",
+      "#f97316",
+      "#ef4444",
+      "#8b5cf6",
+      "#06b6d4",
+      "#14b8a6",
+      "#f59e0b",
+      "#e11d48",
+      "#6366f1",
+    ];
+    const randomDateColor =
+      dateColorChoices[Math.floor(Math.random() * dateColorChoices.length)] ?? "#06b6d4";
+    const randomFooterInfoSource =
+      (["age", "location", "cta"] as const)[
+        Math.floor(Math.random() * 3)
+      ] ?? "age";
+    const randomFooterInfoIcon =
+      (["map-pin", "pin-location", "maps"] as const)[
+        Math.floor(Math.random() * 3)
+      ] ?? "map-pin";
+    const footerTextColors = [
+      "#ffffff",
+      "#fde047",
+      "#fca5a5",
+      "#93c5fd",
+      "#86efac",
+      "#f9a8d4",
+      "#fdba74",
+      "#c4b5fd",
+    ];
+    const footerShadowColors = [
+      "#000000",
+      "#1f2937",
+      "#312e81",
+      "#7f1d1d",
+      "#14532d",
+      "#111827",
+      "#831843",
+      "#422006",
+    ];
+    const randomFooterTextColor =
+      footerTextColors[Math.floor(Math.random() * footerTextColors.length)] ?? "#ffffff";
+    const randomFooterShadowColor =
+      footerShadowColors[Math.floor(Math.random() * footerShadowColors.length)] ?? "#000000";
+    const randomFooterFallbackMode =
+      (["blank", "name", "hash-name", "tutoring"] as const)[
+        Math.floor(Math.random() * 4)
+      ] ?? "blank";
+    const randomFooterFallbackName =
+      socialAnnouncementFallbackNames.length > 0
+        ? socialAnnouncementFallbackNames[
+            Math.floor(Math.random() * socialAnnouncementFallbackNames.length)
+          ] ?? ""
+        : "";
+    const generatedFooterInfo = computeAnnouncementFooterInfo({
+      source: randomFooterInfoSource,
+      ageRange: socialDraft.age_range,
+      locationDetail: socialDraft.location_detail,
+      callToAction: socialDraft.call_to_action,
+      fallbackMode: randomFooterFallbackMode,
+      fallbackName: randomFooterFallbackName,
+    });
 
     const generatedHeadlineText =
       socialDraft.headline && socialDraft.headline.trim().length > 0
@@ -1419,6 +1782,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       outlineWidth: 2,
     });
     const headlineHeight = clampLayerValue(measuredHeadline.height, 70, 520);
+    const dateY = clampLayerValue(headlineHeight + 50, 0, 670);
+    const announcementFooterFrame = resolveAnnouncementFooterFrame();
+    const announcementBrandLogoFrame = resolveAnnouncementBrandLogoFrame();
+    const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
+      text: generatedFooterInfo.text,
+      isLocation: generatedFooterInfo.isLocation,
+      footerFrame: announcementFooterFrame,
+    });
 
     setSocialLayerOrder(chosenMedia ? [...SOCIAL_ANNOUNCEMENT_LAYER_ORDER] : []);
     setSocialLayerVisible(
@@ -1427,9 +1798,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             media: true,
             [SOCIAL_HEADER_LAYER_ID]: true,
             headline: true,
+            cta: true,
             [SOCIAL_FOOTER_LAYER_ID]: true,
             [SOCIAL_BRAND_LAYER_ID]: true,
             [SOCIAL_CONTACT_LAYER_ID]: true,
+            [SOCIAL_DATE_BOX_LAYER_ID]: true,
+            start: true,
           }
         : {},
     );
@@ -1439,9 +1813,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             media: false,
             [SOCIAL_HEADER_LAYER_ID]: false,
             headline: false,
+            cta: false,
             [SOCIAL_FOOTER_LAYER_ID]: false,
             [SOCIAL_BRAND_LAYER_ID]: false,
             [SOCIAL_CONTACT_LAYER_ID]: false,
+            [SOCIAL_DATE_BOX_LAYER_ID]: false,
+            start: false,
           }
         : {},
     );
@@ -1450,11 +1827,29 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         ? {
             [SOCIAL_HEADER_LAYER_ID]: { x: 0, y: 0, width: 1000, height: headlineHeight },
             headline: { x: 0, y: 0, width: 1000, height: headlineHeight },
-            [SOCIAL_FOOTER_LAYER_ID]: { x: 0, y: 920, width: 1000, height: 80 },
+            cta: footerInfoFrame,
+            [SOCIAL_FOOTER_LAYER_ID]: announcementFooterFrame,
             [SOCIAL_BRAND_LAYER_ID]: socialHasBrandLogo
-              ? { x: 20, y: 925, width: 960, height: 70 }
-              : { x: 0, y: 920, width: 1000, height: 80 },
-            [SOCIAL_CONTACT_LAYER_ID]: { x: 0, y: 920, width: 1000, height: 80 },
+              ? announcementBrandLogoFrame
+              : {
+                  x: 0,
+                  y: announcementFooterFrame.y,
+                  width: 1000,
+                  height: announcementFooterFrame.height,
+                },
+            [SOCIAL_CONTACT_LAYER_ID]: announcementFooterFrame,
+            [SOCIAL_DATE_BOX_LAYER_ID]: {
+              x: dateX,
+              y: dateY,
+              width: dateWidth,
+              height: dateHeight,
+            },
+            start: {
+              x: dateX,
+              y: dateY,
+              width: dateWidth,
+              height: dateHeight,
+            },
           }
         : {},
     );
@@ -1482,6 +1877,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               color: "#000000",
               opacity: 70,
             },
+            [SOCIAL_DATE_BOX_LAYER_ID]: {
+              kind: "rect",
+              color: randomDateColor,
+              opacity: 70,
+            },
           }
         : {},
     );
@@ -1493,10 +1893,25 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialTextFontSizes((prev) => ({
       ...prev,
       headline: 75,
+      start: 60,
     }));
+    setSocialToolShadowColor("#000000");
+    setSocialToolShadowOpacity(70);
+    setSocialToolShadowSize(6);
+    setSocialToolShadowAngle(135);
+    setSocialToolShadowDistance(6);
     setSocialToolOutlineColor("#000000");
     setSocialToolOutlineWidth(2);
     setSocialFooterBrandSide(randomBrandSide);
+    setSocialDateComponentSide(randomDateSide);
+    setSocialDateTextFormat(randomDateFormat);
+    setSocialDateTextAlign(randomDateAlign);
+    setSocialFooterInfoSource(randomFooterInfoSource);
+    setSocialFooterInfoLocationIcon(randomFooterInfoIcon);
+    setSocialFooterInfoTextColor(randomFooterTextColor);
+    setSocialFooterInfoShadowColor(randomFooterShadowColor);
+    setSocialFooterInfoEmptyMode(randomFooterFallbackMode);
+    setSocialFooterInfoEmptyName(randomFooterFallbackName);
     setSocialPreviewOverrideUrl(chosenMedia?.url ?? "");
     setSocialSelectedImageId(chosenMedia?.id ?? "");
     setSocialSelectedLayer(chosenMedia ? "headline" : "");
@@ -1505,7 +1920,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       template_style: templateStyle,
       layout_preset: layoutPreset,
       aspect_ratio: aspectRatio,
-      selected_template_id: "",
+      selected_template_id: `${aspectRatio}|${layoutPreset}`,
     }));
     setStatus(
       chosenMedia
@@ -1568,6 +1983,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       return socialDraft.start_date || "Start date";
     }
     if (layerId === "cta") {
+      if (
+        socialDraft.template_style === "Class announcement" &&
+        socialDraft.layout_preset === "Bold headline"
+      ) {
+        return socialAnnouncementFooterInfo.text || "";
+      }
       if (socialDraft.layout_preset === "Bold headline") {
         return socialDraft.call_to_action || socialDraft.start_date || "Call to action";
       }
@@ -2351,6 +2772,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     keyId,
     layerId = null,
     text = "",
+    content = null,
     fallbackSize = 24,
     x = 0,
     y = 0,
@@ -2366,6 +2788,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     paddingRight = 0,
     paddingTop = 0,
     paddingBottom = 0,
+    forceTextShadow = "",
+    forceTextColor = "",
+    forceFontSize = null,
+    forceLineHeight = null,
     onClick = null,
   }) => {
     if (layerId && !socialLayerVisible[layerId]) return null;
@@ -2450,9 +2876,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               }}
               style={{
                 ...textStyle,
+                ...(forceTextColor ? { color: forceTextColor } : null),
+                ...(forceFontSize ? { fontSize: `${forceFontSize}px` } : null),
+                ...(forceTextShadow ? { textShadow: forceTextShadow } : null),
                 textAlign,
-                color: textStyle.color ?? "#ffffff",
-                lineHeight: textStyle.lineHeight ?? 1.1,
+                color: forceTextColor || textStyle.color || "#ffffff",
+                lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
                 whiteSpace: "pre-wrap",
                 overflowWrap: "anywhere",
                 wordBreak: "break-word",
@@ -2465,11 +2894,120 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 touchAction: "none",
               }}
             >
-              {String(text || "")}
+              {content ?? String(text || "")}
             </div>
           </div>
         </foreignObject>
       </svg>
+    );
+  };
+
+  const socialRenderHtmlTextLayer = ({
+    keyId,
+    layerId = null,
+    text = "",
+    content = null,
+    fallbackSize = 24,
+    x = 0,
+    y = 0,
+    width = 1000,
+    height = 200,
+    alignX = "left",
+    alignY = "top",
+    fontWeight = 700,
+    paddingLeft = 0,
+    paddingRight = 0,
+    paddingTop = 0,
+    paddingBottom = 0,
+    forceTextShadow = "",
+    forceTextColor = "",
+    forceFontSize = null,
+    forceLineHeight = null,
+    onClick = null,
+  }) => {
+    if (layerId && !socialLayerVisible[layerId]) return null;
+    const layerFrame = layerId ? socialLayerFrames[layerId] : null;
+    const frame = {
+      x: layerFrame?.x ?? x,
+      y: layerFrame?.y ?? y,
+      width: layerFrame?.width ?? width,
+      height: layerFrame?.height ?? height,
+    };
+    const textStyle = layerId
+      ? previewTextStyle(layerId, fallbackSize)
+      : {
+          color: "#ffffff",
+          fontSize: `${fallbackSize}px`,
+          lineHeight: 1.1,
+          fontFamily: socialFontFamily,
+        };
+    const textAlign =
+      alignX === "left" ? "left" : alignX === "right" ? "right" : "center";
+    const justifyContent =
+      alignY === "top" ? "flex-start" : alignY === "bottom" ? "flex-end" : "center";
+
+    return (
+      <div
+        key={keyId}
+        className="absolute"
+        style={{
+          ...socialFrameToStyle(frame),
+          zIndex: layerId ? socialLayerZ(layerId) : 18,
+          pointerEvents: "auto",
+        }}
+      >
+        <div
+          className="h-full w-full"
+          style={{
+            display: "flex",
+            justifyContent,
+            flexDirection: "column",
+            boxSizing: "border-box",
+            paddingLeft: `${Math.max(0, paddingLeft)}px`,
+            paddingRight: `${Math.max(0, paddingRight)}px`,
+            paddingTop: `${Math.max(0, paddingTop)}px`,
+            paddingBottom: `${Math.max(0, paddingBottom)}px`,
+          }}
+        >
+          <div
+            onClick={(event) => {
+              event.stopPropagation();
+              if (onClick) onClick();
+              else if (layerId) {
+                socialSelectLayer(layerId);
+                if (socialActiveTool === "text" && isSocialTextLayer(layerId)) {
+                  socialOpenTextEditor(layerId);
+                }
+              }
+            }}
+            onPointerDown={(event) => {
+              if (!layerId) return;
+              beginSocialLayerDrag(layerId, event);
+            }}
+            style={{
+              ...textStyle,
+              ...(forceTextColor ? { color: forceTextColor } : null),
+              ...(forceFontSize ? { fontSize: `${forceFontSize}px` } : null),
+              ...(forceTextShadow ? { textShadow: forceTextShadow } : null),
+              ...(content ? { display: "block", width: "100%" } : null),
+              textAlign,
+              color: forceTextColor || textStyle.color || "#ffffff",
+              lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              fontWeight,
+              cursor:
+                layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
+                  ? "move"
+                  : "default",
+              touchAction: "none",
+            }}
+          >
+            {content ?? String(text || "")}
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -2479,12 +3017,84 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialDraft.template_style === "Class announcement";
       const topY =
         socialToolAlignY === "top" ? 52 : socialToolAlignY === "bottom" ? 290 : 160;
+      const dateX = socialDateComponentSide === "right" ? 650 : 50;
+      const layerOneFrame =
+        socialLayerFrames[SOCIAL_HEADER_LAYER_ID] ?? socialLayerFrames.headline;
+      const dateY = clampLayerValue(
+        ((layerOneFrame?.y ?? 0) + (layerOneFrame?.height ?? 0)) + 50,
+        0,
+        670,
+      );
+      const dateWidth = 300;
+      const dateHeight = 250;
+      const startDateText = String(socialDraft.start_date ?? "").trim();
+      const endDateText = String(socialDraft.end_date ?? "").trim();
+      const normalizeMdyShort = (value: string) => {
+        const v = String(value ?? "").trim();
+        if (!v) return "";
+        const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return v;
+        const mm = Number.parseInt(m[2] ?? "0", 10);
+        const dd = Number.parseInt(m[3] ?? "0", 10);
+        const yy = Number.parseInt((m[1] ?? "00").slice(-2), 10);
+        if (!mm || !dd) return v;
+        return `${mm}/${dd}/${yy.toString().padStart(2, "0")}`;
+      };
+      const startShort = normalizeMdyShort(startDateText);
+      const endShort = normalizeMdyShort(endDateText);
+      const useRangeFormat =
+        isAnnouncement &&
+        socialDateTextFormat === "range" &&
+        startDateText.length > 0 &&
+        endDateText.length > 0;
+      const dateLineText =
+        !startDateText && !endDateText
+          ? "Starting\nSoon"
+          : useRangeFormat
+            ? `${startShort} -\n${endShort}`
+            : `Starting\n${startShort || "Soon"}`;
       const brandAlignX = socialFooterBrandSide === "right" ? "right" : "left";
       const brandPaddingLeft = socialFooterBrandSide === "right" ? 0 : 20;
       const brandPaddingRight = socialFooterBrandSide === "right" ? 20 : 0;
       const contactAlignX = socialFooterBrandSide === "right" ? "left" : "right";
       const contactPaddingLeft = socialFooterBrandSide === "right" ? 10 : 0;
       const contactPaddingRight = socialFooterBrandSide === "right" ? 0 : 10;
+      const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
+      const effectiveFooterFrame =
+        socialLayerFrames[SOCIAL_FOOTER_LAYER_ID] ?? resolveAnnouncementFooterFrame();
+      const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
+        text: footerInfoText,
+        isLocation: Boolean(socialAnnouncementFooterInfo.isLocation),
+        footerFrame: effectiveFooterFrame,
+      });
+      const footerInfoIcon =
+        socialFooterInfoLocationIcon === "pin-location"
+          ? PinLocation01Icon
+          : socialFooterInfoLocationIcon === "maps"
+            ? MapsIcon
+            : MapPinIcon;
+      const footerInfoContent =
+        socialAnnouncementFooterInfo.isLocation && footerInfoText ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "12px",
+            }}
+          >
+            <HugeiconsIcon
+              icon={footerInfoIcon}
+              size={120}
+              color={socialFooterInfoTextColor}
+            />
+            <span>{footerInfoText}</span>
+          </div>
+        ) : null;
+      const footerInfoShadowCss = `6px 6px 8px ${socialFooterInfoShadowColor}`;
+      const headlinePaddingLeft = socialToolAlignX === "left" ? 15 : 0;
+      const headlinePaddingRight = socialToolAlignX === "right" ? 15 : 0;
       return (
         <>
           {socialRenderSvgTextLayer({
@@ -2500,17 +3110,36 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             alignX: socialToolAlignX,
             alignY: isAnnouncement ? "center" : "top",
             fontWeight: 800,
+            paddingLeft: headlinePaddingLeft,
+            paddingRight: headlinePaddingRight,
           })}
+          {isAnnouncement
+            ? socialRenderSvgTextLayer({
+                keyId: "announcement-date-text",
+                layerId: "start",
+                text: dateLineText,
+                fallbackSize: 60,
+                x: dateX,
+                y: dateY,
+                width: dateWidth,
+                height: dateHeight,
+                alignX: socialDateTextAlign,
+                alignY: "center",
+                fontWeight: 700,
+                paddingLeft: socialDateTextAlign === "left" ? 10 : 0,
+                forceTextShadow: "6px 6px 6px rgba(0, 0, 0, 0.7)",
+              })
+            : null}
           {isAnnouncement && !socialHasBrandLogo
             ? socialRenderSvgTextLayer({
                 keyId: "announcement-brand-text",
                 layerId: SOCIAL_BRAND_LAYER_ID,
                 text: socialCompanyNameText,
                 fallbackSize: 30,
-                x: 0,
-                y: 920,
-                width: 1000,
-                height: 80,
+                x: effectiveFooterFrame.x,
+                y: effectiveFooterFrame.y,
+                width: effectiveFooterFrame.width,
+                height: effectiveFooterFrame.height,
                 alignX: brandAlignX,
                 alignY: "center",
                 fontWeight: 700,
@@ -2519,20 +3148,21 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               })
             : null}
           {isAnnouncement
-            ? socialRenderSvgTextLayer({
+            ? socialRenderHtmlTextLayer({
                 keyId: "announcement-contact",
                 layerId: SOCIAL_CONTACT_LAYER_ID,
                 text: socialFooterContactText,
                 fallbackSize: 30,
-                x: 0,
-                y: 920,
-                width: 1000,
-                height: 80,
+                x: effectiveFooterFrame.x,
+                y: effectiveFooterFrame.y,
+                width: effectiveFooterFrame.width,
+                height: effectiveFooterFrame.height,
                 alignX: contactAlignX,
                 alignY: "center",
                 fontWeight: 700,
                 paddingLeft: contactPaddingLeft,
                 paddingRight: contactPaddingRight,
+                forceLineHeight: 1,
               })
             : socialRenderSvgTextLayer({
                 keyId: "bold-cta",
@@ -2547,6 +3177,26 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 alignY: "top",
                 fontWeight: 700,
               })}
+          {isAnnouncement
+            ? socialRenderSvgTextLayer({
+                keyId: "announcement-footer-info",
+                layerId: "cta",
+                text: footerInfoText,
+                content: footerInfoContent,
+                fallbackSize: 120,
+                x: footerInfoFrame.x,
+                y: footerInfoFrame.y,
+                width: footerInfoFrame.width,
+                height: footerInfoFrame.height,
+                alignX: "center",
+                alignY: "bottom",
+                fontWeight: 800,
+                forceTextColor: socialFooterInfoTextColor,
+                forceFontSize: 120,
+                forceTextShadow: footerInfoShadowCss,
+                forceLineHeight: 1.05,
+              })
+            : null}
         </>
       );
     }
