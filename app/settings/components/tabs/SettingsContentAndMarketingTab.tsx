@@ -426,7 +426,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialToolFontSize, setSocialToolFontSize] = useState(48);
   const [socialTextFontSizes, setSocialTextFontSizes] = useState({
     headline: 48,
-    start: 22,
+    start: 30,
     cta: 20,
   });
   const [socialToolAlignX, setSocialToolAlignX] = useState("center");
@@ -1175,7 +1175,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialTextFontSizes(
       snap.socialTextFontSizes ?? {
         headline: 48,
-        start: 22,
+        start: 30,
         cta: 20,
       },
     );
@@ -1372,6 +1372,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const SOCIAL_BRAND_LAYER_ID = "brand";
   const SOCIAL_CONTACT_LAYER_ID = "contact";
   const SOCIAL_DATE_BOX_LAYER_ID = "datebox";
+  const SOCIAL_ANNOUNCEMENT_DATE_FONT_PT = 30;
   const SOCIAL_ANNOUNCEMENT_LAYER_ORDER = [
     "cta",
     "start",
@@ -1488,7 +1489,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   }) => {
     const measured = measureWrappedSocialText({
       text: String(text ?? ""),
-      fontSize: 120,
+      fontSize: 100,
       fontWeight: 800,
       fontFamily:
         socialFontFamily && socialFontFamily !== "inherit"
@@ -1882,7 +1883,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialTextFontSizes((prev) => ({
       ...prev,
       headline: 75,
-      start: 60,
+      start: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
     }));
     setSocialToolShadowColor("#000000");
     setSocialToolShadowOpacity(70);
@@ -3077,11 +3078,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             paddingRight: headlinePaddingRight,
           })}
           {isAnnouncement
-            ? socialRenderSvgTextLayer({
+            ? socialRenderHtmlTextLayer({
                 keyId: "announcement-date-text",
                 layerId: "start",
                 text: dateLineText,
-                fallbackSize: 60,
+                fallbackSize: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
+                forceFontSize: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
                 x: dateX,
                 y: dateY,
                 width: dateWidth,
@@ -3090,6 +3092,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 alignY: "center",
                 fontWeight: 700,
                 paddingLeft: socialDateTextAlign === "left" ? 10 : 0,
+                paddingTop: 0,
+                paddingBottom: 0,
+                forceLineHeight: 1,
                 forceTextShadow: "6px 6px 6px rgba(0, 0, 0, 0.7)",
               })
             : null}
@@ -3145,7 +3150,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 keyId: "announcement-footer-info",
                 layerId: "cta",
                 text: footerInfoText,
-                fallbackSize: 120,
+                fallbackSize: 100,
                 x: footerInfoFrame.x,
                 y: footerInfoFrame.y,
                 width: footerInfoFrame.width,
@@ -3155,7 +3160,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 fontWeight: 800,
                 paddingBottom: 8,
                 forceTextColor: socialFooterInfoTextColor,
-                forceFontSize: 120,
+                forceFontSize: 100,
                 forceTextShadow: footerInfoShadowCss,
                 forceLineHeight: 1.1,
               })
