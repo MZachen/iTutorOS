@@ -10,10 +10,7 @@ import {
   CursorTextIcon,
   Image01Icon,
   Layers01Icon,
-  MapsIcon,
-  MapPinIcon,
   LockIcon,
-  PinLocation01Icon,
   RedoIcon,
   StrokeCenterIcon,
   StrokeInsideIcon,
@@ -772,7 +769,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
         const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
           text: footerInfoText,
-          isLocation: Boolean(socialAnnouncementFooterInfo.isLocation),
           footerFrame: next[SOCIAL_FOOTER_LAYER_ID],
         });
         const footerInfoCurrent = next.cta ?? {
@@ -1483,12 +1479,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   );
   const measureAnnouncementFooterInfoHeight = ({
     text,
-    isLocation,
     footerTopY = 920,
     footerGap = 25,
   }: {
     text: string;
-    isLocation: boolean;
     footerTopY?: number;
     footerGap?: number;
   }) => {
@@ -1502,23 +1496,20 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           : "Poppins, sans-serif",
       maxWidth: 1000,
       minWidth: 1000,
-      paddingX: 12,
-      paddingY: 10,
-      lineHeightMultiplier: 1.05,
+      paddingX: 16,
+      paddingY: 14,
+      lineHeightMultiplier: 1.1,
       outlineWidth: 0,
     });
-    const iconStackHeight = isLocation ? 132 : 0; // 120 icon + 12 gap
-    const rawHeight = measured.height + iconStackHeight + 16; // safety pad to avoid clipping
-    const maxVisibleHeight = Math.max(120, Math.floor(footerTopY - footerGap));
-    return clampLayerValue(rawHeight, 120, maxVisibleHeight);
+    const rawHeight = measured.height + 56; // extra room for shadow/descenders
+    const maxVisibleHeight = Math.max(160, Math.floor(footerTopY - footerGap));
+    return clampLayerValue(rawHeight, 160, maxVisibleHeight);
   };
   const resolveAnnouncementFooterInfoFrame = ({
     text,
-    isLocation,
     footerFrame,
   }: {
     text: string;
-    isLocation: boolean;
     footerFrame?: { x?: number; y?: number; width?: number; height?: number } | null;
   }) => {
     const normalizedFooterY = footerFrame?.y ?? 920;
@@ -1528,7 +1519,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const footerGap = Math.max(1, 25 / normalizedScaleY);
     const height = measureAnnouncementFooterInfoHeight({
       text,
-      isLocation,
       footerTopY: normalizedFooterY,
       footerGap,
     });
@@ -1787,7 +1777,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const announcementBrandLogoFrame = resolveAnnouncementBrandLogoFrame();
     const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
       text: generatedFooterInfo.text,
-      isLocation: generatedFooterInfo.isLocation,
       footerFrame: announcementFooterFrame,
     });
 
@@ -3064,34 +3053,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialLayerFrames[SOCIAL_FOOTER_LAYER_ID] ?? resolveAnnouncementFooterFrame();
       const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
         text: footerInfoText,
-        isLocation: Boolean(socialAnnouncementFooterInfo.isLocation),
         footerFrame: effectiveFooterFrame,
       });
-      const footerInfoIcon =
-        socialFooterInfoLocationIcon === "pin-location"
-          ? PinLocation01Icon
-          : socialFooterInfoLocationIcon === "maps"
-            ? MapsIcon
-            : MapPinIcon;
-      const footerInfoContent =
-        socialAnnouncementFooterInfo.isLocation && footerInfoText ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "12px",
-            }}
-          >
-            <HugeiconsIcon
-              icon={footerInfoIcon}
-              size={120}
-              color={socialFooterInfoTextColor}
-            />
-            <span>{footerInfoText}</span>
-          </div>
-        ) : null;
       const footerInfoShadowCss = `6px 6px 8px ${socialFooterInfoShadowColor}`;
       const headlinePaddingLeft = socialToolAlignX === "left" ? 15 : 0;
       const headlinePaddingRight = socialToolAlignX === "right" ? 15 : 0;
@@ -3178,11 +3141,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 fontWeight: 700,
               })}
           {isAnnouncement
-            ? socialRenderSvgTextLayer({
+            ? socialRenderHtmlTextLayer({
                 keyId: "announcement-footer-info",
                 layerId: "cta",
                 text: footerInfoText,
-                content: footerInfoContent,
                 fallbackSize: 120,
                 x: footerInfoFrame.x,
                 y: footerInfoFrame.y,
@@ -3191,10 +3153,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 alignX: "center",
                 alignY: "bottom",
                 fontWeight: 800,
+                paddingBottom: 8,
                 forceTextColor: socialFooterInfoTextColor,
                 forceFontSize: 120,
                 forceTextShadow: footerInfoShadowCss,
-                forceLineHeight: 1.05,
+                forceLineHeight: 1.1,
               })
             : null}
         </>
