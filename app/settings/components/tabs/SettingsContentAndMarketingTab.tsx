@@ -3130,7 +3130,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             width: 890,
             height: 250,
             alignX: socialToolAlignX,
-            alignY: "top",
+            alignY: "center",
             fontWeight: 800,
             paddingLeft: headlinePaddingLeft,
             paddingRight: headlinePaddingRight,
