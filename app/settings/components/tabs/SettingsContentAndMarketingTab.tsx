@@ -488,7 +488,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialFooterInfoShadowColor, setSocialFooterInfoShadowColor] =
     useState("#000000");
   const [socialPreviewDropActive, setSocialPreviewDropActive] = useState(false);
+  const [socialPreviewZoomMode, setSocialPreviewZoomMode] = useState<
+    "fit" | "100" | "150" | "200"
+  >("fit");
+  const [socialPreviewFitScale, setSocialPreviewFitScale] = useState(1);
+  const [socialPreviewIsPanning, setSocialPreviewIsPanning] = useState(false);
   const socialPreviewRef = useRef(null);
+  const socialPreviewViewportRef = useRef(null);
+  const socialPreviewPanStateRef = useRef(null);
   const [socialShadowPopupOpen, setSocialShadowPopupOpen] = useState(false);
   const [socialOutlinePopupOpen, setSocialOutlinePopupOpen] = useState(false);
   const [socialFontPopupOpen, setSocialFontPopupOpen] = useState(false);
@@ -528,6 +535,31 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     contact: "Contact",
     datebox: "Date Box",
   };
+  const SOCIAL_PREVIEW_ZOOM_MODES = [
+    { value: "fit", label: "Fit" },
+    { value: "100", label: "100%" },
+    { value: "150", label: "150%" },
+    { value: "200", label: "200%" },
+  ] as const;
+  const socialDesignWidth = Math.max(1, Number(socialAspect?.width) || 1080);
+  const socialDesignHeight = Math.max(1, Number(socialAspect?.height) || 1080);
+  const socialPreviewScale = useMemo(() => {
+    if (socialPreviewZoomMode === "fit") {
+      return Math.max(0.05, Math.min(4, socialPreviewFitScale));
+    }
+    const percent = Number.parseInt(socialPreviewZoomMode, 10);
+    if (!Number.isFinite(percent) || percent <= 0) return 1;
+    return Math.max(0.05, Math.min(4, percent / 100));
+  }, [socialPreviewFitScale, socialPreviewZoomMode]);
+  const socialPreviewScaledWidth = Math.max(
+    1,
+    Math.round(socialDesignWidth * socialPreviewScale),
+  );
+  const socialPreviewScaledHeight = Math.max(
+    1,
+    Math.round(socialDesignHeight * socialPreviewScale),
+  );
+  const socialPreviewOverflowEnabled = socialPreviewZoomMode !== "fit";
   const clampLayerValue = (value, min, max) => Math.max(min, Math.min(max, value));
   const socialFrameToStyle = (frame) => ({
     left: `${(frame.x / 1000) * 100}%`,
@@ -566,6 +598,77 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       start: { x: 40, y: 60, width: 500, height: 140 },
       cta: { x: 55, y: 420, width: 890, height: 220 },
     };
+  };
+
+  useEffect(() => {
+    const viewport = socialPreviewViewportRef.current;
+    if (!viewport) return;
+    const recomputeFitScale = () => {
+      const viewportWidth = Math.max(1, viewport.clientWidth - 8);
+      const viewportHeight = Math.max(1, viewport.clientHeight - 8);
+      const fitScale = Math.min(
+        viewportWidth / socialDesignWidth,
+        viewportHeight / socialDesignHeight,
+      );
+      setSocialPreviewFitScale(Math.max(0.05, Math.min(4, fitScale)));
+    };
+    recomputeFitScale();
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => recomputeFitScale());
+      resizeObserver.observe(viewport);
+    }
+    window.addEventListener("resize", recomputeFitScale);
+    return () => {
+      if (resizeObserver) resizeObserver.disconnect();
+      window.removeEventListener("resize", recomputeFitScale);
+    };
+  }, [socialDesignHeight, socialDesignWidth]);
+
+  const beginSocialPreviewPan = (event) => {
+    if (socialPreviewZoomMode === "fit") return;
+    if (event.button !== 0) return;
+    const viewport = socialPreviewViewportRef.current;
+    if (!viewport) return;
+    if (event.target !== event.currentTarget) return;
+    socialPreviewPanStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: viewport.scrollLeft,
+      startScrollTop: viewport.scrollTop,
+    };
+    if (event.currentTarget?.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    setSocialPreviewIsPanning(true);
+    event.preventDefault();
+  };
+
+  const onSocialPreviewPanMove = (event) => {
+    const panState = socialPreviewPanStateRef.current;
+    if (!panState || panState.pointerId !== event.pointerId) return;
+    const viewport = socialPreviewViewportRef.current;
+    if (!viewport) return;
+    const deltaX = event.clientX - panState.startClientX;
+    const deltaY = event.clientY - panState.startClientY;
+    viewport.scrollLeft = panState.startScrollLeft - deltaX;
+    viewport.scrollTop = panState.startScrollTop - deltaY;
+    event.preventDefault();
+  };
+
+  const endSocialPreviewPan = (event) => {
+    const panState = socialPreviewPanStateRef.current;
+    if (!panState || panState.pointerId !== event.pointerId) return;
+    if (event.currentTarget?.releasePointerCapture) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {}
+    }
+    socialPreviewPanStateRef.current = null;
+    setSocialPreviewIsPanning(false);
+    event.preventDefault();
   };
 
   useEffect(() => {
@@ -1660,6 +1763,48 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
   };
 
+  const announcementDefaultsByAspect = (aspectRatio) => {
+    switch (aspectRatio) {
+      case "16:9":
+        return {
+          headlineFont: 58,
+          dateWidth: 240,
+          dateHeight: 165,
+          dateOffsetY: 36,
+          dateMarginX: 36,
+          footerInfoFont: 64,
+        };
+      case "4:5":
+        return {
+          headlineFont: 75,
+          dateWidth: 300,
+          dateHeight: 250,
+          dateOffsetY: 50,
+          dateMarginX: 50,
+          footerInfoFont: 75,
+        };
+      case "9:16":
+        return {
+          headlineFont: 68,
+          dateWidth: 290,
+          dateHeight: 240,
+          dateOffsetY: 45,
+          dateMarginX: 45,
+          footerInfoFont: 70,
+        };
+      case "1:1":
+      default:
+        return {
+          headlineFont: 75,
+          dateWidth: 300,
+          dateHeight: 250,
+          dateOffsetY: 50,
+          dateMarginX: 50,
+          footerInfoFont: 75,
+        };
+    }
+  };
+
   const generateBlankSocialPost = () => {
     const templateStyle = "Class announcement";
     const layoutPreset = "Bold headline";
@@ -1704,9 +1849,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const randomDateSide = Math.random() < 0.5 ? "left" : "right";
     const randomDateAlign = Math.random() < 0.5 ? "left" : "center";
     const randomDateFormat: "start" | "range" = Math.random() < 0.5 ? "start" : "range";
-    const dateX = randomDateSide === "right" ? 650 : 50;
-    const dateWidth = 300;
-    const dateHeight = 250;
+    const aspectDefaults = announcementDefaultsByAspect(aspectRatio);
+    const dateX =
+      randomDateSide === "right"
+        ? 1000 - aspectDefaults.dateWidth - aspectDefaults.dateMarginX
+        : aspectDefaults.dateMarginX;
+    const dateWidth = aspectDefaults.dateWidth;
+    const dateHeight = aspectDefaults.dateHeight;
     const dateColorChoices = [
       "#0ea5e9",
       "#22c55e",
@@ -1778,7 +1927,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         : "Add Headline";
     const measuredHeadline = measureWrappedSocialText({
       text: generatedHeadlineText,
-      fontSize: 75,
+      fontSize: aspectDefaults.headlineFont,
       fontWeight: 800,
       fontFamily:
         socialFontFamily && socialFontFamily !== "inherit"
@@ -1797,12 +1946,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       70,
       520,
     );
-    const dateY = clampLayerValue(headlineHeight + 50, 0, 670);
+    const dateY = clampLayerValue(headlineHeight + aspectDefaults.dateOffsetY, 0, 780);
     const announcementFooterFrame = resolveAnnouncementFooterFrame();
     const announcementBrandLogoFrame = resolveAnnouncementBrandLogoFrame();
     const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
       text: generatedFooterInfo.text,
-      fontSize: resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
+      fontSize:
+        aspectDefaults.footerInfoFont ||
+        resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
       footerFrame: announcementFooterFrame,
     });
 
@@ -1904,12 +2055,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialToolAlignX(randomAlign);
     setSocialToolAlignY("center");
     setSocialToolColor("#ffffff");
-    setSocialToolFontSize(75);
+    setSocialToolFontSize(aspectDefaults.headlineFont);
     setSocialTextFontSizes((prev) => ({
       ...prev,
-      headline: 75,
+      headline: aspectDefaults.headlineFont,
       start: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
-      cta: resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
+      cta:
+        aspectDefaults.footerInfoFont ||
+        resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
     }));
     setSocialToolShadowColor("#000000");
     setSocialToolShadowOpacity(70);
@@ -2057,12 +2210,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     outlineWidth = 0,
     tightHeight = false,
   }) => {
-    const previewRect =
-      typeof window !== "undefined" ? socialPreviewRef.current?.getBoundingClientRect() : null;
-    const pxPerUnitX =
-      previewRect && previewRect.width > 0 ? previewRect.width / 1000 : 1;
-    const pxPerUnitY =
-      previewRect && previewRect.height > 0 ? previewRect.height / 1000 : pxPerUnitX;
+    // Always measure against native design dimensions (not zoomed preview pixels)
+    // so export layout remains sharp and consistent across zoom modes.
+    const pxPerUnitX = socialDesignWidth / 1000;
+    const pxPerUnitY = socialDesignHeight / 1000;
     const toPxX = (value) => Math.max(0, Number(value) || 0) * pxPerUnitX;
     const toPxY = (value) => Math.max(0, Number(value) || 0) * pxPerUnitY;
     const toUnitsX = (value) =>
