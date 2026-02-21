@@ -614,9 +614,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             maxWidth: 1000,
             minWidth: 1000,
             paddingX: 24,
-            paddingY: 16,
-            lineHeightMultiplier: 1.1,
+            paddingY: 0,
+            lineHeightMultiplier: 0.9,
             outlineWidth: socialToolOutlineWidth,
+            tightHeight: true,
           });
 
           const width = 1000;
@@ -684,22 +685,22 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         const headlineFrame = next.headline;
         if (headlineFrame) {
           const shapeCurrent = next[SOCIAL_HEADER_LAYER_ID] ?? {
-            x: 0,
-            y: 0,
-            width: 1000,
+            x: headlineFrame.x,
+            y: headlineFrame.y,
+            width: headlineFrame.width,
             height: headlineFrame.height,
           };
           if (
-            shapeCurrent.x !== 0 ||
-            shapeCurrent.y !== 0 ||
-            shapeCurrent.width !== 1000 ||
+            shapeCurrent.x !== headlineFrame.x ||
+            shapeCurrent.y !== headlineFrame.y ||
+            shapeCurrent.width !== headlineFrame.width ||
             shapeCurrent.height !== headlineFrame.height
           ) {
             next[SOCIAL_HEADER_LAYER_ID] = {
               ...shapeCurrent,
-              x: 0,
-              y: 0,
-              width: 1000,
+              x: headlineFrame.x,
+              y: headlineFrame.y,
+              width: headlineFrame.width,
               height: headlineFrame.height,
             };
             changed = true;
@@ -767,8 +768,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         }
 
         const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
+        const footerInfoFontPt = resolveAnnouncementFooterInfoFontPt(footerInfoText);
         const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
           text: footerInfoText,
+          fontSize: footerInfoFontPt,
           footerFrame: next[SOCIAL_FOOTER_LAYER_ID],
         });
         const footerInfoCurrent = next.cta ?? {
@@ -1478,18 +1481,23 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialDraft.call_to_action,
     ],
   );
+  const resolveAnnouncementFooterInfoFontPt = (value: string) =>
+    String(value ?? "").trim().toLowerCase() === "elementary school camps" ? 70 : 100;
+
   const measureAnnouncementFooterInfoHeight = ({
     text,
+    fontSize = 100,
     footerTopY = 920,
     footerGap = 25,
   }: {
     text: string;
+    fontSize?: number;
     footerTopY?: number;
     footerGap?: number;
   }) => {
     const measured = measureWrappedSocialText({
       text: String(text ?? ""),
-      fontSize: 100,
+      fontSize: Math.max(8, Number(fontSize) || 100),
       fontWeight: 800,
       fontFamily:
         socialFontFamily && socialFontFamily !== "inherit"
@@ -1502,15 +1510,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       lineHeightMultiplier: 1.1,
       outlineWidth: 0,
     });
-    const rawHeight = measured.height + 56; // extra room for shadow/descenders
+    const shadowPad = Math.max(56, Math.ceil((Number(fontSize) || 100) * 0.9));
+    const rawHeight = measured.height + shadowPad; // extra room for shadow/descenders
     const maxVisibleHeight = Math.max(160, Math.floor(footerTopY - footerGap));
     return clampLayerValue(rawHeight, 160, maxVisibleHeight);
   };
   const resolveAnnouncementFooterInfoFrame = ({
     text,
+    fontSize = 100,
     footerFrame,
   }: {
     text: string;
+    fontSize?: number;
     footerFrame?: { x?: number; y?: number; width?: number; height?: number } | null;
   }) => {
     const normalizedFooterY = footerFrame?.y ?? 920;
@@ -1520,6 +1531,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const footerGap = Math.max(1, 25 / normalizedScaleY);
     const height = measureAnnouncementFooterInfoHeight({
       text,
+      fontSize,
       footerTopY: normalizedFooterY,
       footerGap,
     });
@@ -1768,16 +1780,22 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       maxWidth: 1000,
       minWidth: 1000,
       paddingX: 24,
-      paddingY: 16,
-      lineHeightMultiplier: 1.1,
+      paddingY: 0,
+      lineHeightMultiplier: 0.9,
       outlineWidth: 2,
+      tightHeight: true,
     });
-    const headlineHeight = clampLayerValue(measuredHeadline.height, 70, 520);
+    const headlineHeight = clampLayerValue(
+      measuredHeadline.height,
+      70,
+      520,
+    );
     const dateY = clampLayerValue(headlineHeight + 50, 0, 670);
     const announcementFooterFrame = resolveAnnouncementFooterFrame();
     const announcementBrandLogoFrame = resolveAnnouncementBrandLogoFrame();
     const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
       text: generatedFooterInfo.text,
+      fontSize: resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
       footerFrame: announcementFooterFrame,
     });
 
@@ -2029,7 +2047,21 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     paddingY = 10,
     lineHeightMultiplier = 1.1,
     outlineWidth = 0,
+    tightHeight = false,
   }) => {
+    const previewRect =
+      typeof window !== "undefined" ? socialPreviewRef.current?.getBoundingClientRect() : null;
+    const pxPerUnitX =
+      previewRect && previewRect.width > 0 ? previewRect.width / 1000 : 1;
+    const pxPerUnitY =
+      previewRect && previewRect.height > 0 ? previewRect.height / 1000 : pxPerUnitX;
+    const toPxX = (value) => Math.max(0, Number(value) || 0) * pxPerUnitX;
+    const toPxY = (value) => Math.max(0, Number(value) || 0) * pxPerUnitY;
+    const toUnitsX = (value) =>
+      pxPerUnitX > 0 ? Math.max(0, Number(value) || 0) / pxPerUnitX : 0;
+    const toUnitsY = (value) =>
+      pxPerUnitY > 0 ? Math.max(0, Number(value) || 0) / pxPerUnitY : 0;
+
     if (typeof document === "undefined") {
       return {
         width: Math.max(minWidth, Math.min(maxWidth, minWidth)),
@@ -2055,8 +2087,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const safeFontWeight = Number(fontWeight) || 700;
     ctx2d.font = `${safeFontWeight} ${fontSize}px ${safeFontFamily}`;
 
-    const strokePad = Math.max(0, Number(outlineWidth) || 0) * 2 + 2;
-    const innerMaxWidth = Math.max(20, maxWidth - paddingX * 2 - strokePad);
+    const outlinePad = Math.max(0, Number(outlineWidth) || 0);
+    const strokePadX = outlinePad * 2 + 2;
+    const strokePadY = tightHeight ? outlinePad * 2 : strokePadX;
+    const maxWidthPx = Math.max(20, toPxX(maxWidth));
+    const minWidthPx = Math.max(1, toPxX(minWidth));
+    const paddingXPx = toPxX(paddingX);
+    const paddingYPx = toPxY(paddingY);
+    const innerMaxWidth = Math.max(20, maxWidthPx - paddingXPx * 2 - strokePadX);
     const lines = [];
 
     const breakLongWord = (word) => {
@@ -2118,22 +2156,22 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const lineHeight = Math.max(1, fontSize * lineHeightMultiplier);
     const contentHeight = normalizedLines.length * lineHeight;
 
-    const widthSafetyPad = Math.max(6, Math.ceil(fontSize * 0.22));
-    const measuredWidth = Math.ceil(
+    const widthSafetyPad = Math.max(2, strokePadX + 2);
+    const measuredWidthPx = Math.ceil(
       clampLayerValue(
-        contentWidth + paddingX * 2 + strokePad + widthSafetyPad,
-        minWidth,
-        maxWidth,
+        contentWidth + paddingXPx * 2 + strokePadX + widthSafetyPad,
+        minWidthPx,
+        maxWidthPx,
       ),
     );
-    const heightSafetyPad = Math.max(6, Math.ceil(fontSize * 0.35));
-    const measuredHeight = Math.ceil(
-      Math.max(36, contentHeight + paddingY * 2 + strokePad + heightSafetyPad),
+    const heightSafetyPad = tightHeight ? 0 : Math.max(2, strokePadY + 2);
+    const measuredHeightPx = Math.ceil(
+      Math.max(36, contentHeight + paddingYPx * 2 + strokePadY + heightSafetyPad),
     );
 
     return {
-      width: measuredWidth,
-      height: measuredHeight,
+      width: clampLayerValue(Math.ceil(toUnitsX(measuredWidthPx)), minWidth, maxWidth),
+      height: Math.max(16, Math.ceil(toUnitsY(measuredHeightPx))),
     };
   };
 
@@ -2231,6 +2269,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       startClientX: event.clientX,
       startClientY: event.clientY,
       initialFrame: frame,
+      initialFontSize: isSocialTextLayer(layerId)
+        ? socialTextFontSizes[layerId] ?? socialToolFontSize ?? 24
+        : null,
       rect,
     };
     if (event.currentTarget?.setPointerCapture) {
@@ -2359,6 +2400,33 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           [layerId]: { ...current, x, y, width, height },
         };
       });
+      if (isSocialTextLayer(layerId)) {
+        const baseFont = Math.max(
+          8,
+          Number(
+            resize.initialFontSize ??
+              socialTextFontSizes[layerId] ??
+              socialToolFontSize ??
+              24,
+          ) || 24,
+        );
+        const initialWidth = Math.max(1, Number(initialFrame.width) || 1);
+        const initialHeight = Math.max(1, Number(initialFrame.height) || 1);
+        const scaleX = width / initialWidth;
+        const scaleY = height / initialHeight;
+        const usesX = handle.includes("e") || handle.includes("w");
+        const usesY = handle.includes("n") || handle.includes("s");
+        const scale = usesX && usesY ? Math.max(scaleX, scaleY) : usesX ? scaleX : scaleY;
+        const nextFont = clampLayerValue(Math.round(baseFont * scale), 8, 220);
+        setSocialTextFontSizes((prev) => {
+          const current = Number(prev[layerId] ?? 0);
+          if (current === nextFont) return prev;
+          return { ...prev, [layerId]: nextFont };
+        });
+        if (socialSelectedLayer === layerId) {
+          setSocialToolFontSize(nextFont);
+        }
+      }
       event.preventDefault();
       return;
     }
@@ -2482,7 +2550,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     return (
       <div
         key={`selection-${layerId}`}
-        className="absolute"
+        className="pointer-events-none absolute"
         style={{
           ...socialFrameToStyle(frame),
           zIndex: socialLayerZ(layerId) + 2,
@@ -2494,7 +2562,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               <button
                 key={`${layerId}-${handle.key}`}
                 type="button"
-                className={`absolute h-3 w-3 rounded-full border border-blue-600 bg-white shadow-sm ${handle.className}`}
+                className={`pointer-events-auto absolute h-3 w-3 rounded-full border border-blue-600 bg-white shadow-sm ${handle.className}`}
                 title="Resize"
                 onPointerDown={(event) =>
                   beginSocialLayerResize(layerId, handle.key, event)
@@ -2786,10 +2854,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   }) => {
     if (layerId && !socialLayerVisible[layerId]) return null;
     const layerFrame = layerId ? socialLayerFrames[layerId] : null;
-    const frameX = layerFrame?.x ?? x;
-    const frameY = layerFrame?.y ?? y;
-    const frameWidth = layerFrame?.width ?? width;
-    const frameHeight = layerFrame?.height ?? height;
+    const frame = {
+      x: layerFrame?.x ?? x,
+      y: layerFrame?.y ?? y,
+      width: layerFrame?.width ?? width,
+      height: layerFrame?.height ?? height,
+    };
     const isTargeted = Boolean(layerId);
     const textStyle = isTargeted
       ? previewTextStyle(layerId, fallbackSize)
@@ -2805,90 +2875,76 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       alignY === "top" ? "flex-start" : alignY === "bottom" ? "flex-end" : "center";
 
     return (
-      <svg
+      <div
         key={keyId}
-        viewBox="0 0 1000 1000"
-        preserveAspectRatio="none"
-        className="absolute inset-0"
+        className="absolute"
         style={{
+          ...socialFrameToStyle(frame),
           zIndex: layerId ? socialLayerZ(layerId) : 18,
-          pointerEvents: "none",
+          pointerEvents: "auto",
         }}
       >
         {backgroundFill ? (
-          <rect
-            x={frameX}
-            y={frameY}
-            width={frameWidth}
-            height={frameHeight}
-            rx={borderRadius}
-            ry={borderRadius}
-            fill={backgroundFill}
-            fillOpacity={backgroundOpacity}
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundColor: backgroundFill,
+              opacity: Math.max(0, Math.min(1, Number(backgroundOpacity) || 0)),
+              borderRadius: `${Math.max(0, Number(borderRadius) || 0)}px`,
+            }}
           />
         ) : null}
-        <foreignObject
-          x={frameX}
-          y={frameY}
-          width={frameWidth}
-          height={frameHeight}
-          style={{ pointerEvents: "auto" }}
+        <div
+          className="relative h-full w-full"
+          style={{
+            display: "flex",
+            justifyContent,
+            flexDirection: "column",
+            boxSizing: "border-box",
+            paddingLeft: `${Math.max(0, paddingLeft)}px`,
+            paddingRight: `${Math.max(0, paddingRight)}px`,
+            paddingTop: `${Math.max(0, paddingTop)}px`,
+            paddingBottom: `${Math.max(0, paddingBottom)}px`,
+          }}
         >
           <div
-            xmlns="http://www.w3.org/1999/xhtml"
+            onClick={(event) => {
+              event.stopPropagation();
+              if (onClick) onClick();
+              else if (layerId) {
+                socialSelectLayer(layerId);
+                if (socialActiveTool === "text" && isSocialTextLayer(layerId)) {
+                  socialOpenTextEditor(layerId);
+                }
+              }
+            }}
+            onPointerDown={(event) => {
+              if (!layerId) return;
+              beginSocialLayerDrag(layerId, event);
+            }}
             style={{
-              height: "100%",
-              width: "100%",
-              display: "flex",
-              justifyContent,
-              flexDirection: "column",
-              boxSizing: "border-box",
-              paddingLeft: `${Math.max(0, paddingLeft)}px`,
-              paddingRight: `${Math.max(0, paddingRight)}px`,
-              paddingTop: `${Math.max(0, paddingTop)}px`,
-              paddingBottom: `${Math.max(0, paddingBottom)}px`,
+              ...textStyle,
+              ...(forceTextColor ? { color: forceTextColor } : null),
+              ...(forceFontSize ? { fontSize: `${forceFontSize}px` } : null),
+              ...(forceTextShadow ? { textShadow: forceTextShadow } : null),
+              textAlign,
+              color: forceTextColor || textStyle.color || "#ffffff",
+              lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              fontWeight,
+              cursor:
+                layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
+                  ? "move"
+                  : "default",
+              touchAction: "none",
             }}
           >
-            <div
-              onClick={(event) => {
-                event.stopPropagation();
-                if (onClick) onClick();
-                else if (layerId) {
-                  socialSelectLayer(layerId);
-                  if (socialActiveTool === "text" && isSocialTextLayer(layerId)) {
-                    socialOpenTextEditor(layerId);
-                  }
-                }
-              }}
-              onPointerDown={(event) => {
-                if (!layerId) return;
-                beginSocialLayerDrag(layerId, event);
-              }}
-              style={{
-                ...textStyle,
-                ...(forceTextColor ? { color: forceTextColor } : null),
-                ...(forceFontSize ? { fontSize: `${forceFontSize}px` } : null),
-                ...(forceTextShadow ? { textShadow: forceTextShadow } : null),
-                textAlign,
-                color: forceTextColor || textStyle.color || "#ffffff",
-                lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
-                whiteSpace: "pre-wrap",
-                overflowWrap: "anywhere",
-                wordBreak: "break-word",
-                fontWeight,
-                cursor:
-                  layerId && !socialLayerLocked[layerId] &&
-                  socialActiveTool === "pointer"
-                    ? "move"
-                    : "default",
-                touchAction: "none",
-              }}
-            >
-              {content ?? String(text || "")}
-            </div>
+            {content ?? String(text || "")}
           </div>
-        </foreignObject>
-      </svg>
+        </div>
+      </div>
     );
   };
 
@@ -3050,10 +3106,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       const contactPaddingLeft = socialFooterBrandSide === "right" ? 10 : 0;
       const contactPaddingRight = socialFooterBrandSide === "right" ? 0 : 10;
       const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
+      const footerInfoFontPt = resolveAnnouncementFooterInfoFontPt(footerInfoText);
       const effectiveFooterFrame =
         socialLayerFrames[SOCIAL_FOOTER_LAYER_ID] ?? resolveAnnouncementFooterFrame();
       const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
         text: footerInfoText,
+        fontSize: footerInfoFontPt,
         footerFrame: effectiveFooterFrame,
       });
       const footerInfoShadowCss = `6px 6px 8px ${socialFooterInfoShadowColor}`;
@@ -3072,10 +3130,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             width: 890,
             height: 250,
             alignX: socialToolAlignX,
-            alignY: isAnnouncement ? "center" : "top",
+            alignY: "top",
             fontWeight: 800,
             paddingLeft: headlinePaddingLeft,
             paddingRight: headlinePaddingRight,
+            paddingTop: isAnnouncement ? 0 : 0,
+            paddingBottom: isAnnouncement ? 0 : 0,
+            forceLineHeight: isAnnouncement ? 0.9 : null,
           })}
           {isAnnouncement
             ? socialRenderHtmlTextLayer({
@@ -3150,7 +3211,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 keyId: "announcement-footer-info",
                 layerId: "cta",
                 text: footerInfoText,
-                fallbackSize: 100,
+                fallbackSize: footerInfoFontPt,
                 x: footerInfoFrame.x,
                 y: footerInfoFrame.y,
                 width: footerInfoFrame.width,
@@ -3160,7 +3221,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 fontWeight: 800,
                 paddingBottom: 8,
                 forceTextColor: socialFooterInfoTextColor,
-                forceFontSize: 100,
+                forceFontSize: footerInfoFontPt,
                 forceTextShadow: footerInfoShadowCss,
                 forceLineHeight: 1.1,
               })
@@ -6153,7 +6214,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       ) {
                                         return;
                                       }
-                                      socialSelectLayer("headline");
+                                      const targetLayer = isSocialTextLayer(socialSelectedLayer)
+                                        ? socialSelectedLayer
+                                        : "headline";
+                                      socialSelectLayer(targetLayer);
+                                      if (socialActiveTool === "text") {
+                                        socialOpenTextEditor(targetLayer);
+                                      }
                                     }}
                                   >
                                     {socialLayerVisible.media ? (
