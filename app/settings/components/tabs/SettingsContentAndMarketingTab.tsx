@@ -427,7 +427,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialTextFontSizes, setSocialTextFontSizes] = useState({
     headline: 48,
     start: 30,
-    cta: 20,
+    cta: 75,
   });
   const [socialToolAlignX, setSocialToolAlignX] = useState("center");
   const [socialToolAlignY, setSocialToolAlignY] = useState("center");
@@ -768,7 +768,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         }
 
         const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
-        const footerInfoFontPt = resolveAnnouncementFooterInfoFontPt(footerInfoText);
+        const footerInfoFontPt = Math.max(
+          8,
+          Number(
+            socialTextFontSizes.cta ??
+              resolveAnnouncementFooterInfoFontPt(footerInfoText),
+          ) || resolveAnnouncementFooterInfoFontPt(footerInfoText),
+        );
         const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
           text: footerInfoText,
           fontSize: footerInfoFontPt,
@@ -1179,7 +1185,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       snap.socialTextFontSizes ?? {
         headline: 48,
         start: 30,
-        cta: 20,
+        cta: 75,
       },
     );
     setSocialToolAlignX(snap.socialToolAlignX ?? "center");
@@ -1481,12 +1487,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialDraft.call_to_action,
     ],
   );
-  const resolveAnnouncementFooterInfoFontPt = (value: string) =>
-    String(value ?? "").trim().toLowerCase() === "elementary school camps" ? 70 : 100;
+  const SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT = 75;
+  const resolveAnnouncementFooterInfoFontPt = (_value: string) =>
+    SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT;
 
   const measureAnnouncementFooterInfoHeight = ({
     text,
-    fontSize = 100,
+    fontSize = SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT,
     footerTopY = 920,
     footerGap = 25,
   }: {
@@ -1497,7 +1504,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   }) => {
     const measured = measureWrappedSocialText({
       text: String(text ?? ""),
-      fontSize: Math.max(8, Number(fontSize) || 100),
+      fontSize: Math.max(8, Number(fontSize) || SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT),
       fontWeight: 800,
       fontFamily:
         socialFontFamily && socialFontFamily !== "inherit"
@@ -1902,6 +1909,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       ...prev,
       headline: 75,
       start: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
+      cta: resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
     }));
     setSocialToolShadowColor("#000000");
     setSocialToolShadowOpacity(70);
@@ -2178,8 +2186,26 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const socialSelectLayer = (layerId) => {
     setSocialSelectedLayer(layerId);
     if (layerId === "headline" || layerId === "start" || layerId === "cta") {
+      const announcementCtaDefault =
+        socialDraft.template_style === "Class announcement" &&
+        socialDraft.layout_preset === "Bold headline"
+          ? resolveAnnouncementFooterInfoFontPt(
+              String(socialAnnouncementFooterInfo.text ?? ""),
+            )
+          : socialToolFontSize;
+      const nextSize =
+        layerId === "cta"
+          ? (socialTextFontSizes.cta ?? announcementCtaDefault)
+          : (socialTextFontSizes[layerId] ?? socialToolFontSize);
+      if (
+        layerId === "cta" &&
+        socialTextFontSizes.cta == null &&
+        Number.isFinite(Number(nextSize))
+      ) {
+        setSocialTextFontSizes((prev) => ({ ...prev, cta: Number(nextSize) }));
+      }
       setSocialToolTarget(layerId);
-      setSocialToolFontSize(socialTextFontSizes[layerId] ?? socialToolFontSize);
+      setSocialToolFontSize(Number(nextSize) || socialToolFontSize);
     }
   };
 
@@ -2739,7 +2765,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     if (layerId === "cta") {
       return (
         <div className="flex h-full w-full items-center justify-center">
-          <div className="h-4 w-[84%] rounded-full border border-white/50 bg-[#0b1f5f]/80 shadow-sm" />
+          <div className="w-[84%] overflow-hidden rounded-sm border border-white/40 bg-black/35 p-1">
+            <div className="h-1.5 w-full rounded-sm bg-white/90" />
+            <div className="mt-1 h-1.5 w-4/5 rounded-sm bg-white/70" />
+          </div>
         </div>
       );
     }
@@ -2826,7 +2855,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     },
   };
 
-  const socialRenderSvgTextLayer = ({
+  const socialRenderTextLayer = ({
     keyId,
     layerId = null,
     text = "",
@@ -3106,7 +3135,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       const contactPaddingLeft = socialFooterBrandSide === "right" ? 10 : 0;
       const contactPaddingRight = socialFooterBrandSide === "right" ? 0 : 10;
       const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
-      const footerInfoFontPt = resolveAnnouncementFooterInfoFontPt(footerInfoText);
+      const footerInfoFontPt = Math.max(
+        8,
+        Number(
+          socialTextFontSizes.cta ??
+            resolveAnnouncementFooterInfoFontPt(footerInfoText),
+        ) || resolveAnnouncementFooterInfoFontPt(footerInfoText),
+      );
       const effectiveFooterFrame =
         socialLayerFrames[SOCIAL_FOOTER_LAYER_ID] ?? resolveAnnouncementFooterFrame();
       const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
@@ -3119,7 +3154,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       const headlinePaddingRight = socialToolAlignX === "right" ? 15 : 0;
       return (
         <>
-          {socialRenderSvgTextLayer({
+          {socialRenderTextLayer({
             keyId: "bold-headline",
             layerId: "headline",
             text:
@@ -3160,7 +3195,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               })
             : null}
           {isAnnouncement && !socialHasBrandLogo
-            ? socialRenderSvgTextLayer({
+            ? socialRenderTextLayer({
                 keyId: "announcement-brand-text",
                 layerId: SOCIAL_BRAND_LAYER_ID,
                 text: socialCompanyNameText,
@@ -3193,7 +3228,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 paddingRight: contactPaddingRight,
                 forceLineHeight: 1,
               })
-            : socialRenderSvgTextLayer({
+            : socialRenderTextLayer({
                 keyId: "bold-cta",
                 layerId: "cta",
                 text: socialDraft.call_to_action || socialDraft.start_date || "Call to action",
@@ -3221,7 +3256,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 fontWeight: 800,
                 paddingBottom: 8,
                 forceTextColor: socialFooterInfoTextColor,
-                forceFontSize: footerInfoFontPt,
                 forceTextShadow: footerInfoShadowCss,
                 forceLineHeight: 1.1,
               })
@@ -3264,7 +3298,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       return (
         <>
           {rows.map((row) =>
-            socialRenderSvgTextLayer({
+            socialRenderTextLayer({
               ...row,
               x: 40,
               width: 920,
@@ -3293,7 +3327,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           >
             <rect x={0} y={760} width={1000} height={240} fill="#0b1f5f" fillOpacity={0.8} />
           </svg>
-          {socialRenderSvgTextLayer({
+          {socialRenderTextLayer({
             keyId: "photo-headline",
             layerId: "headline",
             text:
@@ -3307,7 +3341,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             alignY: "top",
             fontWeight: 700,
           })}
-          {socialRenderSvgTextLayer({
+          {socialRenderTextLayer({
             keyId: "photo-cta",
             layerId: "cta",
             text: socialDraft.call_to_action || socialDraft.location_detail || "Join us",
@@ -3333,7 +3367,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         "Monday: Activity\nTuesday: Activity\nWednesday: Activity";
       return (
         <>
-          {socialRenderSvgTextLayer({
+          {socialRenderTextLayer({
             keyId: "schedule-start",
             layerId: "start",
             text: scheduleDates,
@@ -3349,7 +3383,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             backgroundOpacity: 0.5,
             borderRadius: 16,
           })}
-          {socialRenderSvgTextLayer({
+          {socialRenderTextLayer({
             keyId: "schedule-notes",
             layerId: null,
             text: notesText,
@@ -6781,3 +6815,4 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     </>
   );
 }
+

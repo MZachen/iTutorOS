@@ -4605,13 +4605,28 @@ function SettingsPageContent() {
   }
 
   async function generateSocialCopy() {
-    const platforms = socialDraft.platform_ids
+    const sanitizeGeneratedSocialCopy = (value: string) => {
+      const text = String(value ?? "").replace(/\r\n/g, "\n");
+      const withoutMarkdownBold = text.replace(/\*\*/g, "");
+      const platformOnlyLine =
+        /^(platform\s*:\s*)?(facebook|instagram|messenger|tiktok|x|twitter|linkedin|threads|general social post)\s*:?\s*$/i;
+      const cleaned = withoutMarkdownBold
+        .split("\n")
+        .map((line) => line.replace(/^call\s*to\s*action\s*:?\s*/i, ""))
+        .map((line) => line.replace(/^cta\s*:?\s*/i, ""))
+        .filter((line) => !platformOnlyLine.test(line.trim()))
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      return cleaned || withoutMarkdownBold.trim();
+    };
+
+    const selectedPlatforms = socialDraft.platform_ids
       .map((id) => getConnectionProvider(id)?.label ?? id)
       .filter(Boolean);
-    if (!platforms.length) {
-      setStatus("Select at least one connected platform to generate copy.");
-      return;
-    }
+    const platforms = selectedPlatforms.length
+      ? selectedPlatforms
+      : ["General social post"];
     const serviceDescription =
       (socialDraft.service_code
         ? serviceDescriptionDrafts[socialDraft.service_code]
@@ -4690,17 +4705,47 @@ function SettingsPageContent() {
         ? `Additional notes: ${socialDraft.extra_notes}.`
         : "",
       "Output requirements:",
-      "- Provide one section per platform with a heading 'Platform: <name>'.",
+      "- Return one polished post body.",
+      "- Do not include platform names or platform headings.",
+      "- Do not use markdown bold markers like '**'.",
+      "- Do not include labels like 'Call to action:'; just write the sentence.",
       "- Keep length appropriate for each platform; keep X under 240 characters.",
       "- Include a clear CTA if provided.",
       "- Use friendly, confident tone for parents and students.",
     ].filter(Boolean);
 
     const aiKey = "social:copy";
+    const previous = socialDraft.generated_copy;
+    const localFallback = [
+      `Headline: ${socialDraft.headline || "New program available"}`,
+      socialDraft.start_date
+        ? `Dates: ${socialDraft.start_date}${socialDraft.end_date ? ` - ${socialDraft.end_date}` : ""}`
+        : "",
+      socialDraft.age_range ? `Age range: ${socialDraft.age_range}` : "",
+      socialDraft.price_detail ? `Price: ${socialDraft.price_detail}` : "",
+      socialDraft.location_detail ? `Location: ${socialDraft.location_detail}` : "",
+      socialDraft.call_to_action || "Reserve your spot today.",
+      socialDraft.enrollment_link ? `Learn more: ${socialDraft.enrollment_link}` : "",
+      socialDraft.hashtags || "#tutoring #education",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     setAiLoading(aiKey, true);
     try {
-      const previous = socialDraft.generated_copy;
-      const next = await rewriteWithAi(promptLines.join("\n"), previous);
+      let next = previous;
+      if (token) {
+        next = await rewriteWithAi(promptLines.join("\n"), previous);
+      } else {
+        setStatus("No auth token detected. Generated local draft copy.");
+      }
+
+      // If AI failed or returned unchanged content, provide a deterministic fallback.
+      if (!String(next || "").trim() || next.trim() === previous.trim()) {
+        next = localFallback;
+      }
+      next = sanitizeGeneratedSocialCopy(next);
+
       setSocialDraft((prev) => ({ ...prev, generated_copy: next }));
       setAiRewrite(aiKey, previous, next);
     } finally {
