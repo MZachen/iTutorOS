@@ -561,6 +561,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   );
   const socialPreviewOverflowEnabled = socialPreviewZoomMode !== "fit";
   const clampLayerValue = (value, min, max) => Math.max(min, Math.min(max, value));
+  const socialPreviewViewportHeight = Math.max(
+    360,
+    Math.min(
+      760,
+      Math.round((socialDesignHeight / Math.max(1, socialDesignWidth)) * 900),
+    ),
+  );
   const socialFrameToStyle = (frame) => ({
     left: `${(frame.x / 1000) * 100}%`,
     top: `${(frame.y / 1000) * 100}%`,
@@ -604,8 +611,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const viewport = socialPreviewViewportRef.current;
     if (!viewport) return;
     const recomputeFitScale = () => {
-      const viewportWidth = Math.max(1, viewport.clientWidth - 8);
-      const viewportHeight = Math.max(1, viewport.clientHeight - 8);
+      const viewportWidth = Math.max(1, viewport.clientWidth - 16);
+      const viewportHeight = Math.max(1, viewport.clientHeight - 16);
       const fitScale = Math.min(
         viewportWidth / socialDesignWidth,
         viewportHeight / socialDesignHeight,
@@ -626,12 +633,23 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     };
   }, [socialDesignHeight, socialDesignWidth]);
 
+  useEffect(() => {
+    if (socialPreviewZoomMode !== "fit") return;
+    const viewport = socialPreviewViewportRef.current;
+    if (!viewport) return;
+    viewport.scrollLeft = 0;
+    viewport.scrollTop = 0;
+  }, [socialPreviewZoomMode, socialPreviewScale]);
+
   const beginSocialPreviewPan = (event) => {
     if (socialPreviewZoomMode === "fit") return;
+    if (socialActiveTool !== "pointer") return;
     if (event.button !== 0) return;
     const viewport = socialPreviewViewportRef.current;
     if (!viewport) return;
-    if (event.target !== event.currentTarget) return;
+    const canvas = socialPreviewRef.current;
+    const target = event.target;
+    if (target !== viewport && target !== canvas) return;
     socialPreviewPanStateRef.current = {
       pointerId: event.pointerId,
       startClientX: event.clientX,
@@ -643,7 +661,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       event.currentTarget.setPointerCapture(event.pointerId);
     }
     setSocialPreviewIsPanning(true);
-    event.preventDefault();
   };
 
   const onSocialPreviewPanMove = (event) => {
@@ -668,7 +685,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
     socialPreviewPanStateRef.current = null;
     setSocialPreviewIsPanning(false);
-    event.preventDefault();
   };
 
   useEffect(() => {
@@ -1046,8 +1062,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
   }, [imageLibraryPage, imageLibraryTotalPages]);
 
-  const socialShadowCss = useMemo(() => {
-    const normalized = String(socialToolShadowColor || "#000000").trim();
+  const normalizeHexColor = (inputColor) => {
+    const normalized = String(inputColor || "#000000").trim();
     const hex = normalized.replace("#", "");
     const fullHex =
       hex.length === 3
@@ -1056,24 +1072,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             .map((ch) => ch + ch)
             .join("")
         : hex.padEnd(6, "0").slice(0, 6);
-    const r = Number.parseInt(fullHex.slice(0, 2), 16) || 0;
-    const g = Number.parseInt(fullHex.slice(2, 4), 16) || 0;
-    const b = Number.parseInt(fullHex.slice(4, 6), 16) || 0;
-    const opacity = Math.max(0, Math.min(100, socialToolShadowOpacity)) / 100;
-    const angle = (Math.max(0, Math.min(360, socialToolShadowAngle)) * Math.PI) / 180;
-    const size = Math.max(0, socialToolShadowSize);
-    const distance = Math.max(0, socialToolShadowDistance);
-    const offsetX = Math.round(Math.cos(angle) * distance);
-    const offsetY = Math.round(Math.sin(angle) * distance);
-    const blur = Math.max(1, Math.round(size));
-    return `${offsetX}px ${offsetY}px ${blur}px rgba(${r}, ${g}, ${b}, ${opacity})`;
-  }, [
-    socialToolShadowAngle,
-    socialToolShadowColor,
-    socialToolShadowDistance,
-    socialToolShadowOpacity,
-    socialToolShadowSize,
-  ]);
+    return fullHex;
+  };
 
   const buildOutsideTextStrokeShadow = (width, color) => {
     const radius = Math.max(0, Math.round(Number(width) || 0));
@@ -1090,6 +1090,44 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     return shadows.length ? shadows.join(", ") : "none";
   };
 
+  const scalePreviewValue = (value, fallback = 0) => {
+    const numeric = Number(value);
+    const base = Number.isFinite(numeric) ? numeric : fallback;
+    return base * socialPreviewScale;
+  };
+
+  const scaleCssPxValues = (cssValue) => {
+    const raw = String(cssValue || "").trim();
+    if (!raw) return "";
+    return raw.replace(/(-?\d*\.?\d+)px/g, (_full, numText) => {
+      const px = Number.parseFloat(numText);
+      if (!Number.isFinite(px)) return "0px";
+      return `${(px * socialPreviewScale).toFixed(2)}px`;
+    });
+  };
+
+  const socialShadowCssScaled = useMemo(() => {
+    const fullHex = normalizeHexColor(socialToolShadowColor);
+    const r = Number.parseInt(fullHex.slice(0, 2), 16) || 0;
+    const g = Number.parseInt(fullHex.slice(2, 4), 16) || 0;
+    const b = Number.parseInt(fullHex.slice(4, 6), 16) || 0;
+    const opacity = Math.max(0, Math.min(100, socialToolShadowOpacity)) / 100;
+    const angle = (Math.max(0, Math.min(360, socialToolShadowAngle)) * Math.PI) / 180;
+    const size = Math.max(0, socialToolShadowSize) * socialPreviewScale;
+    const distance = Math.max(0, socialToolShadowDistance) * socialPreviewScale;
+    const offsetX = Math.round(Math.cos(angle) * distance);
+    const offsetY = Math.round(Math.sin(angle) * distance);
+    const blur = Math.max(1, Math.round(size));
+    return `${offsetX}px ${offsetY}px ${blur}px rgba(${r}, ${g}, ${b}, ${opacity})`;
+  }, [
+    socialPreviewScale,
+    socialToolShadowAngle,
+    socialToolShadowColor,
+    socialToolShadowDistance,
+    socialToolShadowOpacity,
+    socialToolShadowSize,
+  ]);
+
   const previewTextStyle = (target, fallbackSize) => {
     const isSelected = socialToolTarget === target;
     const forceAnnouncementHeadlineStyle =
@@ -1097,13 +1135,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialDraft.template_style === "Class announcement" &&
       socialDraft.layout_preset === "Bold headline";
     const layerFontSize = socialTextFontSizes[target] ?? fallbackSize;
+    const scaledFontSize = scalePreviewValue(layerFontSize, fallbackSize);
+    const scaledOutlineWidth = Math.max(
+      0,
+      scalePreviewValue(socialToolOutlineWidth, 0),
+    );
     if (forceAnnouncementHeadlineStyle) {
       return {
         color: "#ffffff",
-        fontSize: `${layerFontSize}px`,
+        fontSize: `${scaledFontSize}px`,
         WebkitTextStroke: "0px transparent",
         textShadow: buildOutsideTextStrokeShadow(
-          Math.max(0, socialToolOutlineWidth),
+          scaledOutlineWidth,
           socialToolOutlineColor,
         ),
         lineHeight: 1.1,
@@ -1113,16 +1156,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     if (!isSelected && !forceAnnouncementHeadlineStyle) {
       return {
         color: "#ffffff",
-        fontSize: `${layerFontSize}px`,
+        fontSize: `${scaledFontSize}px`,
         lineHeight: 1.1,
         fontFamily: socialFontFamily,
       };
     }
     return {
       color: socialToolColor,
-      fontSize: `${layerFontSize}px`,
-      WebkitTextStroke: `${Math.max(0, socialToolOutlineWidth)}px ${socialToolOutlineColor}`,
-      textShadow: socialShadowCss,
+      fontSize: `${scaledFontSize}px`,
+      WebkitTextStroke: `${scaledOutlineWidth}px ${socialToolOutlineColor}`,
+      textShadow: socialShadowCssScaled,
       lineHeight: 1.1,
       fontFamily: socialFontFamily,
     };
@@ -1657,7 +1700,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const width = Number(socialAspect?.width) || 1;
     const height = Number(socialAspect?.height) || 1;
     const normalizedScaleY = Math.max(0.01, height / width);
-    const footerHeight = clampLayerValue(Math.round(80 / normalizedScaleY), 24, 200);
+    const aspectDefaults = announcementDefaultsByAspect(socialDraft.aspect_ratio);
+    const footerHeightPt = Math.max(20, Number(aspectDefaults.footerHeight) || 80);
+    const footerHeight = clampLayerValue(
+      Math.round(footerHeightPt / normalizedScaleY),
+      24,
+      220,
+    );
     const y = clampLayerValue(1000 - footerHeight, 0, 1000 - footerHeight);
     return {
       x: 0,
@@ -1710,10 +1759,19 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const kind = meta?.kind ?? "rect";
     const color = meta?.color ?? "#3aa6d9";
     const opacity = Math.max(0, Math.min(100, meta?.opacity ?? 60)) / 100;
+    const transforms = [];
+    if (meta?.flipX) transforms.push("scaleX(-1)");
+    if (meta?.flipY) transforms.push("scaleY(-1)");
     const base = {
       backgroundColor: color,
       opacity,
       ...socialFrameToStyle(frame),
+      ...(transforms.length
+        ? {
+            transform: transforms.join(" "),
+            transformOrigin: "center center",
+          }
+        : null),
     };
     if (kind === "circle") {
       return { ...base, borderRadius: "9999px" };
@@ -1767,40 +1825,52 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     switch (aspectRatio) {
       case "16:9":
         return {
-          headlineFont: 58,
-          dateWidth: 240,
-          dateHeight: 165,
-          dateOffsetY: 36,
-          dateMarginX: 36,
-          footerInfoFont: 64,
+          headlineFont: 150,
+          dateFont: 60,
+          dateWidth: 260,
+          dateHeight: 190,
+          dateOffsetY: 38,
+          dateMarginX: 42,
+          footerInfoFont: 180,
+          footerHeight: 80,
+          flipDateBoxX: false,
         };
       case "4:5":
         return {
-          headlineFont: 75,
+          headlineFont: 150,
+          dateFont: 60,
           dateWidth: 300,
           dateHeight: 250,
           dateOffsetY: 50,
           dateMarginX: 50,
-          footerInfoFont: 75,
+          footerInfoFont: 200,
+          footerHeight: 80,
+          flipDateBoxX: false,
         };
       case "9:16":
         return {
-          headlineFont: 68,
-          dateWidth: 290,
-          dateHeight: 240,
-          dateOffsetY: 45,
-          dateMarginX: 45,
-          footerInfoFont: 70,
+          headlineFont: 220,
+          dateFont: 80,
+          dateWidth: 300,
+          dateHeight: 250,
+          dateOffsetY: 50,
+          dateMarginX: 50,
+          footerInfoFont: 220,
+          footerHeight: 100,
+          flipDateBoxX: true,
         };
       case "1:1":
       default:
         return {
-          headlineFont: 75,
+          headlineFont: 125,
+          dateFont: 60,
           dateWidth: 300,
           dateHeight: 250,
           dateOffsetY: 50,
           dateMarginX: 50,
-          footerInfoFont: 75,
+          footerInfoFont: 200,
+          footerHeight: 80,
+          flipDateBoxX: false,
         };
     }
   };
@@ -2047,6 +2117,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               kind: "rect",
               color: randomDateColor,
               opacity: 70,
+              flipX: Boolean(aspectDefaults.flipDateBoxX),
             },
           }
         : {},
@@ -2059,7 +2130,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialTextFontSizes((prev) => ({
       ...prev,
       headline: aspectDefaults.headlineFont,
-      start: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
+      start: aspectDefaults.dateFont ?? SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
       cta:
         aspectDefaults.footerInfoFont ||
         resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
@@ -3053,6 +3124,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       alignX === "left" ? "left" : alignX === "right" ? "right" : "center";
     const justifyContent =
       alignY === "top" ? "flex-start" : alignY === "bottom" ? "flex-end" : "center";
+    const scaledPaddingLeft = scalePreviewValue(paddingLeft, 0);
+    const scaledPaddingRight = scalePreviewValue(paddingRight, 0);
+    const scaledPaddingTop = scalePreviewValue(paddingTop, 0);
+    const scaledPaddingBottom = scalePreviewValue(paddingBottom, 0);
+    const scaledBorderRadius = scalePreviewValue(borderRadius, 0);
+    const scaledForceFontSize = forceFontSize == null
+      ? null
+      : scalePreviewValue(forceFontSize, Number(fallbackSize) || 24);
+    const scaledForceShadow = forceTextShadow
+      ? scaleCssPxValues(forceTextShadow)
+      : "";
 
     return (
       <div
@@ -3070,7 +3152,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             style={{
               backgroundColor: backgroundFill,
               opacity: Math.max(0, Math.min(1, Number(backgroundOpacity) || 0)),
-              borderRadius: `${Math.max(0, Number(borderRadius) || 0)}px`,
+              borderRadius: `${Math.max(0, scaledBorderRadius)}px`,
             }}
           />
         ) : null}
@@ -3081,10 +3163,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             justifyContent,
             flexDirection: "column",
             boxSizing: "border-box",
-            paddingLeft: `${Math.max(0, paddingLeft)}px`,
-            paddingRight: `${Math.max(0, paddingRight)}px`,
-            paddingTop: `${Math.max(0, paddingTop)}px`,
-            paddingBottom: `${Math.max(0, paddingBottom)}px`,
+            paddingLeft: `${Math.max(0, scaledPaddingLeft)}px`,
+            paddingRight: `${Math.max(0, scaledPaddingRight)}px`,
+            paddingTop: `${Math.max(0, scaledPaddingTop)}px`,
+            paddingBottom: `${Math.max(0, scaledPaddingBottom)}px`,
           }}
         >
           <div
@@ -3105,8 +3187,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             style={{
               ...textStyle,
               ...(forceTextColor ? { color: forceTextColor } : null),
-              ...(forceFontSize ? { fontSize: `${forceFontSize}px` } : null),
-              ...(forceTextShadow ? { textShadow: forceTextShadow } : null),
+              ...(scaledForceFontSize != null
+                ? { fontSize: `${scaledForceFontSize}px` }
+                : null),
+              ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
               textAlign,
               color: forceTextColor || textStyle.color || "#ffffff",
               lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
@@ -3171,6 +3255,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       alignX === "left" ? "left" : alignX === "right" ? "right" : "center";
     const justifyContent =
       alignY === "top" ? "flex-start" : alignY === "bottom" ? "flex-end" : "center";
+    const scaledPaddingLeft = scalePreviewValue(paddingLeft, 0);
+    const scaledPaddingRight = scalePreviewValue(paddingRight, 0);
+    const scaledPaddingTop = scalePreviewValue(paddingTop, 0);
+    const scaledPaddingBottom = scalePreviewValue(paddingBottom, 0);
+    const scaledForceFontSize = forceFontSize == null
+      ? null
+      : scalePreviewValue(forceFontSize, Number(fallbackSize) || 24);
+    const scaledForceShadow = forceTextShadow
+      ? scaleCssPxValues(forceTextShadow)
+      : "";
 
     return (
       <div
@@ -3189,10 +3283,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             justifyContent,
             flexDirection: "column",
             boxSizing: "border-box",
-            paddingLeft: `${Math.max(0, paddingLeft)}px`,
-            paddingRight: `${Math.max(0, paddingRight)}px`,
-            paddingTop: `${Math.max(0, paddingTop)}px`,
-            paddingBottom: `${Math.max(0, paddingBottom)}px`,
+            paddingLeft: `${Math.max(0, scaledPaddingLeft)}px`,
+            paddingRight: `${Math.max(0, scaledPaddingRight)}px`,
+            paddingTop: `${Math.max(0, scaledPaddingTop)}px`,
+            paddingBottom: `${Math.max(0, scaledPaddingBottom)}px`,
           }}
         >
           <div
@@ -3213,8 +3307,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             style={{
               ...textStyle,
               ...(forceTextColor ? { color: forceTextColor } : null),
-              ...(forceFontSize ? { fontSize: `${forceFontSize}px` } : null),
-              ...(forceTextShadow ? { textShadow: forceTextShadow } : null),
+              ...(scaledForceFontSize != null
+                ? { fontSize: `${scaledForceFontSize}px` }
+                : null),
+              ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
               ...(content ? { display: "block", width: "100%" } : null),
               textAlign,
               color: forceTextColor || textStyle.color || "#ffffff",
@@ -3279,6 +3375,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           : useRangeFormat
             ? `${startShort} -\n${endShort}`
             : `Starting\n${startShort || "Soon"}`;
+      const announcementDateFontPt = Math.max(
+        8,
+        Number(
+          socialTextFontSizes.start ??
+            announcementDefaultsByAspect(socialDraft.aspect_ratio).dateFont ??
+            SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
+        ) || SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
+      );
       const brandAlignX = socialFooterBrandSide === "right" ? "right" : "left";
       const brandPaddingLeft = socialFooterBrandSide === "right" ? 0 : 20;
       const brandPaddingRight = socialFooterBrandSide === "right" ? 20 : 0;
@@ -3329,8 +3433,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 keyId: "announcement-date-text",
                 layerId: "start",
                 text: dateLineText,
-                fallbackSize: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
-                forceFontSize: SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
+                fallbackSize: announcementDateFontPt,
+                forceFontSize: announcementDateFontPt,
                 x: dateX,
                 y: dateY,
                 width: dateWidth,
@@ -6283,6 +6387,23 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       className="h-9 w-20 rounded-md border border-gray-200 bg-white px-2 text-xs"
                                       title="Font size"
                                     />
+                                    <select
+                                      value={socialPreviewZoomMode}
+                                      onChange={(e) =>
+                                        setSocialPreviewZoomMode(
+                                          (e.target.value as "fit" | "100" | "150" | "200") ??
+                                            "fit",
+                                        )
+                                      }
+                                      className="h-9 rounded-md border border-gray-200 bg-white px-2 text-xs font-semibold text-gray-700"
+                                      title="Preview zoom"
+                                    >
+                                      {SOCIAL_PREVIEW_ZOOM_MODES.map((mode) => (
+                                        <option key={mode.value} value={mode.value}>
+                                          {mode.label}
+                                        </option>
+                                      ))}
+                                    </select>
 
                                     {socialShadowPopupOpen ? (
                                       <div className="absolute left-0 top-full z-40 mt-2 grid min-w-[260px] gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-lg">
@@ -6367,47 +6488,78 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                   </div>
                                 </div>
                                 <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_200px]">
-                                  <div className="mx-auto w-[75%] max-w-full">
+                                  <div className="min-w-0">
                                     <div
-                                    ref={socialPreviewRef}
-                                    className={`relative w-full overflow-hidden rounded-xl border bg-gray-50 ${
-                                      socialPreviewDropActive
-                                        ? "border-[#ff9df9] ring-2 ring-[#ff9df9]"
-                                        : "border-gray-200"
-                                    } ${
-                                      socialDraggingLayer
-                                        ? "cursor-grabbing"
-                                        : socialActiveTool === "shape"
-                                          ? "cursor-crosshair"
-                                          : ""
-                                    }`}
-                                    style={{
-                                      aspectRatio: `${socialAspect.width} / ${socialAspect.height}`,
-                                    }}
-                                    onDragOver={socialPreviewDropHandlers.onDragOver}
-                                    onDragLeave={socialPreviewDropHandlers.onDragLeave}
-                                    onDrop={socialPreviewDropHandlers.onDrop}
-                                    onPointerDown={onSocialPreviewPointerDown}
-                                    onPointerMove={onSocialPreviewPointerMove}
-                                    onPointerUp={endSocialLayerDrag}
-                                    onPointerCancel={endSocialLayerDrag}
-                                    onClick={() => {
-                                      if (socialActiveTool === "shape") return;
-                                      if (
-                                        isSocialImageLayer(socialSelectedLayer) ||
-                                        isSocialShapeLayer(socialSelectedLayer)
-                                      ) {
-                                        return;
-                                      }
-                                      const targetLayer = isSocialTextLayer(socialSelectedLayer)
-                                        ? socialSelectedLayer
-                                        : "headline";
-                                      socialSelectLayer(targetLayer);
-                                      if (socialActiveTool === "text") {
-                                        socialOpenTextEditor(targetLayer);
-                                      }
-                                    }}
-                                  >
+                                      ref={socialPreviewViewportRef}
+                                      className={`relative w-full rounded-xl border border-gray-200 bg-gray-100/60 p-2 ${
+                                        socialPreviewOverflowEnabled
+                                          ? "overflow-auto"
+                                          : "overflow-hidden"
+                                      } ${
+                                        socialPreviewIsPanning
+                                          ? "cursor-grabbing select-none"
+                                          : socialPreviewOverflowEnabled
+                                            ? "cursor-grab"
+                                            : "cursor-default"
+                                      }`}
+                                      style={{ height: `${socialPreviewViewportHeight}px` }}
+                                      onPointerDown={beginSocialPreviewPan}
+                                      onPointerMove={onSocialPreviewPanMove}
+                                      onPointerUp={endSocialPreviewPan}
+                                      onPointerCancel={endSocialPreviewPan}
+                                    >
+                                      <div
+                                        className={`min-h-full min-w-full ${
+                                          socialPreviewOverflowEnabled
+                                            ? "block"
+                                            : "flex items-center justify-center"
+                                        }`}
+                                      >
+                                        <div
+                                          ref={socialPreviewRef}
+                                          className={`relative overflow-hidden rounded-xl border bg-gray-50 ${
+                                            socialPreviewDropActive
+                                              ? "border-[#ff9df9] ring-2 ring-[#ff9df9]"
+                                              : "border-gray-200"
+                                          } ${
+                                            socialDraggingLayer
+                                              ? "cursor-grabbing"
+                                              : socialActiveTool === "shape"
+                                                ? "cursor-crosshair"
+                                                : ""
+                                          }`}
+                                          style={{
+                                            width: `${socialPreviewScaledWidth}px`,
+                                            height: `${socialPreviewScaledHeight}px`,
+                                            maxWidth: "none",
+                                            flex: "0 0 auto",
+                                          }}
+                                          onDragOver={socialPreviewDropHandlers.onDragOver}
+                                          onDragLeave={socialPreviewDropHandlers.onDragLeave}
+                                          onDrop={socialPreviewDropHandlers.onDrop}
+                                          onPointerDown={onSocialPreviewPointerDown}
+                                          onPointerMove={onSocialPreviewPointerMove}
+                                          onPointerUp={endSocialLayerDrag}
+                                          onPointerCancel={endSocialLayerDrag}
+                                          onClick={() => {
+                                            if (socialActiveTool === "shape") return;
+                                            if (
+                                              isSocialImageLayer(socialSelectedLayer) ||
+                                              isSocialShapeLayer(socialSelectedLayer)
+                                            ) {
+                                              return;
+                                            }
+                                            const targetLayer = isSocialTextLayer(
+                                              socialSelectedLayer,
+                                            )
+                                              ? socialSelectedLayer
+                                              : "headline";
+                                            socialSelectLayer(targetLayer);
+                                            if (socialActiveTool === "text") {
+                                              socialOpenTextEditor(targetLayer);
+                                            }
+                                          }}
+                                        >
                                     {socialLayerVisible.media ? (
                                       <div
                                         className="pointer-events-none absolute inset-0"
@@ -6542,6 +6694,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       })}
                                     {socialRenderPresetTextLayers()}
                                     {socialRenderSelectionBox(socialSelectedLayer)}
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                   <div className="grid content-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
