@@ -458,7 +458,6 @@ const SOCIAL_LAYOUT_PRESETS = [
   "Bold headline",
   "Band rows",
   "Photo + footer",
-  "Schedule list",
 ] as const;
 
 type SocialLayoutPreset = (typeof SOCIAL_LAYOUT_PRESETS)[number];
@@ -467,7 +466,6 @@ const SOCIAL_LAYOUT_PRESET_FILE_KEYS: Record<SocialLayoutPreset, string> = {
   "Bold headline": "bold_headline",
   "Band rows": "band_rows",
   "Photo + footer": "photo_footer",
-  "Schedule list": "schedule_list",
 };
 
 const SOCIAL_ASPECT_RATIOS = [
@@ -1042,6 +1040,18 @@ function SettingsPageContent() {
 
   const [activeTab, setActiveTab] = useState<SettingsTab>("ACCOUNT");
   const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!socialDraft.layout_preset) return;
+    if (SOCIAL_LAYOUT_PRESETS.includes(socialDraft.layout_preset as SocialLayoutPreset)) {
+      return;
+    }
+    setSocialDraft((prev) => ({
+      ...prev,
+      layout_preset: "",
+      selected_template_id: "",
+    }));
+  }, [socialDraft.layout_preset]);
 
   const isTutorOnly = Boolean(me?.isTutor && !me?.isOwner && !me?.isAdmin);
   const tabs = isTutorOnly
