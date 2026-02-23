@@ -535,9 +535,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialOutlinePopupOpen, setSocialOutlinePopupOpen] = useState(false);
   const [socialFontPopupOpen, setSocialFontPopupOpen] = useState(false);
   const [socialShapePopupOpen, setSocialShapePopupOpen] = useState(false);
-  const [socialTextEditorOpen, setSocialTextEditorOpen] = useState(false);
-  const [socialTextEditorLayer, setSocialTextEditorLayer] = useState("headline");
-  const [socialTextEditorValue, setSocialTextEditorValue] = useState("");
+  const [socialInlineEditorLayer, setSocialInlineEditorLayer] = useState("");
+  const [socialInlineEditorValue, setSocialInlineEditorValue] = useState("");
+  const [socialInlineEditorOriginalValue, setSocialInlineEditorOriginalValue] = useState("");
+  const [socialInlineTextOverrides, setSocialInlineTextOverrides] = useState<
+    Record<string, string>
+  >({});
   const [socialLayerFrames, setSocialLayerFrames] = useState<
     Record<string, { x: number; y: number; width: number; height: number }>
   >({});
@@ -2168,6 +2171,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   };
 
   const generateBlankSocialPost = () => {
+    setSocialInlineTextOverrides({});
     const templateStyle = SOCIAL_TEMPLATE_STYLES.includes(
       socialDraft.template_style,
     )
@@ -3117,31 +3121,43 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   };
   const socialLayerToDraftField = (layerId) => {
     if (layerId === "headline") return "headline";
-    if (layerId === "start") return "start_date";
-    if (layerId === "cta") return "call_to_action";
     return null;
   };
 
-  const socialOpenTextEditor = (layerId) => {
+  const socialBeginInlineTextEdit = (layerId, currentText = "") => {
     const field = socialLayerToDraftField(layerId);
-    if (!field) return;
-    setSocialTextEditorLayer(layerId);
-    setSocialTextEditorValue(String(socialDraft[field] ?? ""));
-    setSocialTextEditorOpen(true);
+    const currentValue = field
+      ? String(socialDraft[field] ?? currentText ?? "")
+      : String(socialInlineTextOverrides[layerId] ?? currentText ?? "");
+    setSocialInlineEditorLayer(layerId);
+    setSocialInlineEditorValue(currentValue);
+    setSocialInlineEditorOriginalValue(currentValue);
   };
 
-  const applySocialTextEditor = () => {
-    const field = socialLayerToDraftField(socialTextEditorLayer);
-    if (!field) {
-      setSocialTextEditorOpen(false);
-      return;
+  const applySocialInlineTextEdit = () => {
+    const field = socialLayerToDraftField(socialInlineEditorLayer);
+    const editingLayer = socialInlineEditorLayer;
+    const nextValue = socialInlineEditorValue;
+    if (field) {
+      setSocialDraft((prev) => ({
+        ...prev,
+        [field]: nextValue,
+      }));
+    } else if (editingLayer) {
+      setSocialInlineTextOverrides((prev) => ({
+        ...prev,
+        [editingLayer]: nextValue,
+      }));
     }
-    const nextValue = socialTextEditorValue;
-    setSocialDraft((prev) => ({
-      ...prev,
-      [field]: nextValue,
-    }));
-    setSocialTextEditorOpen(false);
+    setSocialInlineEditorLayer("");
+    setSocialInlineEditorValue("");
+    setSocialInlineEditorOriginalValue("");
+  };
+
+  const cancelSocialInlineTextEdit = () => {
+    setSocialInlineEditorLayer("");
+    setSocialInlineEditorValue("");
+    setSocialInlineEditorOriginalValue("");
   };
 
   const measureWrappedSocialText = ({
@@ -4032,6 +4048,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const scaledForceShadow = forceTextShadow
       ? scaleCssPxValues(forceTextShadow)
       : "";
+    const inlineOverrideText =
+      layerId && Object.prototype.hasOwnProperty.call(socialInlineTextOverrides, layerId)
+        ? socialInlineTextOverrides[layerId]
+        : null;
+    const resolvedText =
+      inlineOverrideText != null ? inlineOverrideText : content ?? String(text || "");
+    const isInlineEditing = Boolean(
+      layerId &&
+        socialActiveTool === "text" &&
+        socialInlineEditorLayer === layerId,
+    );
 
     return (
       <div
@@ -4073,12 +4100,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               else if (layerId) {
                 socialSelectLayer(layerId);
                 if (socialActiveTool === "text" && isSocialTextLayer(layerId)) {
-                  socialOpenTextEditor(layerId);
+                  socialBeginInlineTextEdit(layerId, String(text || ""));
                 }
               }
             }}
             onPointerDown={(event) => {
-              if (!layerId) return;
+              if (!layerId || socialActiveTool === "text") return;
               beginSocialLayerDrag(layerId, event);
             }}
             style={{
@@ -4101,11 +4128,48 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
+                  : layerId && socialActiveTool === "text" && isSocialTextLayer(layerId)
+                    ? "text"
                   : "default",
               touchAction: "none",
             }}
           >
-            {content ?? String(text || "")}
+            {isInlineEditing ? (
+              <textarea
+                className="h-full w-full resize-none bg-transparent outline-none"
+                style={{
+                  color: forceTextColor || textStyle.color || "#ffffff",
+                  textAlign,
+                  fontWeight,
+                  lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
+                  fontFamily: textStyle.fontFamily,
+                  ...(scaledForceFontSize != null
+                    ? { fontSize: `${scaledForceFontSize}px` }
+                    : null),
+                  ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
+                  ...(forceTextStroke != null
+                    ? { WebkitTextStroke: forceTextStroke }
+                    : null),
+                }}
+                value={socialInlineEditorValue}
+                onChange={(event) => setSocialInlineEditorValue(event.target.value)}
+                onBlur={applySocialInlineTextEdit}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setSocialInlineEditorValue(socialInlineEditorOriginalValue);
+                    cancelSocialInlineTextEdit();
+                  }
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    applySocialInlineTextEdit();
+                  }
+                }}
+                autoFocus
+              />
+            ) : (
+              resolvedText
+            )}
           </div>
         </div>
       </div>
@@ -4166,6 +4230,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const scaledForceShadow = forceTextShadow
       ? scaleCssPxValues(forceTextShadow)
       : "";
+    const inlineOverrideText =
+      layerId && Object.prototype.hasOwnProperty.call(socialInlineTextOverrides, layerId)
+        ? socialInlineTextOverrides[layerId]
+        : null;
+    const resolvedText =
+      inlineOverrideText != null ? inlineOverrideText : content ?? String(text || "");
+    const isInlineEditing = Boolean(
+      layerId &&
+        socialActiveTool === "text" &&
+        socialInlineEditorLayer === layerId,
+    );
 
     return (
       <div
@@ -4197,12 +4272,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               else if (layerId) {
                 socialSelectLayer(layerId);
                 if (socialActiveTool === "text" && isSocialTextLayer(layerId)) {
-                  socialOpenTextEditor(layerId);
+                  socialBeginInlineTextEdit(layerId, String(text || ""));
                 }
               }
             }}
             onPointerDown={(event) => {
-              if (!layerId) return;
+              if (!layerId || socialActiveTool === "text") return;
               beginSocialLayerDrag(layerId, event);
             }}
             style={{
@@ -4226,11 +4301,48 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
+                  : layerId && socialActiveTool === "text" && isSocialTextLayer(layerId)
+                    ? "text"
                   : "default",
               touchAction: "none",
             }}
           >
-            {content ?? String(text || "")}
+            {isInlineEditing ? (
+              <textarea
+                className="h-full w-full resize-none bg-transparent outline-none"
+                style={{
+                  color: forceTextColor || textStyle.color || "#ffffff",
+                  textAlign,
+                  fontWeight,
+                  lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
+                  fontFamily: textStyle.fontFamily,
+                  ...(scaledForceFontSize != null
+                    ? { fontSize: `${scaledForceFontSize}px` }
+                    : null),
+                  ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
+                  ...(forceTextStroke != null
+                    ? { WebkitTextStroke: forceTextStroke }
+                    : null),
+                }}
+                value={socialInlineEditorValue}
+                onChange={(event) => setSocialInlineEditorValue(event.target.value)}
+                onBlur={applySocialInlineTextEdit}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setSocialInlineEditorValue(socialInlineEditorOriginalValue);
+                    cancelSocialInlineTextEdit();
+                  }
+                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    applySocialInlineTextEdit();
+                  }
+                }}
+                autoFocus
+              />
+            ) : (
+              resolvedText
+            )}
           </div>
         </div>
       </div>
@@ -7027,38 +7139,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                             </div>
                           ) : null}
 
-                          {socialTextEditorOpen ? (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                              <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-4 shadow-lg">
-                                <div className="mb-2 text-sm font-semibold text-gray-800">
-                                  Edit text
-                                </div>
-                                <textarea
-                                  className="h-40 w-full rounded-xl border border-gray-200 p-3 text-sm"
-                                  value={socialTextEditorValue}
-                                  onChange={(e) => setSocialTextEditorValue(e.target.value)}
-                                  autoFocus
-                                />
-                                <div className="mt-3 flex justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-secondary !px-3 !py-1"
-                                    onClick={() => setSocialTextEditorOpen(false)}
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="itutoros-settings-btn itutoros-settings-btn-primary !px-3 !py-1"
-                                    onClick={applySocialTextEditor}
-                                  >
-                                    Apply
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-
                           {socialImagePickerOpen ? (
                             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
                               <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
@@ -7899,7 +7979,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                               : "headline";
                                             socialSelectLayer(targetLayer);
                                             if (socialActiveTool === "text") {
-                                              socialOpenTextEditor(targetLayer);
+                                              socialBeginInlineTextEdit(
+                                                targetLayer,
+                                                String(socialDisplayTextForLayer(targetLayer) || ""),
+                                              );
                                             }
                                           }}
                                         >
