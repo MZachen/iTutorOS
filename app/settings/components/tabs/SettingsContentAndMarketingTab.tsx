@@ -487,6 +487,41 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     useState("#ffffff");
   const [socialFooterInfoShadowColor, setSocialFooterInfoShadowColor] =
     useState("#000000");
+  const [socialBandRowsAlign, setSocialBandRowsAlign] = useState<
+    "left" | "center"
+  >("left");
+  const [socialBandRowsText, setSocialBandRowsText] = useState({
+    band1: "",
+    band2: "",
+    band3: "",
+    band4: "",
+  });
+  const [socialBandContactText, setSocialBandContactText] = useState({
+    contactA: "",
+    contactB: "",
+  });
+  const [socialBandBrandAlign, setSocialBandBrandAlign] = useState<
+    "left" | "center" | "right"
+  >("center");
+  const [socialBandContactAlign, setSocialBandContactAlign] = useState<{
+    contactA: "left" | "center" | "right";
+    contactB: "left" | "center" | "right";
+  }>({
+    contactA: "left",
+    contactB: "right",
+  });
+  const [socialBandContactConfig, setSocialBandContactConfig] = useState<
+    1 | 2 | 3
+  >(1);
+  const [socialPhotoFooterAlign, setSocialPhotoFooterAlign] = useState<
+    "left" | "center"
+  >("center");
+  const [socialPhotoFooterBrandAlign, setSocialPhotoFooterBrandAlign] = useState<
+    "left" | "center" | "right"
+  >("center");
+  const [socialPhotoFooterBottomMode, setSocialPhotoFooterBottomMode] = useState<
+    "cta" | "contact"
+  >("cta");
   const [socialPreviewDropActive, setSocialPreviewDropActive] = useState(false);
   const [socialPreviewZoomMode, setSocialPreviewZoomMode] = useState<
     "fit" | "100" | "150" | "200"
@@ -526,7 +561,19 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ];
   const SOCIAL_LAYER_LABELS = {
     media: "Media",
+    "band-overlay": "Overlay",
+    "band-brand": "Brand",
+    "band-contact-a": "Contact A",
+    "band-contact-b": "Contact B",
+    "band-text-1": "Band Text 1",
+    "band-text-2": "Band Text 2",
+    "band-text-3": "Band Text 3",
+    "band-text-4": "Band Text 4",
     shape: "Shape",
+    "band-1": "Band 1",
+    "band-2": "Band 2",
+    "band-3": "Band 3",
+    "band-4": "Band 4",
     headline: "Headline",
     start: "Start Date",
     cta: "Footer Info",
@@ -543,6 +590,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ] as const;
   const socialDesignWidth = Math.max(1, Number(socialAspect?.width) || 1080);
   const socialDesignHeight = Math.max(1, Number(socialAspect?.height) || 1080);
+  const socialFontPercentToDesignPx = (percent: number) =>
+    Math.max(8, Math.round((socialDesignHeight * Math.max(0, Number(percent) || 0)) / 100));
   const socialPreviewScale = useMemo(() => {
     if (socialPreviewZoomMode === "fit") {
       return Math.max(0.05, Math.min(4, socialPreviewFitScale));
@@ -586,7 +635,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     if (layoutPreset === "Photo + footer") {
       return {
         shape: { x: 280, y: 100, width: 440, height: 180 },
-        headline: { x: 45, y: 790, width: 910, height: 105 },
+        headline: { x: 0, y: 100, width: 1000, height: 220 },
         start: { x: 40, y: 60, width: 500, height: 140 },
         cta: { x: 45, y: 890, width: 910, height: 85 },
       };
@@ -795,6 +844,57 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             y,
             width,
             height,
+          };
+          changed = true;
+        }
+      }
+
+      if (
+        socialDraft.layout_preset === "Photo + footer" &&
+        socialLayerVisible.headline
+      ) {
+        const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
+          templateStyle: socialDraft.template_style,
+          headlineText: socialDraft.headline,
+          locationText: socialDraft.location_detail,
+          startDate: socialDraft.start_date,
+          endDate: socialDraft.end_date,
+        });
+        const headlineFont = Math.max(
+          8,
+          Number(socialTextFontSizes.headline ?? 150) || 150,
+        );
+        const measured = measureWrappedSocialText({
+          text: photoFooterHeadlineText,
+          fontSize: headlineFont,
+          fontWeight: 800,
+          fontFamily:
+            socialFontFamily && socialFontFamily !== "inherit"
+              ? socialFontFamily
+              : "Poppins, sans-serif",
+          maxWidth: 1000,
+          minWidth: 1000,
+          paddingX: 12,
+          paddingY: 8,
+          lineHeightMultiplier: 1,
+          outlineWidth: 0,
+        });
+        const nextHeadlineFrame = {
+          x: 0,
+          y: 100,
+          width: 1000,
+          height: clampLayerValue(measured.height, 120, 900),
+        };
+        const currentHeadlineFrame = next.headline ?? nextHeadlineFrame;
+        if (
+          currentHeadlineFrame.x !== nextHeadlineFrame.x ||
+          currentHeadlineFrame.y !== nextHeadlineFrame.y ||
+          currentHeadlineFrame.width !== nextHeadlineFrame.width ||
+          currentHeadlineFrame.height !== nextHeadlineFrame.height
+        ) {
+          next.headline = {
+            ...currentHeadlineFrame,
+            ...nextHeadlineFrame,
           };
           changed = true;
         }
@@ -1174,9 +1274,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const applySocialFontSize = (nextSize, target = socialToolTarget) => {
     const clamped = Math.max(8, Math.min(220, Number(nextSize) || 48));
     setSocialToolFontSize(clamped);
-    if (target === "headline" || target === "start" || target === "cta") {
-      setSocialTextFontSizes((prev) => ({ ...prev, [target]: clamped }));
-    }
+    if (!target) return;
+    setSocialTextFontSizes((prev) => ({ ...prev, [target]: clamped }));
   };
 
   const socialLayerZ = (id) => {
@@ -1262,6 +1361,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialFooterInfoEmptyName,
         socialFooterInfoTextColor,
         socialFooterInfoShadowColor,
+        socialBandRowsAlign,
+        socialBandRowsText,
+        socialBandContactText,
+        socialBandBrandAlign,
+        socialBandContactAlign,
+        socialBandContactConfig,
+        socialPhotoFooterAlign,
+        socialPhotoFooterBrandAlign,
+        socialPhotoFooterBottomMode,
         socialPreviewOverrideUrl,
       }),
     [
@@ -1300,6 +1408,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialFooterInfoEmptyName,
       socialFooterInfoTextColor,
       socialFooterInfoShadowColor,
+      socialBandRowsAlign,
+      socialBandRowsText,
+      socialBandContactText,
+      socialBandBrandAlign,
+      socialBandContactAlign,
+      socialBandContactConfig,
+      socialPhotoFooterAlign,
+      socialPhotoFooterBrandAlign,
+      socialPhotoFooterBottomMode,
       socialPreviewOverrideUrl,
     ],
   );
@@ -1412,6 +1529,64 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialFooterInfoTextColor(String(snap.socialFooterInfoTextColor ?? "#ffffff"));
     setSocialFooterInfoShadowColor(
       String(snap.socialFooterInfoShadowColor ?? "#000000"),
+    );
+    setSocialBandRowsAlign(
+      snap.socialBandRowsAlign === "center" ? "center" : "left",
+    );
+    setSocialBandRowsText(
+      snap.socialBandRowsText ?? {
+        band1: "",
+        band2: "",
+        band3: "",
+        band4: "",
+      },
+    );
+    setSocialBandContactText(
+      snap.socialBandContactText ?? {
+        contactA: "",
+        contactB: "",
+      },
+    );
+    setSocialBandBrandAlign(
+      snap.socialBandBrandAlign === "left"
+        ? "left"
+        : snap.socialBandBrandAlign === "right"
+          ? "right"
+          : "center",
+    );
+    setSocialBandContactAlign({
+      contactA:
+        snap.socialBandContactAlign?.contactA === "right"
+          ? "right"
+          : snap.socialBandContactAlign?.contactA === "center"
+            ? "center"
+            : "left",
+      contactB:
+        snap.socialBandContactAlign?.contactB === "left"
+          ? "left"
+          : snap.socialBandContactAlign?.contactB === "center"
+            ? "center"
+            : "right",
+    });
+    setSocialBandContactConfig(
+      snap.socialBandContactConfig === 2
+        ? 2
+        : snap.socialBandContactConfig === 3
+          ? 3
+          : 1,
+    );
+    setSocialPhotoFooterAlign(
+      snap.socialPhotoFooterAlign === "left" ? "left" : "center",
+    );
+    setSocialPhotoFooterBrandAlign(
+      snap.socialPhotoFooterBrandAlign === "left"
+        ? "left"
+        : snap.socialPhotoFooterBrandAlign === "right"
+          ? "right"
+          : "center",
+    );
+    setSocialPhotoFooterBottomMode(
+      snap.socialPhotoFooterBottomMode === "contact" ? "contact" : "cta",
     );
     setSocialPreviewOverrideUrl(snap.socialPreviewOverrideUrl ?? "");
     setTimeout(() => {
@@ -1527,6 +1702,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const SOCIAL_BRAND_LAYER_ID = "brand";
   const SOCIAL_CONTACT_LAYER_ID = "contact";
   const SOCIAL_DATE_BOX_LAYER_ID = "datebox";
+  const SOCIAL_PHOTO_FOOTER_IMAGE_LAYER_ID = `${SOCIAL_IMAGE_LAYER_PREFIX}photo-footer-main`;
+  const SOCIAL_BAND_OVERLAY_LAYER_ID = "band-overlay";
+  const SOCIAL_BAND_BRAND_LAYER_ID = "band-brand";
+  const SOCIAL_BAND_CONTACT_A_LAYER_ID = "band-contact-a";
+  const SOCIAL_BAND_CONTACT_B_LAYER_ID = "band-contact-b";
+  const SOCIAL_BAND_TEXT_LAYER_IDS = [
+    "band-text-1",
+    "band-text-2",
+    "band-text-3",
+    "band-text-4",
+  ];
+  const SOCIAL_BAND_LAYER_IDS = ["band-1", "band-2", "band-3", "band-4"];
   const SOCIAL_ANNOUNCEMENT_DATE_FONT_PT = 30;
   const SOCIAL_ANNOUNCEMENT_LAYER_ORDER = [
     "cta",
@@ -1557,6 +1744,100 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ).trim();
   const socialFooterContactText =
     socialBusinessPhoneText || socialBusinessEmailText || "#tutoring";
+  const normalizeMdyShortDate = (value) => {
+    const v = String(value ?? "").trim();
+    if (!v) return "";
+    const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return v;
+    const mm = Number.parseInt(m[2] ?? "0", 10);
+    const dd = Number.parseInt(m[3] ?? "0", 10);
+    const yy = Number.parseInt((m[1] ?? "00").slice(-2), 10);
+    if (!mm || !dd) return v;
+    return `${mm}/${dd}/${yy.toString().padStart(2, "0")}`;
+  };
+  const resolvePhotoFooterHeadlineText = ({
+    templateStyle,
+    headlineText,
+    locationText,
+    startDate,
+    endDate,
+  }) => {
+    const headline = String(headlineText ?? "").trim();
+    if (headline) return headline;
+
+    const isAnnouncementTemplate = String(templateStyle ?? "")
+      .toLowerCase()
+      .includes("announcement");
+    if (isAnnouncementTemplate) {
+      const start = normalizeMdyShortDate(startDate);
+      const end = normalizeMdyShortDate(endDate);
+      if (start && end) return `${start} - ${end}`;
+      if (start) return `Starting - ${start}`;
+      return "#tutoring";
+    }
+
+    const location = String(locationText ?? "").trim();
+    if (location) return location;
+    return "#tutoring";
+  };
+  const buildPhotoFooterContactText = ({
+    phoneText,
+    emailText,
+  }: {
+    phoneText: string;
+    emailText: string;
+  }) => {
+    const phone = String(phoneText ?? "").trim();
+    const email = String(emailText ?? "").trim();
+    if (phone && email) return `${phone}${" ".repeat(5)}${email}`;
+    return phone || email || "#tutoring";
+  };
+  const resolvePhotoFooterDateLineText = ({
+    startDate,
+    endDate,
+  }: {
+    startDate: string;
+    endDate: string;
+  }) => {
+    const start = normalizeMdyShortDate(startDate);
+    const end = normalizeMdyShortDate(endDate);
+    if (start && end) return `${start} - ${end}`;
+    if (start) return `Starting - ${start}`;
+    return "Starting - Soon";
+  };
+  const resolvePhotoFooterLocationPriceText = ({
+    locationText,
+    priceText,
+  }: {
+    locationText: string;
+    priceText: string;
+  }) => {
+    const location = String(locationText ?? "").trim();
+    const price = String(priceText ?? "").trim();
+    if (location && price) return `${location}${" ".repeat(5)}${price}`;
+    return location || price || "";
+  };
+  const resolvePhotoFooterBottomLineText = ({
+    mode,
+    callToAction,
+    phoneText,
+    emailText,
+  }: {
+    mode: "cta" | "contact";
+    callToAction: string;
+    phoneText: string;
+    emailText: string;
+  }) => {
+    const cta = String(callToAction ?? "").trim();
+    const contact = buildPhotoFooterContactText({
+      phoneText,
+      emailText,
+    });
+    if (mode === "cta") {
+      return cta || contact;
+    }
+    return contact;
+  };
   const computeAnnouncementFooterInfo = ({
     source,
     ageRange,
@@ -1633,7 +1914,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialDraft.call_to_action,
     ],
   );
-  const SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT = 75;
+  const SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT = 175;
   const resolveAnnouncementFooterInfoFontPt = (_value: string) =>
     SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT;
 
@@ -1732,11 +2013,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const isSocialImageLayer = (layerId) =>
     layerId === "media" ||
     (layerId === SOCIAL_BRAND_LAYER_ID && socialHasBrandLogo) ||
+    (layerId === SOCIAL_BAND_BRAND_LAYER_ID && socialHasBrandLogo) ||
     String(layerId || "").startsWith(SOCIAL_IMAGE_LAYER_PREFIX);
   const isSocialShapeLayer = (layerId) =>
     layerId === SOCIAL_HEADER_LAYER_ID ||
     layerId === SOCIAL_FOOTER_LAYER_ID ||
     layerId === SOCIAL_DATE_BOX_LAYER_ID ||
+    layerId === SOCIAL_BAND_OVERLAY_LAYER_ID ||
+    SOCIAL_BAND_LAYER_IDS.includes(String(layerId || "")) ||
     String(layerId || "").startsWith(SOCIAL_SHAPE_LAYER_PREFIX);
   const buildSocialShapeLayerId = () =>
     `${SOCIAL_SHAPE_LAYER_PREFIX}${Date.now()}-${socialShapeCounterRef.current++}`;
@@ -1758,12 +2042,20 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const socialShapeStyleFromMeta = (frame, meta) => {
     const kind = meta?.kind ?? "rect";
     const color = meta?.color ?? "#3aa6d9";
+    const gradient = String(meta?.gradient ?? "").trim();
     const opacity = Math.max(0, Math.min(100, meta?.opacity ?? 60)) / 100;
     const transforms = [];
     if (meta?.flipX) transforms.push("scaleX(-1)");
     if (meta?.flipY) transforms.push("scaleY(-1)");
     const base = {
       backgroundColor: color,
+      ...(gradient
+        ? {
+            backgroundImage: gradient,
+            backgroundSize: "cover",
+            backgroundRepeat: "no-repeat",
+          }
+        : null),
       opacity,
       ...socialFrameToStyle(frame),
       ...(transforms.length
@@ -1831,7 +2123,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           dateHeight: 190,
           dateOffsetY: 38,
           dateMarginX: 42,
-          footerInfoFont: 180,
+          footerInfoFont: 175,
           footerHeight: 80,
           flipDateBoxX: false,
         };
@@ -1843,7 +2135,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           dateHeight: 250,
           dateOffsetY: 50,
           dateMarginX: 50,
-          footerInfoFont: 200,
+          footerInfoFont: 175,
           footerHeight: 80,
           flipDateBoxX: false,
         };
@@ -1855,7 +2147,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           dateHeight: 250,
           dateOffsetY: 50,
           dateMarginX: 50,
-          footerInfoFont: 220,
+          footerInfoFont: 175,
           footerHeight: 100,
           flipDateBoxX: true,
         };
@@ -1868,7 +2160,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           dateHeight: 250,
           dateOffsetY: 50,
           dateMarginX: 50,
-          footerInfoFont: 200,
+          footerInfoFont: 175,
           footerHeight: 80,
           flipDateBoxX: false,
         };
@@ -1876,27 +2168,571 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   };
 
   const generateBlankSocialPost = () => {
-    const templateStyle = "Class announcement";
-    const layoutPreset = "Bold headline";
+    const templateStyle = SOCIAL_TEMPLATE_STYLES.includes(
+      socialDraft.template_style,
+    )
+      ? socialDraft.template_style
+      : "Class announcement";
+    const layoutPreset = SOCIAL_LAYOUT_PRESETS.includes(socialDraft.layout_preset)
+      ? socialDraft.layout_preset
+      : "Bold headline";
     const aspectRatio = SOCIAL_ASPECT_RATIOS.some(
       (ratio) => ratio.value === socialDraft.aspect_ratio,
     )
       ? socialDraft.aspect_ratio
       : "1:1";
     const isCompanyLogoMedia = (media) => media?.id === "company-logo";
-    const allImages = socialMediaOptions.filter((media) => media.type === "PHOTO");
-    const allBackgroundImages = allImages.filter((media) => !isCompanyLogoMedia(media));
+    const allImages = socialMediaOptions.filter(
+      (media) => media.type === "PHOTO" && !isCompanyLogoMedia(media),
+    );
     const selectedImages = (socialDraft.selected_media_ids ?? [])
-      .map((id) => allBackgroundImages.find((media) => media.id === id) ?? null)
+      .map((id) => allImages.find((media) => media.id === id) ?? null)
       .filter(Boolean) as Array<(typeof socialMediaOptions)[number]>;
-    const pool = selectedImages.length > 0 ? selectedImages : allBackgroundImages;
-
+    const mediaPool = selectedImages.length > 0 ? selectedImages : allImages;
     const chosenMedia =
-      pool.length === 0
+      mediaPool.length === 0
         ? null
-        : pool.length === 1
-          ? pool[0]
-          : pool[Math.floor(Math.random() * pool.length)];
+        : mediaPool[Math.floor(Math.random() * mediaPool.length)] ?? null;
+
+    if (layoutPreset === "Band rows") {
+      const bandColorChoices = [
+        "#ef4444",
+        "#f97316",
+        "#f59e0b",
+        "#eab308",
+        "#22c55e",
+        "#14b8a6",
+        "#0ea5e9",
+        "#6366f1",
+        "#8b5cf6",
+        "#ec4899",
+      ];
+      const randomBandColor = () =>
+        bandColorChoices[Math.floor(Math.random() * bandColorChoices.length)] ??
+        "#0ea5e9";
+      const randomOverlayColor = randomBandColor();
+      const randomBandAlign = Math.random() < 0.5 ? "left" : "center";
+      const normalizeMdyShort = (value) => {
+        const v = String(value ?? "").trim();
+        if (!v) return "";
+        const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return v;
+        const mm = Number.parseInt(m[2] ?? "0", 10);
+        const dd = Number.parseInt(m[3] ?? "0", 10);
+        const yy = Number.parseInt((m[1] ?? "00").slice(-2), 10);
+        if (!mm || !dd) return v;
+        return `${mm}/${dd}/${yy.toString().padStart(2, "0")}`;
+      };
+
+      const headlineText = String(
+        socialDraft.headline || socialSelectedProduct?.product_name || "Add Headline",
+      ).trim();
+      const startShort = normalizeMdyShort(socialDraft.start_date);
+      const endShort = normalizeMdyShort(socialDraft.end_date);
+      const priceText = String(socialDraft.price_detail ?? "").trim();
+      const dateCore =
+        startShort && endShort
+          ? `${startShort} - ${endShort}`
+          : startShort
+            ? `Starting ${startShort}`
+            : "";
+      const band2Text = [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
+        .filter(Boolean)
+        .join("");
+      const locationText = String(socialDraft.location_detail ?? "").trim();
+      const ageText = String(socialDraft.age_range ?? "").trim();
+      const ctaText = String(socialDraft.call_to_action ?? "").trim();
+      const band3Text = ageText || locationText || "";
+      const band4Text = ctaText || (band3Text === locationText ? "" : locationText) || "";
+
+      const contactConfig = (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3;
+      const swapContacts = Math.random() < 0.5;
+      const phoneText =
+        String(socialBusinessPhoneText ?? "").trim() ||
+        String(socialBusinessEmailText ?? "").trim() ||
+        "#tutoring";
+      const emailText =
+        String(socialBusinessEmailText ?? "").trim() ||
+        String(socialBusinessPhoneText ?? "").trim() ||
+        "#tutoring";
+
+      const contactMargin = 25;
+      const contactHeight = 100;
+      const sideWidth = 450;
+      const centerWidth = 900;
+      const leftX = contactMargin;
+      const rightX = 1000 - contactMargin - sideWidth;
+      const centerX = 50;
+      const topY = contactMargin;
+      const bottomY = 1000 - contactMargin - contactHeight;
+
+      let brandFrame = { x: centerX, y: topY, width: centerWidth, height: contactHeight };
+      let brandAlign: "left" | "center" | "right" = "center";
+      let contactAFrame = { x: leftX, y: bottomY, width: sideWidth, height: contactHeight };
+      let contactBFrame = { x: rightX, y: bottomY, width: sideWidth, height: contactHeight };
+      let contactAText = swapContacts ? emailText : phoneText;
+      let contactBText = swapContacts ? phoneText : emailText;
+      let contactAAlign: "left" | "center" | "right" = "left";
+      let contactBAlign: "left" | "center" | "right" = "right";
+
+      if (contactConfig === 2) {
+        brandFrame = { x: leftX, y: topY, width: sideWidth, height: contactHeight };
+        brandAlign = "left";
+        contactAFrame = { x: rightX, y: topY, width: sideWidth, height: contactHeight };
+        contactBFrame = { x: centerX, y: bottomY, width: centerWidth, height: contactHeight };
+        contactAText = phoneText;
+        contactBText = emailText;
+        contactAAlign = "right";
+        contactBAlign = "center";
+      } else if (contactConfig === 3) {
+        brandFrame = { x: centerX, y: bottomY, width: centerWidth, height: contactHeight };
+        brandAlign = "center";
+        contactAFrame = { x: leftX, y: topY, width: sideWidth, height: contactHeight };
+        contactBFrame = { x: rightX, y: topY, width: sideWidth, height: contactHeight };
+        contactAText = swapContacts ? emailText : phoneText;
+        contactBText = swapContacts ? phoneText : emailText;
+        contactAAlign = "left";
+        contactBAlign = "right";
+      }
+
+      const band1Frame = { x: 0, y: 156.25, width: 1000, height: 125 };
+      const band2Frame = { x: 0, y: 343.75, width: 1000, height: 125 };
+      const band3Frame = { x: 0, y: 531.25, width: 1000, height: 125 };
+      const band4Frame = { x: 0, y: 718.75, width: 1000, height: 125 };
+      const bandFrames = {
+        "band-1": band1Frame,
+        "band-2": band2Frame,
+        "band-3": band3Frame,
+        "band-4": band4Frame,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[0]]: { ...band1Frame },
+        [SOCIAL_BAND_TEXT_LAYER_IDS[1]]: { ...band2Frame },
+        [SOCIAL_BAND_TEXT_LAYER_IDS[2]]: { ...band3Frame },
+        [SOCIAL_BAND_TEXT_LAYER_IDS[3]]: { ...band4Frame },
+        [SOCIAL_BAND_BRAND_LAYER_ID]: brandFrame,
+        [SOCIAL_BAND_CONTACT_A_LAYER_ID]: contactAFrame,
+        [SOCIAL_BAND_CONTACT_B_LAYER_ID]: contactBFrame,
+        [SOCIAL_BAND_OVERLAY_LAYER_ID]: {
+          x: 0,
+          y: 0,
+          width: 1000,
+          height: 1000,
+        },
+      };
+      const bandStyles = {
+        [SOCIAL_BAND_OVERLAY_LAYER_ID]: {
+          kind: "rectangle",
+          color: randomOverlayColor,
+          opacity: 25,
+        },
+        "band-1": { kind: "rectangle", color: randomBandColor(), opacity: 60 },
+        "band-2": { kind: "rectangle", color: randomBandColor(), opacity: 60 },
+        "band-3": { kind: "rectangle", color: randomBandColor(), opacity: 60 },
+        "band-4": { kind: "rectangle", color: randomBandColor(), opacity: 60 },
+      };
+      const bandLayerOrderBase = [
+        SOCIAL_BAND_CONTACT_A_LAYER_ID,
+        SOCIAL_BAND_CONTACT_B_LAYER_ID,
+        SOCIAL_BAND_BRAND_LAYER_ID,
+        ...SOCIAL_BAND_TEXT_LAYER_IDS,
+        ...SOCIAL_BAND_LAYER_IDS,
+        SOCIAL_BAND_OVERLAY_LAYER_ID,
+      ];
+      setSocialLayerOrder(
+        chosenMedia ? [...bandLayerOrderBase, "media"] : [...bandLayerOrderBase],
+      );
+      setSocialLayerVisible({
+        media: Boolean(chosenMedia),
+        [SOCIAL_BAND_OVERLAY_LAYER_ID]: true,
+        [SOCIAL_BAND_BRAND_LAYER_ID]: true,
+        [SOCIAL_BAND_CONTACT_A_LAYER_ID]: true,
+        [SOCIAL_BAND_CONTACT_B_LAYER_ID]: true,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[0]]: true,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[1]]: true,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[2]]: true,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[3]]: true,
+        "band-1": true,
+        "band-2": true,
+        "band-3": true,
+        "band-4": true,
+      });
+      setSocialLayerLocked({
+        media: false,
+        [SOCIAL_BAND_OVERLAY_LAYER_ID]: false,
+        [SOCIAL_BAND_BRAND_LAYER_ID]: false,
+        [SOCIAL_BAND_CONTACT_A_LAYER_ID]: false,
+        [SOCIAL_BAND_CONTACT_B_LAYER_ID]: false,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[0]]: false,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[1]]: false,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[2]]: false,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[3]]: false,
+        "band-1": false,
+        "band-2": false,
+        "band-3": false,
+        "band-4": false,
+      });
+      setSocialLayerFrames(bandFrames);
+      setSocialShapeStyles(bandStyles);
+      setSocialImageLayers(
+        socialHasBrandLogo
+          ? {
+              [SOCIAL_BAND_BRAND_LAYER_ID]: {
+                id: SOCIAL_BAND_BRAND_LAYER_ID,
+                url: socialBrandLogoUrl,
+                type: detectSocialMediaTypeFromUrl(socialBrandLogoUrl),
+              },
+            }
+          : {},
+      );
+      const band1Font = fitBandSingleLineFontSize({
+        text: headlineText,
+        frame: bandFrames[SOCIAL_BAND_TEXT_LAYER_IDS[0]],
+        maxFont: 220,
+        minFont: 10,
+      });
+      const band2Font = fitBandSingleLineFontSize({
+        text: band2Text,
+        frame: bandFrames[SOCIAL_BAND_TEXT_LAYER_IDS[1]],
+        maxFont: 220,
+        minFont: 10,
+      });
+      const band3Font = fitBandSingleLineFontSize({
+        text: band3Text,
+        frame: bandFrames[SOCIAL_BAND_TEXT_LAYER_IDS[2]],
+        maxFont: 220,
+        minFont: 10,
+      });
+      const band4Font = fitBandSingleLineFontSize({
+        text: band4Text,
+        frame: bandFrames[SOCIAL_BAND_TEXT_LAYER_IDS[3]],
+        maxFont: 220,
+        minFont: 10,
+      });
+      const bandBrandFont = fitBandSingleLineFontSize({
+        text: socialCompanyNameText,
+        frame: brandFrame,
+        maxFont: 110,
+        minFont: 12,
+      });
+      const bandContactAFont = fitBandSingleLineFontSize({
+        text: contactAText,
+        frame: contactAFrame,
+        maxFont: 110,
+        minFont: 12,
+      });
+      const bandContactBFont = fitBandSingleLineFontSize({
+        text: contactBText,
+        frame: contactBFrame,
+        maxFont: 110,
+        minFont: 12,
+      });
+      setSocialTextFontSizes((prev) => ({
+        ...prev,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[0]]: band1Font,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[1]]: band2Font,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[2]]: band3Font,
+        [SOCIAL_BAND_TEXT_LAYER_IDS[3]]: band4Font,
+        [SOCIAL_BAND_BRAND_LAYER_ID]: bandBrandFont,
+        [SOCIAL_BAND_CONTACT_A_LAYER_ID]: bandContactAFont,
+        [SOCIAL_BAND_CONTACT_B_LAYER_ID]: bandContactBFont,
+      }));
+      setSocialSelectedLayer(SOCIAL_BAND_TEXT_LAYER_IDS[0]);
+      setSocialToolTarget(SOCIAL_BAND_TEXT_LAYER_IDS[0]);
+      setSocialToolFontSize(band1Font);
+      setSocialSelectedImageId(chosenMedia?.id ?? "");
+      setSocialPreviewOverrideUrl(chosenMedia?.url ?? "");
+      setSocialPreviewDropActive(false);
+      setSocialDraggingLayer("");
+      setSocialBandRowsAlign(randomBandAlign);
+      setSocialBandContactConfig(contactConfig);
+      setSocialBandBrandAlign(brandAlign);
+      setSocialBandContactAlign({
+        contactA: contactAAlign,
+        contactB: contactBAlign,
+      });
+      setSocialBandContactText({
+        contactA: contactAText,
+        contactB: contactBText,
+      });
+      setSocialBandRowsText({
+        band1: headlineText,
+        band2: band2Text,
+        band3: band3Text,
+        band4: band4Text,
+      });
+      setSocialDraft((prev) => ({
+        ...prev,
+        template_style: templateStyle,
+        layout_preset: layoutPreset,
+        aspect_ratio: aspectRatio,
+        selected_template_id: `${aspectRatio}|${layoutPreset}`,
+      }));
+      setStatus(
+        chosenMedia
+          ? `Band rows generated. Using image: ${chosenMedia.label}.`
+          : "Band rows generated. No images available in Media & templates.",
+      );
+      return;
+    }
+
+    if (layoutPreset === "Photo + footer") {
+      const bgColorChoices = [
+        "#ef4444",
+        "#f97316",
+        "#f59e0b",
+        "#eab308",
+        "#22c55e",
+        "#14b8a6",
+        "#0ea5e9",
+        "#6366f1",
+        "#8b5cf6",
+        "#ec4899",
+      ];
+      const randomBgColor =
+        bgColorChoices[Math.floor(Math.random() * bgColorChoices.length)] ??
+        "#0ea5e9";
+      const randomBgColorSecondary =
+        bgColorChoices[Math.floor(Math.random() * bgColorChoices.length)] ??
+        "#6366f1";
+      const bgGradient = `linear-gradient(to bottom right, ${randomBgColor} 0%, ${randomBgColorSecondary} 100%)`;
+      const photoFooterImageLayerId = `${SOCIAL_IMAGE_LAYER_PREFIX}photo-footer-main`;
+      const hasImage = Boolean(chosenMedia?.url);
+      const hasBrandLogo = Boolean(socialHasBrandLogo && socialBrandLogoUrl);
+      const imageFrame = { x: 50, y: 50, width: 900, height: 600 };
+      const photoFooterHeadlineFont = 150;
+      const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
+        templateStyle,
+        headlineText: socialDraft.headline,
+        locationText: socialDraft.location_detail,
+        startDate: socialDraft.start_date,
+        endDate: socialDraft.end_date,
+      });
+      const headlineMeasured = measureWrappedSocialText({
+        text: photoFooterHeadlineText,
+        fontSize: photoFooterHeadlineFont,
+        fontWeight: 800,
+        fontFamily:
+          socialFontFamily && socialFontFamily !== "inherit"
+            ? socialFontFamily
+            : "Poppins, sans-serif",
+        maxWidth: 1000,
+        minWidth: 1000,
+        paddingX: 12,
+        paddingY: 8,
+        lineHeightMultiplier: 1,
+        outlineWidth: 0,
+      });
+      const headlineFrame = {
+        x: 0,
+        y: 100,
+        width: 1000,
+        height: clampLayerValue(headlineMeasured.height, 120, 500),
+      };
+      const dateFrame = { x: 0, y: 700, width: 1000, height: 100 };
+      const locationPriceFrame = { x: 0, y: 825, width: 1000, height: 75 };
+      const bottomFrame = { x: 0, y: 925, width: 1000, height: 75 };
+      const randomAlign: "left" | "center" = Math.random() < 0.5 ? "left" : "center";
+      const randomBrandAlign: "left" | "center" | "right" =
+        (["left", "center", "right"] as const)[
+          Math.floor(Math.random() * 3)
+        ] ?? "center";
+      const randomBottomMode: "cta" | "contact" =
+        Math.random() < 0.5 ? "cta" : "contact";
+      const brandFrame = {
+        x: 40,
+        y: 20,
+        width: 920,
+        height: hasBrandLogo ? 100 : 75,
+      };
+      const photoFooterDateText = resolvePhotoFooterDateLineText({
+        startDate: socialDraft.start_date,
+        endDate: socialDraft.end_date,
+      });
+      const photoFooterLocationPriceText = resolvePhotoFooterLocationPriceText({
+        locationText: socialDraft.location_detail,
+        priceText: socialDraft.price_detail,
+      });
+      const photoFooterBottomText = resolvePhotoFooterBottomLineText({
+        mode: randomBottomMode,
+        callToAction: socialDraft.call_to_action,
+        phoneText: socialBusinessPhoneText,
+        emailText: socialBusinessEmailText,
+      });
+      const photoFooterBrandText = socialCompanyNameText;
+      const photoFooterBrandFont = fitBandSingleLineFontSize({
+        text: photoFooterBrandText,
+        frame: brandFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const photoFooterDateFont = fitBandSingleLineFontSize({
+        text: photoFooterDateText,
+        frame: dateFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const photoFooterLocationPriceFont = fitBandSingleLineFontSize({
+        text: photoFooterLocationPriceText,
+        frame: locationPriceFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const photoFooterBottomFont = fitBandSingleLineFontSize({
+        text: photoFooterBottomText,
+        frame: bottomFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const photoFooterDateFinalFont = photoFooterDateFont;
+      const photoFooterLocationPriceFinalFont = photoFooterLocationPriceFont;
+      const photoFooterBottomFinalFont = photoFooterBottomFont;
+      setSocialLayerOrder(
+        hasImage
+          ? [
+              SOCIAL_BRAND_LAYER_ID,
+              "cta",
+              SOCIAL_CONTACT_LAYER_ID,
+              "start",
+              "headline",
+              photoFooterImageLayerId,
+              SOCIAL_HEADER_LAYER_ID,
+            ]
+          : [
+              SOCIAL_BRAND_LAYER_ID,
+              "cta",
+              SOCIAL_CONTACT_LAYER_ID,
+              "start",
+              "headline",
+              SOCIAL_HEADER_LAYER_ID,
+            ],
+      );
+      setSocialLayerVisible(
+        hasImage
+          ? {
+              [SOCIAL_BRAND_LAYER_ID]: true,
+              cta: true,
+              [SOCIAL_CONTACT_LAYER_ID]: true,
+              start: true,
+              headline: true,
+              [photoFooterImageLayerId]: true,
+              [SOCIAL_HEADER_LAYER_ID]: true,
+            }
+          : {
+              [SOCIAL_BRAND_LAYER_ID]: true,
+              cta: true,
+              [SOCIAL_CONTACT_LAYER_ID]: true,
+              start: true,
+              headline: true,
+              [SOCIAL_HEADER_LAYER_ID]: true,
+            },
+      );
+      setSocialLayerLocked(
+        hasImage
+          ? {
+              [SOCIAL_BRAND_LAYER_ID]: false,
+              cta: false,
+              [SOCIAL_CONTACT_LAYER_ID]: false,
+              start: false,
+              headline: false,
+              [photoFooterImageLayerId]: false,
+              [SOCIAL_HEADER_LAYER_ID]: false,
+            }
+          : {
+              [SOCIAL_BRAND_LAYER_ID]: false,
+              cta: false,
+              [SOCIAL_CONTACT_LAYER_ID]: false,
+              start: false,
+              headline: false,
+              [SOCIAL_HEADER_LAYER_ID]: false,
+            },
+      );
+      setSocialLayerFrames(
+        hasImage
+          ? {
+              [SOCIAL_BRAND_LAYER_ID]: brandFrame,
+              cta: bottomFrame,
+              [SOCIAL_CONTACT_LAYER_ID]: locationPriceFrame,
+              start: dateFrame,
+              headline: headlineFrame,
+              [photoFooterImageLayerId]: imageFrame,
+              [SOCIAL_HEADER_LAYER_ID]: { x: 0, y: 0, width: 1000, height: 1000 },
+            }
+          : {
+              [SOCIAL_BRAND_LAYER_ID]: brandFrame,
+              cta: bottomFrame,
+              [SOCIAL_CONTACT_LAYER_ID]: locationPriceFrame,
+              start: dateFrame,
+              headline: headlineFrame,
+              [SOCIAL_HEADER_LAYER_ID]: { x: 0, y: 0, width: 1000, height: 1000 },
+            },
+      );
+      setSocialShapeStyles({
+        [SOCIAL_HEADER_LAYER_ID]: {
+          kind: "rectangle",
+          color: randomBgColor,
+          gradient: bgGradient,
+          opacity: 100,
+        },
+      });
+      const nextImageLayers: Record<string, { id: string; url: string; type: string }> = {};
+      if (hasImage) {
+        nextImageLayers[photoFooterImageLayerId] = {
+          id: photoFooterImageLayerId,
+          url: String(chosenMedia?.url ?? ""),
+          type: detectSocialMediaTypeFromUrl(String(chosenMedia?.url ?? "")),
+        };
+      }
+      if (hasBrandLogo) {
+        nextImageLayers[SOCIAL_BRAND_LAYER_ID] = {
+          id: SOCIAL_BRAND_LAYER_ID,
+          url: socialBrandLogoUrl,
+          type: detectSocialMediaTypeFromUrl(socialBrandLogoUrl),
+        };
+      }
+      setSocialImageLayers(nextImageLayers);
+      setSocialTextFontSizes((prev) => ({
+        ...prev,
+        [SOCIAL_BRAND_LAYER_ID]: photoFooterBrandFont,
+        headline: photoFooterHeadlineFont,
+        start: photoFooterDateFinalFont,
+        [SOCIAL_CONTACT_LAYER_ID]: photoFooterLocationPriceFinalFont,
+        cta: photoFooterBottomFinalFont,
+      }));
+      setSocialPhotoFooterAlign(randomAlign);
+      setSocialPhotoFooterBrandAlign(randomBrandAlign);
+      setSocialPhotoFooterBottomMode(randomBottomMode);
+      setSocialToolTarget("headline");
+      setSocialToolFontSize(photoFooterHeadlineFont);
+      setSocialSelectedLayer("headline");
+      setSocialPreviewOverrideUrl("");
+      setSocialSelectedImageId(chosenMedia?.id ?? "");
+      setSocialPreviewDropActive(false);
+      setSocialDraggingLayer("");
+      setSocialDraft((prev) => ({
+        ...prev,
+        template_style: templateStyle,
+        layout_preset: layoutPreset,
+        aspect_ratio: aspectRatio,
+        selected_template_id: `${aspectRatio}|${layoutPreset}`,
+      }));
+      setStatus(
+        hasImage
+          ? `Photo + footer generated with random color + image: ${chosenMedia?.label ?? "media"}.`
+          : "Photo + footer generated with a random solid color background (no media available).",
+      );
+      return;
+    }
 
     const alignChoices = ["left", "center", "right"] as const;
     const randomAlign =
@@ -2169,6 +3005,37 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     );
   };
 
+  const clearSocialCanvasState = () => {
+    setSocialLayerOrder([]);
+    setSocialLayerVisible({});
+    setSocialLayerLocked({});
+    setSocialLayerFrames({});
+    setSocialShapeStyles({});
+    setSocialImageLayers({});
+    setSocialSelectedLayer("");
+    setSocialSelectedImageId("");
+    setSocialPreviewOverrideUrl("");
+    setSocialPreviewDropActive(false);
+    setSocialDraggingLayer("");
+    setSocialHistory([]);
+    setSocialHistoryIndex(-1);
+  };
+
+  const applySocialLayoutPreset = (
+    nextLayoutPreset,
+    nextAspectRatio = socialDraft.aspect_ratio,
+  ) => {
+    setSocialDraft((prev) => ({
+      ...prev,
+      layout_preset: nextLayoutPreset,
+      ...(nextAspectRatio ? { aspect_ratio: nextAspectRatio } : null),
+    }));
+    if (nextLayoutPreset === "Band rows") {
+      clearSocialCanvasState();
+      setStatus("Band rows selected. Canvas cleared.");
+    }
+  };
+
   const applySocialShapeColor = (color) => {
     setSocialShapeColor(color);
     if (isSocialShapeLayer(socialSelectedLayer)) {
@@ -2182,7 +3049,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
   };
   const isSocialTextLayer = (layerId) =>
-    layerId === "headline" || layerId === "start" || layerId === "cta";
+    layerId === "headline" ||
+    layerId === "start" ||
+    layerId === "cta" ||
+    layerId === SOCIAL_CONTACT_LAYER_ID ||
+    SOCIAL_BAND_TEXT_LAYER_IDS.includes(String(layerId || "")) ||
+    layerId === SOCIAL_BAND_CONTACT_A_LAYER_ID ||
+    layerId === SOCIAL_BAND_CONTACT_B_LAYER_ID ||
+    ((layerId === SOCIAL_BRAND_LAYER_ID ||
+      layerId === SOCIAL_BAND_BRAND_LAYER_ID) &&
+      !socialHasBrandLogo);
 
   const socialTextMaxWidthByLayout = (layoutPreset) => {
     if (layoutPreset === "Bold headline") {
@@ -2192,7 +3068,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       return { headline: 920, start: 920, cta: 920 };
     }
     if (layoutPreset === "Photo + footer") {
-      return { headline: 910, cta: 910 };
+      return {};
     }
     if (layoutPreset === "Schedule list") {
       return { start: 500 };
@@ -2407,28 +3283,32 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
 
   const socialSelectLayer = (layerId) => {
     setSocialSelectedLayer(layerId);
-    if (layerId === "headline" || layerId === "start" || layerId === "cta") {
-      const announcementCtaDefault =
-        socialDraft.template_style === "Class announcement" &&
-        socialDraft.layout_preset === "Bold headline"
-          ? resolveAnnouncementFooterInfoFontPt(
-              String(socialAnnouncementFooterInfo.text ?? ""),
-            )
-          : socialToolFontSize;
-      const nextSize =
-        layerId === "cta"
-          ? (socialTextFontSizes.cta ?? announcementCtaDefault)
-          : (socialTextFontSizes[layerId] ?? socialToolFontSize);
-      if (
-        layerId === "cta" &&
-        socialTextFontSizes.cta == null &&
-        Number.isFinite(Number(nextSize))
-      ) {
-        setSocialTextFontSizes((prev) => ({ ...prev, cta: Number(nextSize) }));
-      }
-      setSocialToolTarget(layerId);
-      setSocialToolFontSize(Number(nextSize) || socialToolFontSize);
+    if (!isSocialTextLayer(layerId)) return;
+    const announcementCtaDefault =
+      socialDraft.template_style === "Class announcement" &&
+      socialDraft.layout_preset === "Bold headline"
+        ? resolveAnnouncementFooterInfoFontPt(
+            String(socialAnnouncementFooterInfo.text ?? ""),
+          )
+        : 75;
+    const fallbackByLayer = {
+      headline: socialDraft.layout_preset === "Photo + footer" ? 150 : 48,
+      start: 30,
+      cta: announcementCtaDefault,
+      [SOCIAL_CONTACT_LAYER_ID]: 30,
+      [SOCIAL_BRAND_LAYER_ID]: 30,
+    };
+    const fallbackSize = fallbackByLayer[layerId] ?? socialToolFontSize ?? 48;
+    const nextSize = socialTextFontSizes[layerId] ?? fallbackSize;
+    if (
+      layerId === "cta" &&
+      socialTextFontSizes.cta == null &&
+      Number.isFinite(Number(nextSize))
+    ) {
+      setSocialTextFontSizes((prev) => ({ ...prev, cta: Number(nextSize) }));
     }
+    setSocialToolTarget(layerId);
+    setSocialToolFontSize(Number(nextSize) || fallbackSize);
   };
 
   const socialDeleteLayer = (layerId) => {
@@ -2995,6 +3875,22 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       );
     }
 
+    if (
+      layerId === SOCIAL_BAND_BRAND_LAYER_ID ||
+      layerId === SOCIAL_BAND_CONTACT_A_LAYER_ID ||
+      layerId === SOCIAL_BAND_CONTACT_B_LAYER_ID ||
+      SOCIAL_BAND_TEXT_LAYER_IDS.includes(layerId)
+    ) {
+      return (
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="w-[84%] overflow-hidden rounded-sm border border-white/40 bg-black/35 p-1">
+            <div className="h-1.5 w-full rounded-sm bg-white/90" />
+            <div className="mt-1 h-1.5 w-3/4 rounded-sm bg-white/70" />
+          </div>
+        </div>
+      );
+    }
+
     return <div className="h-full w-full bg-gray-100" />;
   };
 
@@ -3098,6 +3994,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     paddingTop = 0,
     paddingBottom = 0,
     forceTextShadow = "",
+    forceTextStroke = null,
     forceTextColor = "",
     forceFontSize = null,
     forceLineHeight = null,
@@ -3191,6 +4088,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 ? { fontSize: `${scaledForceFontSize}px` }
                 : null),
               ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
+              ...(forceTextStroke != null
+                ? { WebkitTextStroke: forceTextStroke }
+                : null),
               textAlign,
               color: forceTextColor || textStyle.color || "#ffffff",
               lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
@@ -3230,6 +4130,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     paddingTop = 0,
     paddingBottom = 0,
     forceTextShadow = "",
+    forceTextStroke = null,
     forceTextColor = "",
     forceFontSize = null,
     forceLineHeight = null,
@@ -3311,6 +4212,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 ? { fontSize: `${scaledForceFontSize}px` }
                 : null),
               ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
+              ...(forceTextStroke != null
+                ? { WebkitTextStroke: forceTextStroke }
+                : null),
               ...(content ? { display: "block", width: "100%" } : null),
               textAlign,
               color: forceTextColor || textStyle.color || "#ffffff",
@@ -3331,6 +4235,47 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         </div>
       </div>
     );
+  };
+
+  const fitBandSingleLineFontSize = ({
+    text,
+    frame,
+    maxFont = 220,
+    minFont = 10,
+    paddingX = 24,
+    paddingY = 10,
+    fontWeight = 800,
+  }) => {
+    const safeText = String(text ?? "").trim();
+    if (!safeText) return minFont;
+    if (!frame) return minFont;
+    if (typeof document === "undefined") return minFont;
+    const canvas = document.createElement("canvas");
+    const ctx2d = canvas.getContext("2d");
+    if (!ctx2d) return minFont;
+    const safeFontFamilyRaw = String(socialFontFamily || "inherit").trim();
+    const safeFontFamily =
+      safeFontFamilyRaw && safeFontFamilyRaw !== "inherit"
+        ? safeFontFamilyRaw
+        : "Poppins, sans-serif";
+    const availableWidth = Math.max(1, Number(frame.width || 0) - paddingX * 2);
+    const availableHeight = Math.max(1, Number(frame.height || 0) - paddingY * 2);
+    let low = Math.max(1, Math.floor(minFont));
+    let high = Math.max(low, Math.floor(maxFont));
+    let best = low;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      ctx2d.font = `${fontWeight} ${mid}px ${safeFontFamily}`;
+      const measuredWidth = ctx2d.measureText(safeText).width;
+      const measuredHeight = mid * 1.08;
+      if (measuredWidth <= availableWidth && measuredHeight <= availableHeight) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return clampLayerValue(best, minFont, maxFont);
   };
 
   const socialRenderPresetTextLayers = () => {
@@ -3520,94 +4465,494 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
 
     if (socialDraft.layout_preset === "Band rows") {
-      const rows = [
-        {
-          keyId: "band-headline",
-          layerId: "headline",
-          text: socialDraft.headline || socialSelectedProduct?.product_name || "Headline",
-          fallbackSize: 24,
-          y: 260,
-        },
-        {
-          keyId: "band-start",
-          layerId: "start",
-          text: socialDraft.start_date || "Dates / schedule",
-          fallbackSize: 20,
-          y: 355,
-        },
-        {
-          keyId: "band-audience",
-          layerId: null,
-          text: socialDraft.age_range || "Age range / audience",
-          fallbackSize: 20,
-          y: 450,
-        },
-        {
-          keyId: "band-cta",
-          layerId: "cta",
-          text: socialDraft.call_to_action || "Call to action",
-          fallbackSize: 20,
-          y: 545,
-        },
-      ];
+      const band1Frame = socialLayerFrames["band-1"];
+      const band2Frame = socialLayerFrames["band-2"];
+      const band3Frame = socialLayerFrames["band-3"];
+      const band4Frame = socialLayerFrames["band-4"];
+      if (!band1Frame || !band2Frame || !band3Frame || !band4Frame) return null;
+      const bandText1Frame = socialLayerFrames[SOCIAL_BAND_TEXT_LAYER_IDS[0]] ?? band1Frame;
+      const bandText2Frame = socialLayerFrames[SOCIAL_BAND_TEXT_LAYER_IDS[1]] ?? band2Frame;
+      const bandText3Frame = socialLayerFrames[SOCIAL_BAND_TEXT_LAYER_IDS[2]] ?? band3Frame;
+      const bandText4Frame = socialLayerFrames[SOCIAL_BAND_TEXT_LAYER_IDS[3]] ?? band4Frame;
+      const bandBrandFrame = socialLayerFrames[SOCIAL_BAND_BRAND_LAYER_ID] ?? {
+        x: 50,
+        y: 25,
+        width: 900,
+        height: 100,
+      };
+      const bandContactAFrame = socialLayerFrames[SOCIAL_BAND_CONTACT_A_LAYER_ID] ?? {
+        x: 25,
+        y: 875,
+        width: 450,
+        height: 100,
+      };
+      const bandContactBFrame = socialLayerFrames[SOCIAL_BAND_CONTACT_B_LAYER_ID] ?? {
+        x: 525,
+        y: 875,
+        width: 450,
+        height: 100,
+      };
+
+      const normalizeMdyShort = (value) => {
+        const v = String(value ?? "").trim();
+        if (!v) return "";
+        const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) return v;
+        const mm = Number.parseInt(m[2] ?? "0", 10);
+        const dd = Number.parseInt(m[3] ?? "0", 10);
+        const yy = Number.parseInt((m[1] ?? "00").slice(-2), 10);
+        if (!mm || !dd) return v;
+        return `${mm}/${dd}/${yy.toString().padStart(2, "0")}`;
+      };
+
+      const headlineText = String(
+        socialDraft.headline || socialSelectedProduct?.product_name || "Add Headline",
+      ).trim();
+      const startShort = normalizeMdyShort(socialDraft.start_date);
+      const endShort = normalizeMdyShort(socialDraft.end_date);
+      const priceText = String(socialDraft.price_detail ?? "").trim();
+      const dateCore =
+        startShort && endShort
+          ? `${startShort} - ${endShort}`
+          : startShort
+            ? `Starting ${startShort}`
+            : "";
+      const band2Text = [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
+        .filter(Boolean)
+        .join("");
+
+      const locationText = String(socialDraft.location_detail ?? "").trim();
+      const ageText = String(socialDraft.age_range ?? "").trim();
+      const ctaText = String(socialDraft.call_to_action ?? "").trim();
+      const band3Text = ageText || locationText || "";
+      const band4Text = ctaText || (band3Text === locationText ? "" : locationText) || "";
+
+      const alignX = socialBandRowsAlign;
+      const textShadow = "5px 5px 8px rgba(0,0,0,0.9)";
+      const contactTextShadow = "4px 4px 6px rgba(0,0,0,0.8)";
+      const textPaddingLeft = alignX === "left" ? 24 : 0;
+      const brandPaddingLeft = socialBandBrandAlign === "left" ? 16 : 0;
+      const contactAPaddingLeft = socialBandContactAlign.contactA === "left" ? 12 : 0;
+      const contactBPaddingLeft = socialBandContactAlign.contactB === "left" ? 12 : 0;
+      const contactAText = String(
+        socialBandContactText.contactA ??
+          socialBusinessPhoneText ??
+          socialBusinessEmailText ??
+          "#tutoring",
+      ).trim();
+      const contactBText = String(
+        socialBandContactText.contactB ??
+          socialBusinessEmailText ??
+          socialBusinessPhoneText ??
+          "#tutoring",
+      ).trim();
+
+      const band1Font = fitBandSingleLineFontSize({
+        text: headlineText,
+        frame: bandText1Frame,
+        maxFont: 220,
+        minFont: 10,
+      });
+      const band2Font = fitBandSingleLineFontSize({
+        text: band2Text,
+        frame: bandText2Frame,
+        maxFont: 220,
+        minFont: 10,
+      });
+      const band3Font = fitBandSingleLineFontSize({
+        text: band3Text,
+        frame: bandText3Frame,
+        maxFont: 220,
+        minFont: 10,
+      });
+      const band4Font = fitBandSingleLineFontSize({
+        text: band4Text,
+        frame: bandText4Frame,
+        maxFont: 220,
+        minFont: 10,
+      });
+      const bandBrandFont = fitBandSingleLineFontSize({
+        text: socialCompanyNameText,
+        frame: bandBrandFrame,
+        maxFont: 110,
+        minFont: 10,
+      });
+      const bandContactAFont = fitBandSingleLineFontSize({
+        text: contactAText,
+        frame: bandContactAFrame,
+        maxFont: 110,
+        minFont: 10,
+      });
+      const bandContactBFont = fitBandSingleLineFontSize({
+        text: contactBText,
+        frame: bandContactBFrame,
+        maxFont: 110,
+        minFont: 10,
+      });
+
       return (
         <>
-          {rows.map((row) =>
-            socialRenderTextLayer({
-              ...row,
-              x: 40,
-              width: 920,
-              height: 84,
-              alignX: "left",
-              alignY: "center",
-              fontWeight: 700,
-              backgroundFill: "#ff9df9",
-              backgroundOpacity: 0.7,
-              borderRadius: 12,
-            }),
-          )}
+          {!socialHasBrandLogo
+            ? socialRenderHtmlTextLayer({
+                keyId: "band-row-brand-text",
+                layerId: SOCIAL_BAND_BRAND_LAYER_ID,
+                text: socialCompanyNameText,
+                fallbackSize: bandBrandFont,
+                x: bandBrandFrame.x,
+                y: bandBrandFrame.y,
+                width: bandBrandFrame.width,
+                height: bandBrandFrame.height,
+                alignX: socialBandBrandAlign,
+                alignY: "center",
+                fontWeight: 700,
+                forceTextColor: "#ffffff",
+                forceTextShadow: contactTextShadow,
+                forceLineHeight: 1,
+                paddingLeft: brandPaddingLeft,
+              })
+            : null}
+          {socialRenderHtmlTextLayer({
+            keyId: "band-row-contact-a",
+            layerId: SOCIAL_BAND_CONTACT_A_LAYER_ID,
+            text: contactAText,
+            fallbackSize: bandContactAFont,
+            x: bandContactAFrame.x,
+            y: bandContactAFrame.y,
+            width: bandContactAFrame.width,
+            height: bandContactAFrame.height,
+            alignX: socialBandContactAlign.contactA,
+            alignY: "center",
+            fontWeight: 700,
+            forceTextColor: "#d1d5db",
+            forceTextShadow: contactTextShadow,
+            forceLineHeight: 1,
+            paddingLeft: contactAPaddingLeft,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "band-row-contact-b",
+            layerId: SOCIAL_BAND_CONTACT_B_LAYER_ID,
+            text: contactBText,
+            fallbackSize: bandContactBFont,
+            x: bandContactBFrame.x,
+            y: bandContactBFrame.y,
+            width: bandContactBFrame.width,
+            height: bandContactBFrame.height,
+            alignX: socialBandContactAlign.contactB,
+            alignY: "center",
+            fontWeight: 700,
+            forceTextColor: "#d1d5db",
+            forceTextShadow: contactTextShadow,
+            forceLineHeight: 1,
+            paddingLeft: contactBPaddingLeft,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "band-row-1-text",
+            layerId: SOCIAL_BAND_TEXT_LAYER_IDS[0],
+            text: headlineText,
+            fallbackSize: band1Font,
+            x: bandText1Frame.x,
+            y: bandText1Frame.y,
+            width: bandText1Frame.width,
+            height: bandText1Frame.height,
+            alignX,
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "#ffffff",
+            forceTextShadow: textShadow,
+            forceLineHeight: 1,
+            paddingLeft: textPaddingLeft,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "band-row-2-text",
+            layerId: SOCIAL_BAND_TEXT_LAYER_IDS[1],
+            text: band2Text,
+            fallbackSize: band2Font,
+            x: bandText2Frame.x,
+            y: bandText2Frame.y,
+            width: bandText2Frame.width,
+            height: bandText2Frame.height,
+            alignX,
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "#ffffff",
+            forceTextShadow: textShadow,
+            forceLineHeight: 1,
+            paddingLeft: textPaddingLeft,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "band-row-3-text",
+            layerId: SOCIAL_BAND_TEXT_LAYER_IDS[2],
+            text: band3Text,
+            fallbackSize: band3Font,
+            x: bandText3Frame.x,
+            y: bandText3Frame.y,
+            width: bandText3Frame.width,
+            height: bandText3Frame.height,
+            alignX,
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "#ffffff",
+            forceTextShadow: textShadow,
+            forceLineHeight: 1,
+            paddingLeft: textPaddingLeft,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "band-row-4-text",
+            layerId: SOCIAL_BAND_TEXT_LAYER_IDS[3],
+            text: band4Text,
+            fallbackSize: band4Font,
+            x: bandText4Frame.x,
+            y: bandText4Frame.y,
+            width: bandText4Frame.width,
+            height: bandText4Frame.height,
+            alignX,
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "#ffffff",
+            forceTextShadow: textShadow,
+            forceLineHeight: 1,
+            paddingLeft: textPaddingLeft,
+          })}
         </>
       );
     }
 
     if (socialDraft.layout_preset === "Photo + footer") {
+      const hasPhotoFooterPresetLayers = Boolean(
+        socialLayerVisible[SOCIAL_FOOTER_LAYER_ID] ||
+          socialLayerVisible.headline ||
+          socialLayerVisible.cta ||
+          socialLayerVisible.start ||
+          socialLayerVisible[SOCIAL_CONTACT_LAYER_ID],
+      );
+      if (!hasPhotoFooterPresetLayers) return null;
+      const headlineFrame = socialLayerFrames.headline ?? {
+        x: 0,
+        y: 100,
+        width: 1000,
+        height: 220,
+      };
+      const dateFrame = socialLayerFrames.start ?? {
+        x: 0,
+        y: 700,
+        width: 1000,
+        height: 100,
+      };
+      const locationPriceFrame = socialLayerFrames[SOCIAL_CONTACT_LAYER_ID] ?? {
+        x: 0,
+        y: 825,
+        width: 1000,
+        height: 75,
+      };
+      const bottomFrame = socialLayerFrames.cta ?? {
+        x: 0,
+        y: 925,
+        width: 1000,
+        height: 75,
+      };
+      const brandFrame = socialLayerFrames[SOCIAL_BRAND_LAYER_ID] ?? {
+        x: 40,
+        y: 20,
+        width: 920,
+        height: socialHasBrandLogo ? 100 : 75,
+      };
+      const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
+        templateStyle: socialDraft.template_style,
+        headlineText: socialDraft.headline,
+        locationText: socialDraft.location_detail,
+        startDate: socialDraft.start_date,
+        endDate: socialDraft.end_date,
+      });
+      const photoFooterBrandText = socialCompanyNameText;
+      const photoFooterDateText = resolvePhotoFooterDateLineText({
+        startDate: socialDraft.start_date,
+        endDate: socialDraft.end_date,
+      });
+      const photoFooterLocationPriceText = resolvePhotoFooterLocationPriceText({
+        locationText: socialDraft.location_detail,
+        priceText: socialDraft.price_detail,
+      });
+      const photoFooterBottomText = resolvePhotoFooterBottomLineText({
+        mode: socialPhotoFooterBottomMode,
+        callToAction: socialDraft.call_to_action,
+        phoneText: socialBusinessPhoneText,
+        emailText: socialBusinessEmailText,
+      });
+      const photoFooterAlign = socialPhotoFooterAlign === "left" ? "left" : "center";
+      const photoFooterBrandAlign =
+        socialPhotoFooterBrandAlign === "left"
+          ? "left"
+          : socialPhotoFooterBrandAlign === "right"
+            ? "right"
+            : "center";
+      const photoFooterShadow = "0px 4px 10px rgba(0,0,0,0.85)";
+      const dateFitFont = fitBandSingleLineFontSize({
+        text: photoFooterDateText,
+        frame: dateFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const locationPriceFitFont = fitBandSingleLineFontSize({
+        text: photoFooterLocationPriceText,
+        frame: locationPriceFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const bottomFitFont = fitBandSingleLineFontSize({
+        text: photoFooterBottomText,
+        frame: bottomFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const brandFitFont = fitBandSingleLineFontSize({
+        text: photoFooterBrandText,
+        frame: brandFrame,
+        maxFont: 220,
+        minFont: 10,
+        paddingX: 12,
+        paddingY: 8,
+        fontWeight: 800,
+      });
+      const headlineRequestedFont = Math.max(
+        8,
+        Number(socialTextFontSizes.headline ?? 150) || 150,
+      );
+      const dateRequestedFont = Math.max(
+        8,
+        Number(socialTextFontSizes.start ?? dateFitFont) ||
+          dateFitFont,
+      );
+      const locationPriceRequestedFont = Math.max(
+        8,
+        Number(
+          socialTextFontSizes[SOCIAL_CONTACT_LAYER_ID] ?? locationPriceFitFont,
+        ) || locationPriceFitFont,
+      );
+      const bottomRequestedFont = Math.max(
+        8,
+        Number(socialTextFontSizes.cta ?? bottomFitFont) || bottomFitFont,
+      );
+      const dateFont = dateRequestedFont;
+      const locationPriceFont = locationPriceRequestedFont;
+      const bottomFont = bottomRequestedFont;
+      const brandRequestedFont = Math.max(
+        8,
+        Number(socialTextFontSizes[SOCIAL_BRAND_LAYER_ID] ?? brandFitFont) || brandFitFont,
+      );
+      const leftPadding = photoFooterAlign === "left" ? 10 : 0;
+      const rightPadding = photoFooterAlign === "left" ? 10 : 0;
+      const brandPaddingLeft = photoFooterBrandAlign === "left" ? 10 : 0;
+      const brandPaddingRight = photoFooterBrandAlign === "right" ? 10 : 0;
       return (
         <>
-          <svg
-            key="photo-footer-bg"
-            viewBox="0 0 1000 1000"
-            preserveAspectRatio="none"
-            className="absolute inset-0"
-            style={{ zIndex: 17, pointerEvents: "none" }}
-          >
-            <rect x={0} y={760} width={1000} height={240} fill="#0b1f5f" fillOpacity={0.8} />
-          </svg>
-          {socialRenderTextLayer({
+          {!socialHasBrandLogo
+            ? socialRenderHtmlTextLayer({
+                keyId: "photo-brand",
+                layerId: SOCIAL_BRAND_LAYER_ID,
+                text: photoFooterBrandText,
+                fallbackSize: brandRequestedFont,
+                forceFontSize: brandRequestedFont,
+                x: brandFrame.x,
+                y: brandFrame.y,
+                width: brandFrame.width,
+                height: brandFrame.height,
+                alignX: photoFooterBrandAlign,
+                alignY: "center",
+                fontWeight: 800,
+                forceTextColor: "#ffffff",
+                forceTextStroke: "0px transparent",
+                forceTextShadow: photoFooterShadow,
+                forceLineHeight: 1,
+                paddingLeft: brandPaddingLeft,
+                paddingRight: brandPaddingRight,
+              })
+            : null}
+          {socialRenderHtmlTextLayer({
             keyId: "photo-headline",
             layerId: "headline",
-            text:
-              socialDraft.headline || socialSelectedProduct?.product_name || "Program spotlight",
-            fallbackSize: 28,
-            x: 45,
-            y: 790,
-            width: 910,
-            height: 105,
-            alignX: "left",
-            alignY: "top",
-            fontWeight: 700,
+            text: photoFooterHeadlineText,
+            fallbackSize: headlineRequestedFont,
+            forceFontSize: headlineRequestedFont,
+            x: headlineFrame.x,
+            y: headlineFrame.y,
+            width: headlineFrame.width,
+            height: headlineFrame.height,
+            alignX: "center",
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "rgba(255, 255, 255, 0.70)",
+            forceTextStroke: "0px transparent",
+            forceTextShadow: "none",
+            forceLineHeight: 1,
           })}
-          {socialRenderTextLayer({
-            keyId: "photo-cta",
+          {socialRenderHtmlTextLayer({
+            keyId: "photo-date-line",
+            layerId: "start",
+            text: photoFooterDateText,
+            fallbackSize: dateFont,
+            forceFontSize: dateFont,
+            x: dateFrame.x,
+            y: dateFrame.y,
+            width: dateFrame.width,
+            height: dateFrame.height,
+            alignX: photoFooterAlign,
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "#ffffff",
+            forceTextStroke: "0px transparent",
+            forceTextShadow: photoFooterShadow,
+            forceLineHeight: 1,
+            paddingLeft: leftPadding,
+            paddingRight: rightPadding,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "photo-location-price-line",
+            layerId: SOCIAL_CONTACT_LAYER_ID,
+            text: photoFooterLocationPriceText,
+            fallbackSize: locationPriceFont,
+            forceFontSize: locationPriceFont,
+            x: locationPriceFrame.x,
+            y: locationPriceFrame.y,
+            width: locationPriceFrame.width,
+            height: locationPriceFrame.height,
+            alignX: photoFooterAlign,
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "#ffffff",
+            forceTextStroke: "0px transparent",
+            forceTextShadow: photoFooterShadow,
+            forceLineHeight: 1,
+            paddingLeft: leftPadding,
+            paddingRight: rightPadding,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "photo-bottom-line",
             layerId: "cta",
-            text: socialDraft.call_to_action || socialDraft.location_detail || "Join us",
-            fallbackSize: 18,
-            x: 45,
-            y: 890,
-            width: 910,
-            height: 85,
-            alignX: "left",
-            alignY: "top",
-            fontWeight: 600,
+            text: photoFooterBottomText,
+            fallbackSize: bottomFont,
+            forceFontSize: bottomFont,
+            x: bottomFrame.x,
+            y: bottomFrame.y,
+            width: bottomFrame.width,
+            height: bottomFrame.height,
+            alignX: photoFooterAlign,
+            alignY: "center",
+            fontWeight: 800,
+            forceTextColor: "#ffffff",
+            forceTextStroke: "0px transparent",
+            forceTextShadow: photoFooterShadow,
+            forceLineHeight: 1,
+            paddingLeft: leftPadding,
+            paddingRight: rightPadding,
           })}
         </>
       );
@@ -6149,10 +7494,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                                       value={socialDraft.layout_preset}
                                       onChange={(e) =>
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          layout_preset: e.target.value,
-                                        }))
+                                        applySocialLayoutPreset(
+                                          e.target.value,
+                                          socialDraft.aspect_ratio,
+                                        )
                                       }
                                     >
                                       <option value="">Select a layout preset</option>
@@ -6222,12 +7567,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                               scrollSnapAlign: "center",
                                             }}
                                             onClick={() =>
-                                              setSocialDraft((prev) => ({
-                                                ...prev,
-                                                layout_preset:
-                                                  item.layout_preset,
-                                                aspect_ratio: item.aspect_ratio,
-                                              }))
+                                              applySocialLayoutPreset(
+                                                item.layout_preset,
+                                                item.aspect_ratio,
+                                              )
                                             }
                                           >
                                             <img
@@ -6517,7 +7860,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       >
                                         <div
                                           ref={socialPreviewRef}
-                                          className={`relative overflow-hidden rounded-xl border bg-gray-50 ${
+                                          className={`relative overflow-hidden rounded-xl border bg-white ${
                                             socialPreviewDropActive
                                               ? "border-[#ff9df9] ring-2 ring-[#ff9df9]"
                                               : "border-gray-200"
@@ -6597,6 +7940,33 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                         const frame = socialLayerFrames[layerId];
                                         const imageMeta = socialImageLayers[layerId];
                                         if (!frame || !imageMeta?.url) return null;
+                                        const isFooterBrandLayer =
+                                          layerId === SOCIAL_BRAND_LAYER_ID;
+                                        const isBandBrandLayer =
+                                          layerId === SOCIAL_BAND_BRAND_LAYER_ID;
+                                        const isBrandLayer =
+                                          isFooterBrandLayer || isBandBrandLayer;
+                                        const bandVerticalPosition =
+                                          socialBandContactConfig === 3 ? "bottom" : "top";
+                                        const bandHorizontalPosition =
+                                          socialBandBrandAlign === "left"
+                                            ? "left"
+                                            : socialBandBrandAlign === "right"
+                                              ? "right"
+                                              : "center";
+                                        const objectPosition = isFooterBrandLayer
+                                          ? socialDraft.layout_preset === "Photo + footer"
+                                            ? socialPhotoFooterBrandAlign === "left"
+                                              ? "left top"
+                                              : socialPhotoFooterBrandAlign === "right"
+                                                ? "right top"
+                                                : "center top"
+                                            : socialFooterBrandSide === "right"
+                                              ? "right bottom"
+                                              : "left bottom"
+                                          : isBandBrandLayer
+                                            ? `${bandHorizontalPosition} ${bandVerticalPosition}`
+                                            : "center center";
                                         return (
                                           <div
                                             key={layerId}
@@ -6633,28 +8003,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                               <video
                                                 src={imageMeta.url}
                                                 className={`h-full w-full ${
-                                                  layerId === SOCIAL_BRAND_LAYER_ID
-                                                    ? `object-contain ${
-                                                        socialFooterBrandSide === "right"
-                                                          ? "object-right-bottom"
-                                                          : "object-left-bottom"
-                                                      }`
-                                                    : "object-cover"
+                                                  isBrandLayer ? "object-contain" : "object-cover"
                                                 }`}
+                                                style={{ objectPosition }}
                                               />
                                             ) : (
                                               <img
                                                 src={imageMeta.url}
                                                 alt=""
                                                 className={`h-full w-full ${
-                                                  layerId === SOCIAL_BRAND_LAYER_ID
-                                                    ? `object-contain ${
-                                                        socialFooterBrandSide === "right"
-                                                          ? "object-right-bottom"
-                                                          : "object-left-bottom"
-                                                      }`
-                                                    : "object-cover"
+                                                  isBrandLayer ? "object-contain" : "object-cover"
                                                 }`}
+                                                style={{ objectPosition }}
                                               />
                                             )}
                                           </div>
@@ -6726,7 +8086,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                         }`}
                                         onClick={() => {
                                           setSocialActiveTool("text");
-                                          if (
+                                          if (socialDraft.layout_preset === "Photo + footer") {
+                                            if (
+                                              socialSelectedLayer !== "headline" &&
+                                              socialSelectedLayer !== "start" &&
+                                              socialSelectedLayer !== "cta" &&
+                                              socialSelectedLayer !== SOCIAL_CONTACT_LAYER_ID &&
+                                              socialSelectedLayer !== SOCIAL_BRAND_LAYER_ID
+                                            ) {
+                                              socialSelectLayer("headline");
+                                            }
+                                          } else if (
                                             socialSelectedLayer !== "headline" &&
                                             socialSelectedLayer !== "start" &&
                                             socialSelectedLayer !== "cta"
