@@ -458,6 +458,7 @@ const SOCIAL_LAYOUT_PRESETS = [
   "Bold headline",
   "Band rows",
   "Photo + footer",
+  "Blank canvas",
 ] as const;
 
 type SocialLayoutPreset = (typeof SOCIAL_LAYOUT_PRESETS)[number];
@@ -466,6 +467,7 @@ const SOCIAL_LAYOUT_PRESET_FILE_KEYS: Record<SocialLayoutPreset, string> = {
   "Bold headline": "bold_headline",
   "Band rows": "band_rows",
   "Photo + footer": "photo_footer",
+  "Blank canvas": "blank_canvas",
 };
 
 const SOCIAL_ASPECT_RATIOS = [

@@ -563,6 +563,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     "'Courier New', monospace",
   ];
   const SOCIAL_LAYER_LABELS = {
+    bg: "Background",
     media: "Media",
     "band-overlay": "Overlay",
     "band-brand": "Brand",
@@ -755,8 +756,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const maxByLayer = socialTextMaxWidthByLayout(socialDraft.layout_preset);
     const textLayers = ["headline", "start", "cta", SOCIAL_BRAND_LAYER_ID];
     const announcementBold =
-      socialDraft.template_style === "Class announcement" &&
-      socialDraft.layout_preset === "Bold headline";
+      isBoldHeadlineAnnouncementTemplate({
+        templateStyle: socialDraft.template_style,
+        layoutPreset: socialDraft.layout_preset,
+      });
 
     setSocialLayerFrames((prev) => {
       let changed = false;
@@ -856,9 +859,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialDraft.layout_preset === "Photo + footer" &&
         socialLayerVisible.headline
       ) {
-        const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
+        const photoFooterSwappedText = resolveEnrollmentSwappedOfferText({
           templateStyle: socialDraft.template_style,
           headlineText: socialDraft.headline,
+          callToAction: socialDraft.call_to_action,
+          startDate: socialDraft.start_date,
+          productName: socialSelectedProduct?.product_name,
+        });
+        const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
+          templateStyle: socialDraft.template_style,
+          headlineText: photoFooterSwappedText.headline,
           locationText: socialDraft.location_detail,
           startDate: socialDraft.start_date,
           endDate: socialDraft.end_date,
@@ -989,7 +999,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           changed = true;
         }
 
-        const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
+        const footerInfoText = resolveBoldHeadlineFooterText({
+          templateStyle: socialDraft.template_style,
+          layoutPreset: socialDraft.layout_preset,
+          headlineText: socialDraft.headline,
+          productName: socialSelectedProduct?.product_name,
+          announcementFooterText: socialAnnouncementFooterInfo.text,
+        });
         const footerInfoFontPt = Math.max(
           8,
           Number(
@@ -1235,8 +1251,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const isSelected = socialToolTarget === target;
     const forceAnnouncementHeadlineStyle =
       target === "headline" &&
-      socialDraft.template_style === "Class announcement" &&
-      socialDraft.layout_preset === "Bold headline";
+      isBoldHeadlineAnnouncementTemplate({
+        templateStyle: socialDraft.template_style,
+        layoutPreset: socialDraft.layout_preset,
+      });
     const layerFontSize = socialTextFontSizes[target] ?? fallbackSize;
     const scaledFontSize = scalePreviewValue(layerFontSize, fallbackSize);
     const scaledOutlineWidth = Math.max(
@@ -1701,6 +1719,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const SOCIAL_SHAPE_LAYER_PREFIX = "shape-extra-";
   const SOCIAL_IMAGE_LAYER_PREFIX = "image-extra-";
   const SOCIAL_HEADER_LAYER_ID = "shape";
+  const SOCIAL_BG_LAYER_ID = "bg";
   const SOCIAL_FOOTER_LAYER_ID = "footer";
   const SOCIAL_BRAND_LAYER_ID = "brand";
   const SOCIAL_CONTACT_LAYER_ID = "contact";
@@ -1728,6 +1747,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     "headline",
     SOCIAL_HEADER_LAYER_ID,
     "media",
+    SOCIAL_BG_LAYER_ID,
   ];
   const formatBusinessPhone = (value) => {
     const digits = String(value ?? "").replace(/\D/g, "");
@@ -1747,6 +1767,115 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ).trim();
   const socialFooterContactText =
     socialBusinessPhoneText || socialBusinessEmailText || "#tutoring";
+  const isBoldHeadlineAnnouncementTemplate = ({
+    templateStyle,
+    layoutPreset,
+  }: {
+    templateStyle: string;
+    layoutPreset: string;
+  }) =>
+    layoutPreset === "Bold headline" &&
+    (templateStyle === "Class announcement" ||
+      templateStyle === "Enrollment reminder");
+  const isAnnouncementLikeTemplateStyle = (templateStyle: string) =>
+    templateStyle === "Class announcement" ||
+    templateStyle === "Enrollment reminder";
+  const resolveEnrollmentSwappedOfferText = ({
+    templateStyle,
+    headlineText,
+    callToAction,
+    startDate,
+    productName,
+  }: {
+    templateStyle: string;
+    headlineText: string;
+    callToAction: string;
+    startDate: string;
+    productName: string;
+  }) => {
+    const headline = String(headlineText ?? "").trim();
+    const cta = String(callToAction ?? "").trim();
+    if (templateStyle !== "Enrollment reminder") {
+      return { headline, cta };
+    }
+    const swappedHeadline = cta || headline || String(startDate ?? "").trim() || "Call to action";
+    const swappedCta = headline || cta || String(productName ?? "").trim() || "Add Headline";
+    return {
+      headline: swappedHeadline,
+      cta: swappedCta,
+    };
+  };
+  const isEnrollmentReminderBoldHeadlineTemplate = ({
+    templateStyle,
+    layoutPreset,
+  }: {
+    templateStyle: string;
+    layoutPreset: string;
+  }) =>
+    layoutPreset === "Bold headline" && templateStyle === "Enrollment reminder";
+  const resolveBoldHeadlinePrimaryText = ({
+    templateStyle,
+    layoutPreset,
+    headlineText,
+    callToAction,
+    startDate,
+    productName,
+  }: {
+    templateStyle: string;
+    layoutPreset: string;
+    headlineText: string;
+    callToAction: string;
+    startDate: string;
+    productName: string;
+  }) => {
+    if (
+      isEnrollmentReminderBoldHeadlineTemplate({
+        templateStyle,
+        layoutPreset,
+      })
+    ) {
+      return resolveEnrollmentSwappedOfferText({
+        templateStyle,
+        headlineText,
+        callToAction,
+        startDate,
+        productName,
+      }).headline;
+    }
+    const headline = String(headlineText ?? "").trim();
+    if (headline) return headline;
+    const product = String(productName ?? "").trim();
+    return product || "Add Headline";
+  };
+  const resolveBoldHeadlineFooterText = ({
+    templateStyle,
+    layoutPreset,
+    headlineText,
+    productName,
+    announcementFooterText,
+  }: {
+    templateStyle: string;
+    layoutPreset: string;
+    headlineText: string;
+    productName: string;
+    announcementFooterText: string;
+  }) => {
+    if (
+      isEnrollmentReminderBoldHeadlineTemplate({
+        templateStyle,
+        layoutPreset,
+      })
+    ) {
+      return resolveEnrollmentSwappedOfferText({
+        templateStyle,
+        headlineText,
+        callToAction: "",
+        startDate: "",
+        productName,
+      }).cta;
+    }
+    return String(announcementFooterText ?? "");
+  };
   const normalizeMdyShortDate = (value) => {
     const v = String(value ?? "").trim();
     if (!v) return "";
@@ -1768,9 +1897,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const headline = String(headlineText ?? "").trim();
     if (headline) return headline;
 
-    const isAnnouncementTemplate = String(templateStyle ?? "")
-      .toLowerCase()
-      .includes("announcement");
+    const isAnnouncementTemplate = isAnnouncementLikeTemplateStyle(
+      String(templateStyle ?? ""),
+    );
     if (isAnnouncementTemplate) {
       const start = normalizeMdyShortDate(startDate);
       const end = normalizeMdyShortDate(endDate);
@@ -2019,6 +2148,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     (layerId === SOCIAL_BAND_BRAND_LAYER_ID && socialHasBrandLogo) ||
     String(layerId || "").startsWith(SOCIAL_IMAGE_LAYER_PREFIX);
   const isSocialShapeLayer = (layerId) =>
+    layerId === SOCIAL_BG_LAYER_ID ||
     layerId === SOCIAL_HEADER_LAYER_ID ||
     layerId === SOCIAL_FOOTER_LAYER_ID ||
     layerId === SOCIAL_DATE_BOX_LAYER_ID ||
@@ -2198,6 +2328,19 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         ? null
         : mediaPool[Math.floor(Math.random() * mediaPool.length)] ?? null;
 
+    if (layoutPreset === "Blank canvas") {
+      clearSocialCanvasState();
+      setSocialDraft((prev) => ({
+        ...prev,
+        template_style: templateStyle,
+        layout_preset: layoutPreset,
+        aspect_ratio: aspectRatio,
+        selected_template_id: `${aspectRatio}|${layoutPreset}`,
+      }));
+      setStatus("Blank canvas generated.");
+      return;
+    }
+
     if (layoutPreset === "Band rows") {
       const bandColorChoices = [
         "#ef4444",
@@ -2228,8 +2371,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         return `${mm}/${dd}/${yy.toString().padStart(2, "0")}`;
       };
 
+      const bandRowsSwappedText = resolveEnrollmentSwappedOfferText({
+        templateStyle,
+        headlineText: socialDraft.headline,
+        callToAction: socialDraft.call_to_action,
+        startDate: socialDraft.start_date,
+        productName: socialSelectedProduct?.product_name,
+      });
       const headlineText = String(
-        socialDraft.headline || socialSelectedProduct?.product_name || "Add Headline",
+        bandRowsSwappedText.headline ||
+          socialSelectedProduct?.product_name ||
+          "Add Headline",
       ).trim();
       const startShort = normalizeMdyShort(socialDraft.start_date);
       const endShort = normalizeMdyShort(socialDraft.end_date);
@@ -2245,7 +2397,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         .join("");
       const locationText = String(socialDraft.location_detail ?? "").trim();
       const ageText = String(socialDraft.age_range ?? "").trim();
-      const ctaText = String(socialDraft.call_to_action ?? "").trim();
+      const ctaText = String(bandRowsSwappedText.cta ?? "").trim();
       const band3Text = ageText || locationText || "";
       const band4Text = ctaText || (band3Text === locationText ? "" : locationText) || "";
 
@@ -2503,9 +2655,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       const hasBrandLogo = Boolean(socialHasBrandLogo && socialBrandLogoUrl);
       const imageFrame = { x: 50, y: 50, width: 900, height: 600 };
       const photoFooterHeadlineFont = 150;
-      const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
+      const photoFooterSwappedText = resolveEnrollmentSwappedOfferText({
         templateStyle,
         headlineText: socialDraft.headline,
+        callToAction: socialDraft.call_to_action,
+        startDate: socialDraft.start_date,
+        productName: socialSelectedProduct?.product_name,
+      });
+      const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
+        templateStyle,
+        headlineText: photoFooterSwappedText.headline,
         locationText: socialDraft.location_detail,
         startDate: socialDraft.start_date,
         endDate: socialDraft.end_date,
@@ -2557,7 +2716,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       });
       const photoFooterBottomText = resolvePhotoFooterBottomLineText({
         mode: randomBottomMode,
-        callToAction: socialDraft.call_to_action,
+        callToAction: photoFooterSwappedText.cta,
         phoneText: socialBusinessPhoneText,
         emailText: socialBusinessEmailText,
       });
@@ -2780,10 +2939,32 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     ];
     const randomDateColor =
       dateColorChoices[Math.floor(Math.random() * dateColorChoices.length)] ?? "#06b6d4";
+    const noOfferDetailsProvided = [
+      socialDraft.headline,
+      socialDraft.start_date,
+      socialDraft.end_date,
+      socialDraft.age_range,
+      socialDraft.price_detail,
+      socialDraft.location_detail,
+      socialDraft.call_to_action,
+      socialDraft.extra_notes,
+    ].every((value) => String(value ?? "").trim().length === 0);
+    const noContentSourceSelected =
+      !String(socialSourceType ?? "").trim() &&
+      !String(socialDraft.product_id ?? "").trim() &&
+      !String(socialDraft.service_code ?? "").trim() &&
+      !String(socialDraft.subject_id ?? "").trim() &&
+      !String(socialDraft.topic_id ?? "").trim() &&
+      !String(socialDraft.selected_template_id ?? "").trim() &&
+      (socialDraft.selected_media_ids?.length ?? 0) === 0;
+    const usePresetDefaultsOnly = noOfferDetailsProvided && noContentSourceSelected;
+
     const randomFooterInfoSource =
-      (["age", "location", "cta"] as const)[
-        Math.floor(Math.random() * 3)
-      ] ?? "age";
+      usePresetDefaultsOnly
+        ? "cta"
+        : (["age", "location", "cta"] as const)[
+            Math.floor(Math.random() * 3)
+          ] ?? "age";
     const randomFooterInfoIcon =
       (["map-pin", "pin-location", "maps"] as const)[
         Math.floor(Math.random() * 3)
@@ -2813,9 +2994,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const randomFooterShadowColor =
       footerShadowColors[Math.floor(Math.random() * footerShadowColors.length)] ?? "#000000";
     const randomFooterFallbackMode =
-      (["blank", "name", "hash-name", "tutoring"] as const)[
-        Math.floor(Math.random() * 4)
-      ] ?? "blank";
+      usePresetDefaultsOnly
+        ? "tutoring"
+        : (["blank", "name", "hash-name", "tutoring"] as const)[
+            Math.floor(Math.random() * 4)
+          ] ?? "blank";
     const randomFooterFallbackName =
       socialAnnouncementFallbackNames.length > 0
         ? socialAnnouncementFallbackNames[
@@ -2831,10 +3014,21 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       fallbackName: randomFooterFallbackName,
     });
 
-    const generatedHeadlineText =
-      socialDraft.headline && socialDraft.headline.trim().length > 0
-        ? socialDraft.headline
-        : "Add Headline";
+    const generatedHeadlineText = resolveBoldHeadlinePrimaryText({
+      templateStyle,
+      layoutPreset,
+      headlineText: socialDraft.headline,
+      callToAction: socialDraft.call_to_action,
+      startDate: socialDraft.start_date,
+      productName: socialSelectedProduct?.product_name,
+    });
+    const generatedFooterInfoText = resolveBoldHeadlineFooterText({
+      templateStyle,
+      layoutPreset,
+      headlineText: socialDraft.headline,
+      productName: socialSelectedProduct?.product_name,
+      announcementFooterText: generatedFooterInfo.text,
+    });
     const measuredHeadline = measureWrappedSocialText({
       text: generatedHeadlineText,
       fontSize: aspectDefaults.headlineFont,
@@ -2860,77 +3054,71 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const announcementFooterFrame = resolveAnnouncementFooterFrame();
     const announcementBrandLogoFrame = resolveAnnouncementBrandLogoFrame();
     const footerInfoFrame = resolveAnnouncementFooterInfoFrame({
-      text: generatedFooterInfo.text,
+      text: generatedFooterInfoText,
       fontSize:
         aspectDefaults.footerInfoFont ||
-        resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
+        resolveAnnouncementFooterInfoFontPt(generatedFooterInfoText),
       footerFrame: announcementFooterFrame,
     });
 
-    setSocialLayerOrder(chosenMedia ? [...SOCIAL_ANNOUNCEMENT_LAYER_ORDER] : []);
-    setSocialLayerVisible(
-      chosenMedia
-        ? {
-            media: true,
-            [SOCIAL_HEADER_LAYER_ID]: true,
-            headline: true,
-            cta: true,
-            [SOCIAL_FOOTER_LAYER_ID]: true,
-            [SOCIAL_BRAND_LAYER_ID]: true,
-            [SOCIAL_CONTACT_LAYER_ID]: true,
-            [SOCIAL_DATE_BOX_LAYER_ID]: true,
-            start: true,
-          }
-        : {},
-    );
-    setSocialLayerLocked(
-      chosenMedia
-        ? {
-            media: false,
-            [SOCIAL_HEADER_LAYER_ID]: false,
-            headline: false,
-            cta: false,
-            [SOCIAL_FOOTER_LAYER_ID]: false,
-            [SOCIAL_BRAND_LAYER_ID]: false,
-            [SOCIAL_CONTACT_LAYER_ID]: false,
-            [SOCIAL_DATE_BOX_LAYER_ID]: false,
-            start: false,
-          }
-        : {},
-    );
-    setSocialLayerFrames(
-      chosenMedia
-        ? {
-            [SOCIAL_HEADER_LAYER_ID]: { x: 0, y: 0, width: 1000, height: headlineHeight },
-            headline: { x: 0, y: 0, width: 1000, height: headlineHeight },
-            cta: footerInfoFrame,
-            [SOCIAL_FOOTER_LAYER_ID]: announcementFooterFrame,
-            [SOCIAL_BRAND_LAYER_ID]: socialHasBrandLogo
-              ? announcementBrandLogoFrame
-              : {
-                  x: 0,
-                  y: announcementFooterFrame.y,
-                  width: 1000,
-                  height: announcementFooterFrame.height,
-                },
-            [SOCIAL_CONTACT_LAYER_ID]: announcementFooterFrame,
-            [SOCIAL_DATE_BOX_LAYER_ID]: {
-              x: dateX,
-              y: dateY,
-              width: dateWidth,
-              height: dateHeight,
-            },
-            start: {
-              x: dateX,
-              y: dateY,
-              width: dateWidth,
-              height: dateHeight,
-            },
-          }
-        : {},
-    );
+    const announcementLayerOrder = chosenMedia
+      ? [...SOCIAL_ANNOUNCEMENT_LAYER_ORDER]
+      : SOCIAL_ANNOUNCEMENT_LAYER_ORDER.filter((layerId) => layerId !== "media");
+    setSocialLayerOrder(announcementLayerOrder);
+    setSocialLayerVisible({
+      media: Boolean(chosenMedia),
+      [SOCIAL_BG_LAYER_ID]: true,
+      [SOCIAL_HEADER_LAYER_ID]: true,
+      headline: true,
+      cta: true,
+      [SOCIAL_FOOTER_LAYER_ID]: true,
+      [SOCIAL_BRAND_LAYER_ID]: true,
+      [SOCIAL_CONTACT_LAYER_ID]: true,
+      [SOCIAL_DATE_BOX_LAYER_ID]: true,
+      start: true,
+    });
+    setSocialLayerLocked({
+      media: false,
+      [SOCIAL_BG_LAYER_ID]: false,
+      [SOCIAL_HEADER_LAYER_ID]: false,
+      headline: false,
+      cta: false,
+      [SOCIAL_FOOTER_LAYER_ID]: false,
+      [SOCIAL_BRAND_LAYER_ID]: false,
+      [SOCIAL_CONTACT_LAYER_ID]: false,
+      [SOCIAL_DATE_BOX_LAYER_ID]: false,
+      start: false,
+    });
+    setSocialLayerFrames({
+      [SOCIAL_BG_LAYER_ID]: { x: 0, y: 0, width: 1000, height: 1000 },
+      [SOCIAL_HEADER_LAYER_ID]: { x: 0, y: 0, width: 1000, height: headlineHeight },
+      headline: { x: 0, y: 0, width: 1000, height: headlineHeight },
+      cta: footerInfoFrame,
+      [SOCIAL_FOOTER_LAYER_ID]: announcementFooterFrame,
+      [SOCIAL_BRAND_LAYER_ID]: socialHasBrandLogo
+        ? announcementBrandLogoFrame
+        : {
+            x: 0,
+            y: announcementFooterFrame.y,
+            width: 1000,
+            height: announcementFooterFrame.height,
+          },
+      [SOCIAL_CONTACT_LAYER_ID]: announcementFooterFrame,
+      [SOCIAL_DATE_BOX_LAYER_ID]: {
+        x: dateX,
+        y: dateY,
+        width: dateWidth,
+        height: dateHeight,
+      },
+      start: {
+        x: dateX,
+        y: dateY,
+        width: dateWidth,
+        height: dateHeight,
+      },
+    });
     setSocialImageLayers(
-      chosenMedia && socialHasBrandLogo
+      socialHasBrandLogo
         ? {
             [SOCIAL_BRAND_LAYER_ID]: {
               id: SOCIAL_BRAND_LAYER_ID,
@@ -2940,28 +3128,29 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           }
         : {},
     );
-    setSocialShapeStyles(
-      chosenMedia
-        ? {
-            [SOCIAL_HEADER_LAYER_ID]: {
-              kind: "rectangle",
-              color: randomRectColor,
-              opacity: 50,
-            },
-            [SOCIAL_FOOTER_LAYER_ID]: {
-              kind: "rectangle",
-              color: "#000000",
-              opacity: 70,
-            },
-            [SOCIAL_DATE_BOX_LAYER_ID]: {
-              kind: "rect",
-              color: randomDateColor,
-              opacity: 70,
-              flipX: Boolean(aspectDefaults.flipDateBoxX),
-            },
-          }
-        : {},
-    );
+    setSocialShapeStyles({
+      [SOCIAL_BG_LAYER_ID]: {
+        kind: "rectangle",
+        color: randomRectColor,
+        opacity: 100,
+      },
+      [SOCIAL_HEADER_LAYER_ID]: {
+        kind: "rectangle",
+        color: randomRectColor,
+        opacity: 50,
+      },
+      [SOCIAL_FOOTER_LAYER_ID]: {
+        kind: "rectangle",
+        color: "#000000",
+        opacity: 70,
+      },
+      [SOCIAL_DATE_BOX_LAYER_ID]: {
+        kind: "rect",
+        color: randomDateColor,
+        opacity: 70,
+        flipX: Boolean(aspectDefaults.flipDateBoxX),
+      },
+    });
     setSocialToolTarget("headline");
     setSocialToolAlignX(randomAlign);
     setSocialToolAlignY("center");
@@ -2973,7 +3162,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       start: aspectDefaults.dateFont ?? SOCIAL_ANNOUNCEMENT_DATE_FONT_PT,
       cta:
         aspectDefaults.footerInfoFont ||
-        resolveAnnouncementFooterInfoFontPt(generatedFooterInfo.text),
+        resolveAnnouncementFooterInfoFontPt(generatedFooterInfoText),
     }));
     setSocialToolShadowColor("#000000");
     setSocialToolShadowOpacity(70);
@@ -2994,7 +3183,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialFooterInfoEmptyName(randomFooterFallbackName);
     setSocialPreviewOverrideUrl(chosenMedia?.url ?? "");
     setSocialSelectedImageId(chosenMedia?.id ?? "");
-    setSocialSelectedLayer(chosenMedia ? "headline" : "");
+    setSocialSelectedLayer("headline");
     setSocialDraft((prev) => ({
       ...prev,
       template_style: templateStyle,
@@ -3005,7 +3194,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setStatus(
       chosenMedia
         ? `Post generated. Using image: ${chosenMedia.label}.`
-        : "Post generated. No images available in Media & templates.",
+        : "Post generated with default background and preset placeholders.",
     );
   };
 
@@ -3021,6 +3210,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialPreviewOverrideUrl("");
     setSocialPreviewDropActive(false);
     setSocialDraggingLayer("");
+    setSocialInlineTextOverrides({});
+    setSocialInlineEditorLayer("");
+    setSocialInlineEditorValue("");
+    setSocialInlineEditorOriginalValue("");
     setSocialHistory([]);
     setSocialHistoryIndex(-1);
   };
@@ -3029,14 +3222,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     nextLayoutPreset,
     nextAspectRatio = socialDraft.aspect_ratio,
   ) => {
+    const isPresetChange = nextLayoutPreset !== socialDraft.layout_preset;
     setSocialDraft((prev) => ({
       ...prev,
       layout_preset: nextLayoutPreset,
       ...(nextAspectRatio ? { aspect_ratio: nextAspectRatio } : null),
     }));
-    if (nextLayoutPreset === "Band rows") {
+    if (isPresetChange) {
       clearSocialCanvasState();
-      setStatus("Band rows selected. Canvas cleared.");
+      setStatus(`${nextLayoutPreset} selected. Canvas cleared.`);
     }
   };
 
@@ -3081,14 +3275,31 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   };
 
   const socialRenderedLayerText = (layerId) => {
+    const swappedText = resolveEnrollmentSwappedOfferText({
+      templateStyle: socialDraft.template_style,
+      headlineText: socialDraft.headline,
+      callToAction: socialDraft.call_to_action,
+      startDate: socialDraft.start_date,
+      productName: socialSelectedProduct?.product_name,
+    });
     if (layerId === "headline") {
       if (
-        socialDraft.template_style === "Class announcement" &&
-        socialDraft.layout_preset === "Bold headline"
+        isBoldHeadlineAnnouncementTemplate({
+          templateStyle: socialDraft.template_style,
+          layoutPreset: socialDraft.layout_preset,
+        })
       ) {
-        return socialDraft.headline && socialDraft.headline.trim().length > 0
-          ? socialDraft.headline
-          : "Add Headline";
+        return resolveBoldHeadlinePrimaryText({
+          templateStyle: socialDraft.template_style,
+          layoutPreset: socialDraft.layout_preset,
+          headlineText: socialDraft.headline,
+          callToAction: socialDraft.call_to_action,
+          startDate: socialDraft.start_date,
+          productName: socialSelectedProduct?.product_name,
+        });
+      }
+      if (socialDraft.template_style === "Enrollment reminder") {
+        return swappedText.headline || "Call to action";
       }
       return socialDraft.headline || socialSelectedProduct?.product_name || "Your headline";
     }
@@ -3104,10 +3315,21 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
     if (layerId === "cta") {
       if (
-        socialDraft.template_style === "Class announcement" &&
-        socialDraft.layout_preset === "Bold headline"
+        isBoldHeadlineAnnouncementTemplate({
+          templateStyle: socialDraft.template_style,
+          layoutPreset: socialDraft.layout_preset,
+        })
       ) {
-        return socialAnnouncementFooterInfo.text || "";
+        return resolveBoldHeadlineFooterText({
+          templateStyle: socialDraft.template_style,
+          layoutPreset: socialDraft.layout_preset,
+          headlineText: socialDraft.headline,
+          productName: socialSelectedProduct?.product_name,
+          announcementFooterText: socialAnnouncementFooterInfo.text,
+        });
+      }
+      if (socialDraft.template_style === "Enrollment reminder") {
+        return swappedText.cta || "Add Headline";
       }
       if (socialDraft.layout_preset === "Bold headline") {
         return socialDraft.call_to_action || socialDraft.start_date || "Call to action";
@@ -3301,10 +3523,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialSelectedLayer(layerId);
     if (!isSocialTextLayer(layerId)) return;
     const announcementCtaDefault =
-      socialDraft.template_style === "Class announcement" &&
-      socialDraft.layout_preset === "Bold headline"
+      isBoldHeadlineAnnouncementTemplate({
+        templateStyle: socialDraft.template_style,
+        layoutPreset: socialDraft.layout_preset,
+      })
         ? resolveAnnouncementFooterInfoFontPt(
-            String(socialAnnouncementFooterInfo.text ?? ""),
+            resolveBoldHeadlineFooterText({
+              templateStyle: socialDraft.template_style,
+              layoutPreset: socialDraft.layout_preset,
+              headlineText: socialDraft.headline,
+              productName: socialSelectedProduct?.product_name,
+              announcementFooterText: socialAnnouncementFooterInfo.text,
+            }),
           )
         : 75;
     const fallbackByLayer = {
@@ -4392,8 +4622,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
 
   const socialRenderPresetTextLayers = () => {
     if (socialDraft.layout_preset === "Bold headline") {
-      const isAnnouncement =
-        socialDraft.template_style === "Class announcement";
+      const isAnnouncement = isBoldHeadlineAnnouncementTemplate({
+        templateStyle: socialDraft.template_style,
+        layoutPreset: socialDraft.layout_preset,
+      });
       const topY =
         socialToolAlignY === "top" ? 52 : socialToolAlignY === "bottom" ? 290 : 160;
       const dateX = socialDateComponentSide === "right" ? 650 : 50;
@@ -4446,7 +4678,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       const contactAlignX = socialFooterBrandSide === "right" ? "left" : "right";
       const contactPaddingLeft = socialFooterBrandSide === "right" ? 10 : 0;
       const contactPaddingRight = socialFooterBrandSide === "right" ? 0 : 10;
-      const footerInfoText = String(socialAnnouncementFooterInfo.text ?? "");
+      const footerInfoText = resolveBoldHeadlineFooterText({
+        templateStyle: socialDraft.template_style,
+        layoutPreset: socialDraft.layout_preset,
+        headlineText: socialDraft.headline,
+        productName: socialSelectedProduct?.product_name,
+        announcementFooterText: socialAnnouncementFooterInfo.text,
+      });
       const footerInfoFontPt = Math.max(
         8,
         Number(
@@ -4469,8 +4707,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           {socialRenderTextLayer({
             keyId: "bold-headline",
             layerId: "headline",
-            text:
-              socialDraft.headline || socialSelectedProduct?.product_name || "Your headline",
+            text: socialRenderedLayerText("headline"),
             fallbackSize: isAnnouncement ? 75 : 48,
             x: 55,
             y: topY,
@@ -4617,8 +4854,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         return `${mm}/${dd}/${yy.toString().padStart(2, "0")}`;
       };
 
+      const bandRowsSwappedText = resolveEnrollmentSwappedOfferText({
+        templateStyle: socialDraft.template_style,
+        headlineText: socialDraft.headline,
+        callToAction: socialDraft.call_to_action,
+        startDate: socialDraft.start_date,
+        productName: socialSelectedProduct?.product_name,
+      });
       const headlineText = String(
-        socialDraft.headline || socialSelectedProduct?.product_name || "Add Headline",
+        bandRowsSwappedText.headline ||
+          socialSelectedProduct?.product_name ||
+          "Add Headline",
       ).trim();
       const startShort = normalizeMdyShort(socialDraft.start_date);
       const endShort = normalizeMdyShort(socialDraft.end_date);
@@ -4635,7 +4881,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
 
       const locationText = String(socialDraft.location_detail ?? "").trim();
       const ageText = String(socialDraft.age_range ?? "").trim();
-      const ctaText = String(socialDraft.call_to_action ?? "").trim();
+      const ctaText = String(bandRowsSwappedText.cta ?? "").trim();
       const band3Text = ageText || locationText || "";
       const band4Text = ctaText || (band3Text === locationText ? "" : locationText) || "";
 
@@ -4870,7 +5116,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       };
       const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
         templateStyle: socialDraft.template_style,
-        headlineText: socialDraft.headline,
+        headlineText: resolveEnrollmentSwappedOfferText({
+          templateStyle: socialDraft.template_style,
+          headlineText: socialDraft.headline,
+          callToAction: socialDraft.call_to_action,
+          startDate: socialDraft.start_date,
+          productName: socialSelectedProduct?.product_name,
+        }).headline,
         locationText: socialDraft.location_detail,
         startDate: socialDraft.start_date,
         endDate: socialDraft.end_date,
@@ -4886,7 +5138,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       });
       const photoFooterBottomText = resolvePhotoFooterBottomLineText({
         mode: socialPhotoFooterBottomMode,
-        callToAction: socialDraft.call_to_action,
+        callToAction: resolveEnrollmentSwappedOfferText({
+          templateStyle: socialDraft.template_style,
+          headlineText: socialDraft.headline,
+          callToAction: socialDraft.call_to_action,
+          startDate: socialDraft.start_date,
+          productName: socialSelectedProduct?.product_name,
+        }).cta,
         phoneText: socialBusinessPhoneText,
         emailText: socialBusinessEmailText,
       });
