@@ -522,6 +522,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialPhotoFooterBottomMode, setSocialPhotoFooterBottomMode] = useState<
     "cta" | "contact"
   >("cta");
+  const [socialSuccessBrandSide, setSocialSuccessBrandSide] = useState<
+    "left" | "right"
+  >("left");
+  const [socialSuccessContactText, setSocialSuccessContactText] = useState("");
+  const [socialSuccessSideTextColors, setSocialSuccessSideTextColors] = useState<{
+    left: string;
+    right: string;
+  }>({
+    left: "#ffffff",
+    right: "#ffffff",
+  });
+  const socialSuccessColorRequestRef = useRef(0);
   const [socialPreviewDropActive, setSocialPreviewDropActive] = useState(false);
   const [socialPreviewZoomMode, setSocialPreviewZoomMode] = useState<
     "fit" | "100" | "150" | "200"
@@ -585,6 +597,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     brand: "Brand",
     contact: "Contact",
     datebox: "Date Box",
+    "success-box": "Testimonial Box",
+    "success-testimonial": "Testimonial",
+    "success-brand": "Brand",
+    "success-contact": "Contact",
   };
   const SOCIAL_PREVIEW_ZOOM_MODES = [
     { value: "fit", label: "Fit" },
@@ -863,6 +879,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           templateStyle: socialDraft.template_style,
           headlineText: socialDraft.headline,
           callToAction: socialDraft.call_to_action,
+          priceDetail: socialDraft.price_detail,
           startDate: socialDraft.start_date,
           productName: socialSelectedProduct?.product_name,
         });
@@ -1003,6 +1020,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           templateStyle: socialDraft.template_style,
           layoutPreset: socialDraft.layout_preset,
           headlineText: socialDraft.headline,
+          callToAction: socialDraft.call_to_action,
+          priceDetail: socialDraft.price_detail,
+          startDate: socialDraft.start_date,
           productName: socialSelectedProduct?.product_name,
           announcementFooterText: socialAnnouncementFooterInfo.text,
         });
@@ -1105,6 +1125,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     });
   }, [
     socialDraft.call_to_action,
+    socialDraft.price_detail,
     socialDraft.end_date,
     socialDraft.headline,
     socialDraft.template_style,
@@ -1391,6 +1412,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialPhotoFooterAlign,
         socialPhotoFooterBrandAlign,
         socialPhotoFooterBottomMode,
+        socialSuccessBrandSide,
+        socialSuccessContactText,
+        socialSuccessSideTextColors,
         socialPreviewOverrideUrl,
       }),
     [
@@ -1438,6 +1462,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialPhotoFooterAlign,
       socialPhotoFooterBrandAlign,
       socialPhotoFooterBottomMode,
+      socialSuccessBrandSide,
+      socialSuccessContactText,
+      socialSuccessSideTextColors,
       socialPreviewOverrideUrl,
     ],
   );
@@ -1609,6 +1636,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialPhotoFooterBottomMode(
       snap.socialPhotoFooterBottomMode === "contact" ? "contact" : "cta",
     );
+    setSocialSuccessBrandSide(
+      snap.socialSuccessBrandSide === "right" ? "right" : "left",
+    );
+    setSocialSuccessContactText(String(snap.socialSuccessContactText ?? ""));
+    setSocialSuccessSideTextColors({
+      left: String(snap.socialSuccessSideTextColors?.left ?? "#ffffff"),
+      right: String(snap.socialSuccessSideTextColors?.right ?? "#ffffff"),
+    });
     setSocialPreviewOverrideUrl(snap.socialPreviewOverrideUrl ?? "");
     setTimeout(() => {
       socialApplyingHistoryRef.current = false;
@@ -1724,6 +1759,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const SOCIAL_BRAND_LAYER_ID = "brand";
   const SOCIAL_CONTACT_LAYER_ID = "contact";
   const SOCIAL_DATE_BOX_LAYER_ID = "datebox";
+  const SOCIAL_SUCCESS_BOX_LAYER_ID = "success-box";
+  const SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID = "success-testimonial";
+  const SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID = "success-brand";
+  const SOCIAL_SUCCESS_CONTACT_LAYER_ID = "success-contact";
+  const SOCIAL_SUCCESS_BG_LAYER_ID = `${SOCIAL_IMAGE_LAYER_PREFIX}success-bg`;
+  const SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID = `${SOCIAL_IMAGE_LAYER_PREFIX}success-brand`;
   const SOCIAL_PHOTO_FOOTER_IMAGE_LAYER_ID = `${SOCIAL_IMAGE_LAYER_PREFIX}photo-footer-main`;
   const SOCIAL_BAND_OVERLAY_LAYER_ID = "band-overlay";
   const SOCIAL_BAND_BRAND_LAYER_ID = "band-brand";
@@ -1749,12 +1790,32 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     "media",
     SOCIAL_BG_LAYER_ID,
   ];
+  const SOCIAL_SUCCESS_STORY_IMAGE_COUNT = 10;
+  const SUCCESS_STORY_RATIO_KEY_BY_ASPECT = {
+    "1:1": "1-1",
+    "4:5": "4-5",
+    "16:9": "16-9",
+    "9:16": "9-16",
+  } as const;
   const formatBusinessPhone = (value) => {
     const digits = String(value ?? "").replace(/\D/g, "");
     const normalized =
       digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
     if (normalized.length !== 10) return "";
     return `(${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6)}`;
+  };
+  const resolveSuccessStoryContactText = ({
+    phoneText,
+    emailText,
+  }: {
+    phoneText: string;
+    emailText: string;
+  }) => {
+    const options = [String(phoneText ?? "").trim(), String(emailText ?? "").trim()].filter(
+      Boolean,
+    );
+    if (!options.length) return "#tutoring";
+    return options[Math.floor(Math.random() * options.length)] ?? "#tutoring";
   };
   const socialBrandLogoUrl = String(companyDraft?.company_logo_url ?? "").trim();
   const socialHasBrandLogo = socialBrandLogoUrl.length > 0;
@@ -1767,6 +1828,21 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ).trim();
   const socialFooterContactText =
     socialBusinessPhoneText || socialBusinessEmailText || "#tutoring";
+  const resolveTemplateCallToActionText = ({
+    templateStyle,
+    callToAction,
+    priceDetail,
+  }: {
+    templateStyle: string;
+    callToAction: string;
+    priceDetail: string;
+  }) => {
+    if (templateStyle === "Seasonal promo") {
+      const seasonalPriceText = String(priceDetail ?? "").trim();
+      return seasonalPriceText || "Price / Offer";
+    }
+    return String(callToAction ?? "").trim();
+  };
   const isBoldHeadlineAnnouncementTemplate = ({
     templateStyle,
     layoutPreset,
@@ -1776,25 +1852,33 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   }) =>
     layoutPreset === "Bold headline" &&
     (templateStyle === "Class announcement" ||
-      templateStyle === "Enrollment reminder");
+      templateStyle === "Enrollment reminder" ||
+      templateStyle === "Seasonal promo");
   const isAnnouncementLikeTemplateStyle = (templateStyle: string) =>
     templateStyle === "Class announcement" ||
-    templateStyle === "Enrollment reminder";
+    templateStyle === "Enrollment reminder" ||
+    templateStyle === "Seasonal promo";
   const resolveEnrollmentSwappedOfferText = ({
     templateStyle,
     headlineText,
     callToAction,
+    priceDetail,
     startDate,
     productName,
   }: {
     templateStyle: string;
     headlineText: string;
     callToAction: string;
+    priceDetail: string;
     startDate: string;
     productName: string;
   }) => {
     const headline = String(headlineText ?? "").trim();
-    const cta = String(callToAction ?? "").trim();
+    const cta = resolveTemplateCallToActionText({
+      templateStyle,
+      callToAction,
+      priceDetail,
+    });
     if (templateStyle !== "Enrollment reminder") {
       return { headline, cta };
     }
@@ -1818,6 +1902,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     layoutPreset,
     headlineText,
     callToAction,
+    priceDetail,
     startDate,
     productName,
   }: {
@@ -1825,6 +1910,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     layoutPreset: string;
     headlineText: string;
     callToAction: string;
+    priceDetail: string;
     startDate: string;
     productName: string;
   }) => {
@@ -1838,6 +1924,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         templateStyle,
         headlineText,
         callToAction,
+        priceDetail,
         startDate,
         productName,
       }).headline;
@@ -1851,12 +1938,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     templateStyle,
     layoutPreset,
     headlineText,
+    callToAction,
+    priceDetail,
+    startDate,
     productName,
     announcementFooterText,
   }: {
     templateStyle: string;
     layoutPreset: string;
     headlineText: string;
+    callToAction: string;
+    priceDetail: string;
+    startDate: string;
     productName: string;
     announcementFooterText: string;
   }) => {
@@ -1869,8 +1962,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       return resolveEnrollmentSwappedOfferText({
         templateStyle,
         headlineText,
-        callToAction: "",
-        startDate: "",
+        callToAction,
+        priceDetail,
+        startDate,
         productName,
       }).cta;
     }
@@ -2027,23 +2121,34 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialSelectedTopic?.topic_name,
     ],
   );
+  const socialEffectiveFooterInfoSource =
+    socialDraft.template_style === "Seasonal promo"
+      ? "cta"
+      : socialFooterInfoSource;
   const socialAnnouncementFooterInfo = useMemo(
     () =>
       computeAnnouncementFooterInfo({
-        source: socialFooterInfoSource,
+        source: socialEffectiveFooterInfoSource,
         ageRange: socialDraft.age_range,
         locationDetail: socialDraft.location_detail,
-        callToAction: socialDraft.call_to_action,
+        callToAction: resolveTemplateCallToActionText({
+          templateStyle: socialDraft.template_style,
+          callToAction: socialDraft.call_to_action,
+          priceDetail: socialDraft.price_detail,
+        }),
         fallbackMode: socialFooterInfoEmptyMode,
         fallbackName: socialFooterInfoEmptyName,
       }),
     [
+      socialEffectiveFooterInfoSource,
       socialFooterInfoSource,
       socialFooterInfoEmptyMode,
       socialFooterInfoEmptyName,
       socialDraft.age_range,
       socialDraft.location_detail,
       socialDraft.call_to_action,
+      socialDraft.price_detail,
+      socialDraft.template_style,
     ],
   );
   const SOCIAL_ANNOUNCEMENT_FOOTER_INFO_FONT_PT = 175;
@@ -2152,6 +2257,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     layerId === SOCIAL_HEADER_LAYER_ID ||
     layerId === SOCIAL_FOOTER_LAYER_ID ||
     layerId === SOCIAL_DATE_BOX_LAYER_ID ||
+    layerId === SOCIAL_SUCCESS_BOX_LAYER_ID ||
     layerId === SOCIAL_BAND_OVERLAY_LAYER_ID ||
     SOCIAL_BAND_LAYER_IDS.includes(String(layerId || "")) ||
     String(layerId || "").startsWith(SOCIAL_SHAPE_LAYER_PREFIX);
@@ -2300,6 +2406,135 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
   };
 
+  const fitWrappedTextFontSize = ({
+    text,
+    frame,
+    maxFont = 96,
+    minFont = 14,
+    paddingX = 20,
+    paddingY = 20,
+    fontWeight = 700,
+    lineHeightMultiplier = 1.12,
+  }) => {
+    const safeText = String(text ?? "").trim();
+    if (!safeText) return minFont;
+    if (!frame) return minFont;
+    let low = Math.max(8, Math.floor(minFont));
+    let high = Math.max(low, Math.floor(maxFont));
+    let best = low;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const measured = measureWrappedSocialText({
+        text: safeText,
+        fontSize: mid,
+        fontWeight,
+        fontFamily:
+          socialFontFamily && socialFontFamily !== "inherit"
+            ? socialFontFamily
+            : "Poppins, sans-serif",
+        maxWidth: Math.max(40, Number(frame.width ?? 0)),
+        minWidth: Math.max(40, Number(frame.width ?? 0)),
+        paddingX,
+        paddingY,
+        lineHeightMultiplier,
+        outlineWidth: 0,
+        tightHeight: true,
+      });
+      if (
+        measured.width <= Math.max(40, Number(frame.width ?? 0)) &&
+        measured.height <= Math.max(20, Number(frame.height ?? 0))
+      ) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    return clampLayerValue(best, minFont, maxFont);
+  };
+
+  const chooseContrastingTextColor = (r, g, b) => {
+    const luminance = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    return luminance >= 150 ? "#111111" : "#ffffff";
+  };
+
+  const resolveSuccessStorySideTextColors = async ({
+    imageUrl,
+    leftFrame,
+    rightFrame,
+  }) => {
+    if (typeof window === "undefined" || !imageUrl) {
+      return {
+        left: "#ffffff",
+        right: "#ffffff",
+      };
+    }
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const nextImage = new Image();
+        nextImage.crossOrigin = "anonymous";
+        nextImage.onload = () => resolve(nextImage);
+        nextImage.onerror = reject;
+        nextImage.src = imageUrl;
+      });
+      const canvas = document.createElement("canvas");
+      const width = Math.max(2, Number(image.naturalWidth) || 200);
+      const height = Math.max(2, Number(image.naturalHeight) || 200);
+      canvas.width = width;
+      canvas.height = height;
+      const ctx2d = canvas.getContext("2d");
+      if (!ctx2d) {
+        return {
+          left: "#ffffff",
+          right: "#ffffff",
+        };
+      }
+      ctx2d.drawImage(image, 0, 0, width, height);
+
+      const sampleColor = (frame) => {
+        const sx = clampLayerValue(Math.floor((frame.x / 1000) * width), 0, width - 1);
+        const sy = clampLayerValue(Math.floor((frame.y / 1000) * height), 0, height - 1);
+        const sw = clampLayerValue(
+          Math.floor((frame.width / 1000) * width),
+          1,
+          width - sx,
+        );
+        const sh = clampLayerValue(
+          Math.floor((frame.height / 1000) * height),
+          1,
+          height - sy,
+        );
+        const { data } = ctx2d.getImageData(sx, sy, sw, sh);
+        let rTotal = 0;
+        let gTotal = 0;
+        let bTotal = 0;
+        let count = 0;
+        for (let idx = 0; idx < data.length; idx += 4) {
+          rTotal += data[idx] ?? 0;
+          gTotal += data[idx + 1] ?? 0;
+          bTotal += data[idx + 2] ?? 0;
+          count += 1;
+        }
+        if (!count) return "#ffffff";
+        return chooseContrastingTextColor(
+          Math.round(rTotal / count),
+          Math.round(gTotal / count),
+          Math.round(bTotal / count),
+        );
+      };
+
+      return {
+        left: sampleColor(leftFrame),
+        right: sampleColor(rightFrame),
+      };
+    } catch {
+      return {
+        left: "#ffffff",
+        right: "#ffffff",
+      };
+    }
+  };
+
   const generateBlankSocialPost = () => {
     setSocialInlineTextOverrides({});
     const templateStyle = SOCIAL_TEMPLATE_STYLES.includes(
@@ -2328,7 +2563,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         ? null
         : mediaPool[Math.floor(Math.random() * mediaPool.length)] ?? null;
 
-    if (layoutPreset === "Blank canvas") {
+    if (layoutPreset === "Blank canvas" && templateStyle !== "Success story") {
       clearSocialCanvasState();
       setSocialDraft((prev) => ({
         ...prev,
@@ -2341,7 +2576,173 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       return;
     }
 
+    if (templateStyle === "Success story") {
+      clearSocialCanvasState();
+
+      const ratioKey =
+        SUCCESS_STORY_RATIO_KEY_BY_ASPECT[aspectRatio] ??
+        SUCCESS_STORY_RATIO_KEY_BY_ASPECT["1:1"];
+      const randomIndex =
+        Math.floor(Math.random() * SOCIAL_SUCCESS_STORY_IMAGE_COUNT) + 1;
+      const successBgUrl = `/social-template-presets/testimonial_template_${ratioKey}_${randomIndex}.png`;
+      const hasBrandLogo = Boolean(socialHasBrandLogo && socialBrandLogoUrl);
+      const brandSide = Math.random() < 0.5 ? "left" : "right";
+      const contactSide = brandSide === "left" ? "right" : "left";
+      const leftFrame = { x: 25, y: 875, width: 450, height: 100 };
+      const rightFrame = { x: 525, y: 875, width: 450, height: 100 };
+      const brandFrame = brandSide === "left" ? leftFrame : rightFrame;
+      const contactFrame = contactSide === "left" ? leftFrame : rightFrame;
+      const successBoxFrame = { x: 80, y: 80, width: 840, height: 770 };
+      const testimonialFrame = { ...successBoxFrame };
+      const testimonialText =
+        String(socialDraft.extra_notes ?? "").trim() ||
+        "Share your success story here.";
+      const companyDisplayName = String(socialCompanyNameText ?? "").trim() || "Company Name";
+      const contactText = resolveSuccessStoryContactText({
+        phoneText: socialBusinessPhoneText,
+        emailText: socialBusinessEmailText,
+      });
+
+      const testimonialFont = fitWrappedTextFontSize({
+        text: testimonialText,
+        frame: testimonialFrame,
+        maxFont: 88,
+        minFont: 20,
+        paddingX: 28,
+        paddingY: 24,
+        fontWeight: 700,
+        lineHeightMultiplier: 1.15,
+      });
+      const contactFont = 30;
+      const brandTextFont = fitBandSingleLineFontSize({
+        text: companyDisplayName,
+        frame: brandFrame,
+        maxFont: 70,
+        minFont: 16,
+        paddingX: 16,
+        paddingY: 8,
+        fontWeight: 700,
+      });
+
+      setSocialSuccessBrandSide(brandSide);
+      setSocialSuccessContactText(contactText);
+      setSocialSuccessSideTextColors({
+        left: "#ffffff",
+        right: "#ffffff",
+      });
+      const colorReqId = socialSuccessColorRequestRef.current + 1;
+      socialSuccessColorRequestRef.current = colorReqId;
+      void resolveSuccessStorySideTextColors({
+        imageUrl: successBgUrl,
+        leftFrame,
+        rightFrame,
+      }).then((nextColors) => {
+        if (socialSuccessColorRequestRef.current !== colorReqId) return;
+        setSocialSuccessSideTextColors({
+          left: String(nextColors?.left ?? "#ffffff"),
+          right: String(nextColors?.right ?? "#ffffff"),
+        });
+      });
+
+      const layerOrder = hasBrandLogo
+        ? [
+            SOCIAL_SUCCESS_CONTACT_LAYER_ID,
+            SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID,
+            SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID,
+            SOCIAL_SUCCESS_BOX_LAYER_ID,
+            SOCIAL_SUCCESS_BG_LAYER_ID,
+          ]
+        : [
+            SOCIAL_SUCCESS_CONTACT_LAYER_ID,
+            SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID,
+            SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID,
+            SOCIAL_SUCCESS_BOX_LAYER_ID,
+            SOCIAL_SUCCESS_BG_LAYER_ID,
+          ];
+
+      setSocialLayerOrder(layerOrder);
+      setSocialLayerVisible({
+        [SOCIAL_SUCCESS_BG_LAYER_ID]: true,
+        [SOCIAL_SUCCESS_BOX_LAYER_ID]: true,
+        [SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID]: true,
+        [SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID]: !hasBrandLogo,
+        [SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID]: hasBrandLogo,
+        [SOCIAL_SUCCESS_CONTACT_LAYER_ID]: true,
+      });
+      setSocialLayerLocked({
+        [SOCIAL_SUCCESS_BG_LAYER_ID]: false,
+        [SOCIAL_SUCCESS_BOX_LAYER_ID]: false,
+        [SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID]: false,
+        [SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID]: false,
+        [SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID]: false,
+        [SOCIAL_SUCCESS_CONTACT_LAYER_ID]: false,
+      });
+      setSocialLayerFrames({
+        [SOCIAL_SUCCESS_BG_LAYER_ID]: { x: 0, y: 0, width: 1000, height: 1000 },
+        [SOCIAL_SUCCESS_BOX_LAYER_ID]: successBoxFrame,
+        [SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID]: testimonialFrame,
+        [SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID]: brandFrame,
+        [SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID]: brandFrame,
+        [SOCIAL_SUCCESS_CONTACT_LAYER_ID]: contactFrame,
+      });
+      setSocialShapeStyles({
+        [SOCIAL_SUCCESS_BOX_LAYER_ID]: {
+          kind: "rectangle",
+          color: "#ffffff",
+          opacity: 75,
+        },
+      });
+      setSocialImageLayers(
+        hasBrandLogo
+          ? {
+              [SOCIAL_SUCCESS_BG_LAYER_ID]: {
+                id: SOCIAL_SUCCESS_BG_LAYER_ID,
+                url: successBgUrl,
+                type: "PHOTO",
+              },
+              [SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID]: {
+                id: SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID,
+                url: socialBrandLogoUrl,
+                type: detectSocialMediaTypeFromUrl(socialBrandLogoUrl),
+              },
+            }
+          : {
+              [SOCIAL_SUCCESS_BG_LAYER_ID]: {
+                id: SOCIAL_SUCCESS_BG_LAYER_ID,
+                url: successBgUrl,
+                type: "PHOTO",
+              },
+            },
+      );
+      setSocialTextFontSizes((prev) => ({
+        ...prev,
+        [SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID]: testimonialFont,
+        [SOCIAL_SUCCESS_CONTACT_LAYER_ID]: contactFont,
+        [SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID]: brandTextFont,
+      }));
+      setSocialSelectedImageId("");
+      setSocialPreviewOverrideUrl("");
+      setSocialPreviewDropActive(false);
+      setSocialDraggingLayer("");
+      setSocialSelectedLayer(SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID);
+      setSocialToolTarget(SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID);
+      setSocialToolFontSize(testimonialFont);
+      setSocialToolAlignX("left");
+      setSocialToolAlignY("top");
+      setSocialToolColor("#111111");
+      setSocialDraft((prev) => ({
+        ...prev,
+        template_style: templateStyle,
+        layout_preset: layoutPreset,
+        aspect_ratio: aspectRatio,
+        selected_template_id: `${aspectRatio}|${layoutPreset}`,
+      }));
+      setStatus("Success story generated.");
+      return;
+    }
+
     if (layoutPreset === "Band rows") {
+      const isSeasonalPromoTemplate = templateStyle === "Seasonal promo";
       const bandColorChoices = [
         "#ef4444",
         "#f97316",
@@ -2375,6 +2776,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         templateStyle,
         headlineText: socialDraft.headline,
         callToAction: socialDraft.call_to_action,
+        priceDetail: socialDraft.price_detail,
         startDate: socialDraft.start_date,
         productName: socialSelectedProduct?.product_name,
       });
@@ -2392,9 +2794,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           : startShort
             ? `Starting ${startShort}`
             : "";
-      const band2Text = [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
-        .filter(Boolean)
-        .join("");
+      const band2Text = isSeasonalPromoTemplate
+        ? dateCore
+        : [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
+            .filter(Boolean)
+            .join("");
       const locationText = String(socialDraft.location_detail ?? "").trim();
       const ageText = String(socialDraft.age_range ?? "").trim();
       const ctaText = String(bandRowsSwappedText.cta ?? "").trim();
@@ -2631,6 +3035,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
 
     if (layoutPreset === "Photo + footer") {
+      const isSeasonalPromoTemplate = templateStyle === "Seasonal promo";
       const bgColorChoices = [
         "#ef4444",
         "#f97316",
@@ -2659,12 +3064,19 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         templateStyle,
         headlineText: socialDraft.headline,
         callToAction: socialDraft.call_to_action,
+        priceDetail: socialDraft.price_detail,
         startDate: socialDraft.start_date,
         productName: socialSelectedProduct?.product_name,
       });
       const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
         templateStyle,
-        headlineText: photoFooterSwappedText.headline,
+        headlineText: isSeasonalPromoTemplate
+          ? resolveTemplateCallToActionText({
+              templateStyle,
+              callToAction: socialDraft.call_to_action,
+              priceDetail: socialDraft.price_detail,
+            })
+          : photoFooterSwappedText.headline,
         locationText: socialDraft.location_detail,
         startDate: socialDraft.start_date,
         endDate: socialDraft.end_date,
@@ -2700,6 +3112,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         ] ?? "center";
       const randomBottomMode: "cta" | "contact" =
         Math.random() < 0.5 ? "cta" : "contact";
+      const effectiveBottomMode: "cta" | "contact" = isSeasonalPromoTemplate
+        ? "contact"
+        : randomBottomMode;
       const brandFrame = {
         x: 40,
         y: 20,
@@ -2712,10 +3127,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       });
       const photoFooterLocationPriceText = resolvePhotoFooterLocationPriceText({
         locationText: socialDraft.location_detail,
-        priceText: socialDraft.price_detail,
+        priceText: isSeasonalPromoTemplate
+          ? String(photoFooterSwappedText.headline ?? "").trim()
+          : socialDraft.price_detail,
       });
       const photoFooterBottomText = resolvePhotoFooterBottomLineText({
-        mode: randomBottomMode,
+        mode: effectiveBottomMode,
         callToAction: photoFooterSwappedText.cta,
         phoneText: socialBusinessPhoneText,
         emailText: socialBusinessEmailText,
@@ -2874,7 +3291,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       }));
       setSocialPhotoFooterAlign(randomAlign);
       setSocialPhotoFooterBrandAlign(randomBrandAlign);
-      setSocialPhotoFooterBottomMode(randomBottomMode);
+      setSocialPhotoFooterBottomMode(effectiveBottomMode);
       setSocialToolTarget("headline");
       setSocialToolFontSize(photoFooterHeadlineFont);
       setSocialSelectedLayer("headline");
@@ -2960,7 +3377,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const usePresetDefaultsOnly = noOfferDetailsProvided && noContentSourceSelected;
 
     const randomFooterInfoSource =
-      usePresetDefaultsOnly
+      templateStyle === "Seasonal promo"
+        ? "cta"
+        : usePresetDefaultsOnly
         ? "cta"
         : (["age", "location", "cta"] as const)[
             Math.floor(Math.random() * 3)
@@ -3009,7 +3428,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       source: randomFooterInfoSource,
       ageRange: socialDraft.age_range,
       locationDetail: socialDraft.location_detail,
-      callToAction: socialDraft.call_to_action,
+      callToAction: resolveTemplateCallToActionText({
+        templateStyle,
+        callToAction: socialDraft.call_to_action,
+        priceDetail: socialDraft.price_detail,
+      }),
       fallbackMode: randomFooterFallbackMode,
       fallbackName: randomFooterFallbackName,
     });
@@ -3019,6 +3442,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       layoutPreset,
       headlineText: socialDraft.headline,
       callToAction: socialDraft.call_to_action,
+      priceDetail: socialDraft.price_detail,
       startDate: socialDraft.start_date,
       productName: socialSelectedProduct?.product_name,
     });
@@ -3026,6 +3450,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       templateStyle,
       layoutPreset,
       headlineText: socialDraft.headline,
+      callToAction: socialDraft.call_to_action,
+      priceDetail: socialDraft.price_detail,
+      startDate: socialDraft.start_date,
       productName: socialSelectedProduct?.product_name,
       announcementFooterText: generatedFooterInfo.text,
     });
@@ -3216,6 +3643,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialInlineEditorOriginalValue("");
     setSocialHistory([]);
     setSocialHistoryIndex(-1);
+    setSocialSuccessBrandSide("left");
+    setSocialSuccessContactText("");
+    setSocialSuccessSideTextColors({
+      left: "#ffffff",
+      right: "#ffffff",
+    });
+    socialSuccessColorRequestRef.current += 1;
   };
 
   const applySocialLayoutPreset = (
@@ -3251,11 +3685,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     layerId === "start" ||
     layerId === "cta" ||
     layerId === SOCIAL_CONTACT_LAYER_ID ||
+    layerId === SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID ||
+    layerId === SOCIAL_SUCCESS_CONTACT_LAYER_ID ||
     SOCIAL_BAND_TEXT_LAYER_IDS.includes(String(layerId || "")) ||
     layerId === SOCIAL_BAND_CONTACT_A_LAYER_ID ||
     layerId === SOCIAL_BAND_CONTACT_B_LAYER_ID ||
     ((layerId === SOCIAL_BRAND_LAYER_ID ||
-      layerId === SOCIAL_BAND_BRAND_LAYER_ID) &&
+      layerId === SOCIAL_BAND_BRAND_LAYER_ID ||
+      layerId === SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID) &&
       !socialHasBrandLogo);
 
   const socialTextMaxWidthByLayout = (layoutPreset) => {
@@ -3279,6 +3716,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       templateStyle: socialDraft.template_style,
       headlineText: socialDraft.headline,
       callToAction: socialDraft.call_to_action,
+      priceDetail: socialDraft.price_detail,
       startDate: socialDraft.start_date,
       productName: socialSelectedProduct?.product_name,
     });
@@ -3294,6 +3732,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           layoutPreset: socialDraft.layout_preset,
           headlineText: socialDraft.headline,
           callToAction: socialDraft.call_to_action,
+          priceDetail: socialDraft.price_detail,
           startDate: socialDraft.start_date,
           productName: socialSelectedProduct?.product_name,
         });
@@ -3324,6 +3763,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           templateStyle: socialDraft.template_style,
           layoutPreset: socialDraft.layout_preset,
           headlineText: socialDraft.headline,
+          callToAction: socialDraft.call_to_action,
+          priceDetail: socialDraft.price_detail,
+          startDate: socialDraft.start_date,
           productName: socialSelectedProduct?.product_name,
           announcementFooterText: socialAnnouncementFooterInfo.text,
         });
@@ -3332,17 +3774,40 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         return swappedText.cta || "Add Headline";
       }
       if (socialDraft.layout_preset === "Bold headline") {
-        return socialDraft.call_to_action || socialDraft.start_date || "Call to action";
+        return (
+          resolveTemplateCallToActionText({
+            templateStyle: socialDraft.template_style,
+            callToAction: socialDraft.call_to_action,
+            priceDetail: socialDraft.price_detail,
+          }) ||
+          socialDraft.start_date ||
+          "Call to action"
+        );
       }
       if (socialDraft.layout_preset === "Photo + footer") {
-        return socialDraft.call_to_action || socialDraft.location_detail || "Join us";
+        return (
+          resolveTemplateCallToActionText({
+            templateStyle: socialDraft.template_style,
+            callToAction: socialDraft.call_to_action,
+            priceDetail: socialDraft.price_detail,
+          }) ||
+          socialDraft.location_detail ||
+          "Join us"
+        );
       }
-      return socialDraft.call_to_action || "Call to action";
+      return (
+        resolveTemplateCallToActionText({
+          templateStyle: socialDraft.template_style,
+          callToAction: socialDraft.call_to_action,
+          priceDetail: socialDraft.price_detail,
+        }) || "Call to action"
+      );
     }
     return "";
   };
   const socialLayerToDraftField = (layerId) => {
     if (layerId === "headline") return "headline";
+    if (layerId === SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID) return "extra_notes";
     return null;
   };
 
@@ -3532,6 +3997,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               templateStyle: socialDraft.template_style,
               layoutPreset: socialDraft.layout_preset,
               headlineText: socialDraft.headline,
+              callToAction: socialDraft.call_to_action,
+              priceDetail: socialDraft.price_detail,
+              startDate: socialDraft.start_date,
               productName: socialSelectedProduct?.product_name,
               announcementFooterText: socialAnnouncementFooterInfo.text,
             }),
@@ -3543,6 +4011,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       cta: announcementCtaDefault,
       [SOCIAL_CONTACT_LAYER_ID]: 30,
       [SOCIAL_BRAND_LAYER_ID]: 30,
+      [SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID]: 48,
+      [SOCIAL_SUCCESS_CONTACT_LAYER_ID]: 30,
+      [SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID]: 30,
     };
     const fallbackSize = fallbackByLayer[layerId] ?? socialToolFontSize ?? 48;
     const nextSize = socialTextFontSizes[layerId] ?? fallbackSize;
@@ -3957,7 +4428,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     if (target === "start") {
       return socialDraft.start_date || "Start date";
     }
-    return socialDraft.call_to_action || "Call to action";
+    return (
+      resolveTemplateCallToActionText({
+        templateStyle: socialDraft.template_style,
+        callToAction: socialDraft.call_to_action,
+        priceDetail: socialDraft.price_detail,
+      }) || "Call to action"
+    );
   };
 
   const socialShapeLayerStyle = (layerId) => {
@@ -4621,6 +5098,125 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   };
 
   const socialRenderPresetTextLayers = () => {
+    if (socialDraft.template_style === "Success story") {
+      const hasSuccessStoryLayers = Boolean(
+        socialLayerVisible[SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID] ||
+          socialLayerVisible[SOCIAL_SUCCESS_CONTACT_LAYER_ID] ||
+          socialLayerVisible[SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID],
+      );
+      if (!hasSuccessStoryLayers) return null;
+
+      const testimonialFrame = socialLayerFrames[SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID] ?? {
+        x: 80,
+        y: 80,
+        width: 840,
+        height: 770,
+      };
+      const brandFrame =
+        socialLayerFrames[SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID] ??
+        socialLayerFrames[SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID] ?? {
+          x: 25,
+          y: 875,
+          width: 450,
+          height: 100,
+        };
+      const contactFrame = socialLayerFrames[SOCIAL_SUCCESS_CONTACT_LAYER_ID] ?? {
+        x: 525,
+        y: 875,
+        width: 450,
+        height: 100,
+      };
+
+      const companyDisplayName =
+        String(socialCompanyNameText ?? "").trim() || "Company Name";
+      const contactText =
+        String(socialSuccessContactText ?? "").trim() ||
+        String(socialBusinessPhoneText ?? "").trim() ||
+        String(socialBusinessEmailText ?? "").trim() ||
+        "#tutoring";
+      const testimonialText =
+        String(socialDraft.extra_notes ?? "").trim() ||
+        "Share your success story here.";
+      const brandAlign = socialSuccessBrandSide === "left" ? "left" : "right";
+      const contactAlign = socialSuccessBrandSide === "left" ? "right" : "left";
+      const brandColor =
+        socialSuccessSideTextColors[socialSuccessBrandSide] ?? "#ffffff";
+      const contactColor =
+        socialSuccessSideTextColors[
+          socialSuccessBrandSide === "left" ? "right" : "left"
+        ] ?? "#ffffff";
+      const shadowForColor = (color) =>
+        color === "#111111"
+          ? "0px 3px 10px rgba(255,255,255,0.65)"
+          : "0px 3px 10px rgba(0,0,0,0.75)";
+
+      return (
+        <>
+          {!socialHasBrandLogo
+            ? socialRenderHtmlTextLayer({
+                keyId: "success-story-brand-text",
+                layerId: SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID,
+                text: companyDisplayName,
+                fallbackSize:
+                  socialTextFontSizes[SOCIAL_SUCCESS_BRAND_TEXT_LAYER_ID] ?? 30,
+                x: brandFrame.x,
+                y: brandFrame.y,
+                width: brandFrame.width,
+                height: brandFrame.height,
+                alignX: brandAlign,
+                alignY: "center",
+                fontWeight: 800,
+                forceTextColor: brandColor,
+                forceTextShadow: shadowForColor(brandColor),
+                forceLineHeight: 1,
+                paddingLeft: brandAlign === "left" ? 8 : 0,
+                paddingRight: brandAlign === "right" ? 8 : 0,
+              })
+            : null}
+          {socialRenderHtmlTextLayer({
+            keyId: "success-story-contact-text",
+            layerId: SOCIAL_SUCCESS_CONTACT_LAYER_ID,
+            text: contactText,
+            fallbackSize:
+              socialTextFontSizes[SOCIAL_SUCCESS_CONTACT_LAYER_ID] ?? 30,
+            x: contactFrame.x,
+            y: contactFrame.y,
+            width: contactFrame.width,
+            height: contactFrame.height,
+            alignX: contactAlign,
+            alignY: "center",
+            fontWeight: 700,
+            forceTextColor: contactColor,
+            forceTextShadow: shadowForColor(contactColor),
+            forceLineHeight: 1,
+            paddingLeft: contactAlign === "left" ? 8 : 0,
+            paddingRight: contactAlign === "right" ? 8 : 0,
+          })}
+          {socialRenderHtmlTextLayer({
+            keyId: "success-story-testimonial-text",
+            layerId: SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID,
+            text: testimonialText,
+            fallbackSize:
+              socialTextFontSizes[SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID] ?? 48,
+            x: testimonialFrame.x,
+            y: testimonialFrame.y,
+            width: testimonialFrame.width,
+            height: testimonialFrame.height,
+            alignX: "left",
+            alignY: "top",
+            fontWeight: 700,
+            forceTextColor: "#111111",
+            forceTextShadow: "none",
+            forceLineHeight: 1.15,
+            paddingLeft: 24,
+            paddingRight: 24,
+            paddingTop: 24,
+            paddingBottom: 24,
+          })}
+        </>
+      );
+    }
+
     if (socialDraft.layout_preset === "Bold headline") {
       const isAnnouncement = isBoldHeadlineAnnouncementTemplate({
         templateStyle: socialDraft.template_style,
@@ -4682,6 +5278,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         templateStyle: socialDraft.template_style,
         layoutPreset: socialDraft.layout_preset,
         headlineText: socialDraft.headline,
+        callToAction: socialDraft.call_to_action,
+        priceDetail: socialDraft.price_detail,
+        startDate: socialDraft.start_date,
         productName: socialSelectedProduct?.product_name,
         announcementFooterText: socialAnnouncementFooterInfo.text,
       });
@@ -4814,6 +5413,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
 
     if (socialDraft.layout_preset === "Band rows") {
+      const isSeasonalPromoTemplate =
+        socialDraft.template_style === "Seasonal promo";
       const band1Frame = socialLayerFrames["band-1"];
       const band2Frame = socialLayerFrames["band-2"];
       const band3Frame = socialLayerFrames["band-3"];
@@ -4858,6 +5459,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         templateStyle: socialDraft.template_style,
         headlineText: socialDraft.headline,
         callToAction: socialDraft.call_to_action,
+        priceDetail: socialDraft.price_detail,
         startDate: socialDraft.start_date,
         productName: socialSelectedProduct?.product_name,
       });
@@ -4875,9 +5477,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           : startShort
             ? `Starting ${startShort}`
             : "";
-      const band2Text = [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
-        .filter(Boolean)
-        .join("");
+      const band2Text = isSeasonalPromoTemplate
+        ? dateCore
+        : [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
+            .filter(Boolean)
+            .join("");
 
       const locationText = String(socialDraft.location_detail ?? "").trim();
       const ageText = String(socialDraft.age_range ?? "").trim();
@@ -5076,6 +5680,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
 
     if (socialDraft.layout_preset === "Photo + footer") {
+      const isSeasonalPromoTemplate =
+        socialDraft.template_style === "Seasonal promo";
       const hasPhotoFooterPresetLayers = Boolean(
         socialLayerVisible[SOCIAL_FOOTER_LAYER_ID] ||
           socialLayerVisible.headline ||
@@ -5114,15 +5720,23 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         width: 920,
         height: socialHasBrandLogo ? 100 : 75,
       };
+      const photoFooterSwappedText = resolveEnrollmentSwappedOfferText({
+        templateStyle: socialDraft.template_style,
+        headlineText: socialDraft.headline,
+        callToAction: socialDraft.call_to_action,
+        priceDetail: socialDraft.price_detail,
+        startDate: socialDraft.start_date,
+        productName: socialSelectedProduct?.product_name,
+      });
       const photoFooterHeadlineText = resolvePhotoFooterHeadlineText({
         templateStyle: socialDraft.template_style,
-        headlineText: resolveEnrollmentSwappedOfferText({
-          templateStyle: socialDraft.template_style,
-          headlineText: socialDraft.headline,
-          callToAction: socialDraft.call_to_action,
-          startDate: socialDraft.start_date,
-          productName: socialSelectedProduct?.product_name,
-        }).headline,
+        headlineText: isSeasonalPromoTemplate
+          ? resolveTemplateCallToActionText({
+              templateStyle: socialDraft.template_style,
+              callToAction: socialDraft.call_to_action,
+              priceDetail: socialDraft.price_detail,
+            })
+          : photoFooterSwappedText.headline,
         locationText: socialDraft.location_detail,
         startDate: socialDraft.start_date,
         endDate: socialDraft.end_date,
@@ -5134,17 +5748,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       });
       const photoFooterLocationPriceText = resolvePhotoFooterLocationPriceText({
         locationText: socialDraft.location_detail,
-        priceText: socialDraft.price_detail,
+        priceText: isSeasonalPromoTemplate
+          ? String(photoFooterSwappedText.headline ?? "").trim()
+          : socialDraft.price_detail,
       });
+      const effectiveBottomMode: "cta" | "contact" = isSeasonalPromoTemplate
+        ? "contact"
+        : socialPhotoFooterBottomMode;
       const photoFooterBottomText = resolvePhotoFooterBottomLineText({
-        mode: socialPhotoFooterBottomMode,
-        callToAction: resolveEnrollmentSwappedOfferText({
-          templateStyle: socialDraft.template_style,
-          headlineText: socialDraft.headline,
-          callToAction: socialDraft.call_to_action,
-          startDate: socialDraft.start_date,
-          productName: socialSelectedProduct?.product_name,
-        }).cta,
+        mode: effectiveBottomMode,
+        callToAction: photoFooterSwappedText.cta,
         phoneText: socialBusinessPhoneText,
         emailText: socialBusinessEmailText,
       });
@@ -7494,7 +8107,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                 >
                                   <option value="">Make a selection</option>
                                   <option value="PRODUCTS">Product</option>
-                                  <option value="SERVICES">Service Type</option>
+                                  <option value="SERVICES">Service</option>
                                   <option value="SUBJECTS">Subject</option>
                                   <option value="TOPICS">Topic</option>
                                 </select>
@@ -7743,7 +8356,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                 />
                               </div>
                               <div className="grid gap-2 md:col-span-2">
-                                <Label>Extra notes</Label>
+                                <Label>Extra Notes/Testimonials</Label>
                                 <Textarea
                                   rows={3}
                                   value={socialDraft.extra_notes}
@@ -7753,7 +8366,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       extra_notes: e.target.value,
                                     }))
                                   }
-                                  placeholder="Any extra details you want included."
+                                  placeholder="Any extra details which can be considerd by AI in post text writing, or, enter testimonials here for the Success Story template."
                                 />
                               </div>
                             </div>
@@ -7811,12 +8424,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                     <select
                                       className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                                       value={socialDraft.template_style}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
+                                        const nextTemplateStyle = e.target.value;
                                         setSocialDraft((prev) => ({
                                           ...prev,
-                                          template_style: e.target.value,
-                                        }))
-                                      }
+                                          template_style: nextTemplateStyle,
+                                        }));
+                                        if (nextTemplateStyle === "Success story") {
+                                          clearSocialCanvasState();
+                                          setStatus("Success story selected. Canvas cleared.");
+                                        }
+                                      }}
                                     >
                                       <option value="">Select a template style</option>
                                       {SOCIAL_TEMPLATE_STYLES.map((style) => (
@@ -8285,8 +8903,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                           layerId === SOCIAL_BRAND_LAYER_ID;
                                         const isBandBrandLayer =
                                           layerId === SOCIAL_BAND_BRAND_LAYER_ID;
+                                        const isSuccessBrandLayer =
+                                          layerId === SOCIAL_SUCCESS_BRAND_IMAGE_LAYER_ID;
                                         const isBrandLayer =
-                                          isFooterBrandLayer || isBandBrandLayer;
+                                          isFooterBrandLayer ||
+                                          isBandBrandLayer ||
+                                          isSuccessBrandLayer;
                                         const bandVerticalPosition =
                                           socialBandContactConfig === 3 ? "bottom" : "top";
                                         const bandHorizontalPosition =
@@ -8307,6 +8929,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                               : "left bottom"
                                           : isBandBrandLayer
                                             ? `${bandHorizontalPosition} ${bandVerticalPosition}`
+                                            : isSuccessBrandLayer
+                                              ? socialSuccessBrandSide === "right"
+                                                ? "right bottom"
+                                                : "left bottom"
                                             : "center center";
                                         return (
                                           <div

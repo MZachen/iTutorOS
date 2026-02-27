@@ -449,7 +449,6 @@ const SOCIAL_TEMPLATE_STYLES = [
   "Class announcement",
   "Enrollment reminder",
   "Seasonal promo",
-  "Open house invite",
   "Success story",
   "New product launch",
 ] as const;
@@ -1470,17 +1469,54 @@ function SettingsPageContent() {
       type: CatalogMedia["media_type"];
       label: string;
     }> = [];
+    const seen = new Set<string>();
+    const pushUnique = (item: {
+      id: string;
+      url: string;
+      type: CatalogMedia["media_type"];
+      label: string;
+    }) => {
+      const url = String(item.url ?? "").trim();
+      if (!url) return;
+      const key = `${item.type}|${url}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push({ ...item, url });
+    };
+
     if (activeCompanyLogoUrl) {
-      items.push({
+      pushUnique({
         id: "company-logo",
         url: activeCompanyLogoUrl,
         type: "PHOTO",
         label: "Company logo",
       });
     }
+
+    const hasScopedSelection = Boolean(
+      socialSelectedProduct ||
+        socialSelectedService ||
+        socialSelectedSubject ||
+        socialSelectedTopic,
+    );
+    const hasSourceTypeButNoSelection = Boolean(socialSourceType) && !hasScopedSelection;
+
+    // Only show global library when no content source filter is active.
+    if (!hasScopedSelection && !hasSourceTypeButNoSelection) {
+      const globalKey = catalogMediaKey("product", "__GLOBAL_LIBRARY__");
+      (catalogMediaByKey[globalKey] ?? []).forEach((media) =>
+        pushUnique({
+          id: media.id,
+          url: media.media_url,
+          type: media.media_type,
+          label: "Image library",
+        }),
+      );
+    }
+
     if (socialSelectedProduct) {
       if (socialSelectedProduct.product_logo_url) {
-        items.push({
+        pushUnique({
           id: `product-logo:${socialSelectedProduct.id}`,
           url: socialSelectedProduct.product_logo_url,
           type: "PHOTO",
@@ -1489,7 +1525,7 @@ function SettingsPageContent() {
       }
       const key = catalogMediaKey("product", socialSelectedProduct.id);
       (catalogMediaByKey[key] ?? []).forEach((media) =>
-        items.push({
+        pushUnique({
           id: media.id,
           url: media.media_url,
           type: media.media_type,
@@ -1499,7 +1535,7 @@ function SettingsPageContent() {
     }
     if (socialSelectedService) {
       if (socialSelectedService.service_logo_url) {
-        items.push({
+        pushUnique({
           id: `service-logo:${socialSelectedService.service_code}`,
           url: socialSelectedService.service_logo_url,
           type: "PHOTO",
@@ -1511,7 +1547,7 @@ function SettingsPageContent() {
         socialSelectedService.service_code,
       );
       (catalogMediaByKey[key] ?? []).forEach((media) =>
-        items.push({
+        pushUnique({
           id: media.id,
           url: media.media_url,
           type: media.media_type,
@@ -1522,7 +1558,7 @@ function SettingsPageContent() {
     if (socialSelectedSubject) {
       const key = catalogMediaKey("subject", socialSelectedSubject.id);
       (catalogMediaByKey[key] ?? []).forEach((media) =>
-        items.push({
+        pushUnique({
           id: media.id,
           url: media.media_url,
           type: media.media_type,
@@ -1533,7 +1569,7 @@ function SettingsPageContent() {
     if (socialSelectedTopic) {
       const key = catalogMediaKey("topic", socialSelectedTopic.id);
       (catalogMediaByKey[key] ?? []).forEach((media) =>
-        items.push({
+        pushUnique({
           id: media.id,
           url: media.media_url,
           type: media.media_type,
@@ -1545,6 +1581,7 @@ function SettingsPageContent() {
   }, [
     activeCompanyLogoUrl,
     catalogMediaByKey,
+    socialSourceType,
     socialSelectedProduct,
     socialSelectedService,
     socialSelectedSubject,
