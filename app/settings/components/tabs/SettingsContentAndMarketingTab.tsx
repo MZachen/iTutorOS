@@ -2030,6 +2030,28 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ).trim();
   const socialFooterContactText =
     socialBusinessPhoneText || socialBusinessEmailText || "#tutoring";
+  const SOCIAL_TEXT_PLACEHOLDERS = {
+    headline: "Enter Headline",
+    dates: "Enter Dates",
+    startDate: "Enter Start Date",
+    endDate: "Enter End Date",
+    location: "Enter a Location",
+    age: "Enter Age Details",
+    price: "Enter Price / Offer",
+    cta: "Enter Call To Action",
+    phoneEmail: "Enter Phone / Email",
+    testimonial: "Enter Testimonial",
+  } as const;
+  const getSocialTextPlaceholder = (
+    key: keyof typeof SOCIAL_TEXT_PLACEHOLDERS,
+  ) => SOCIAL_TEXT_PLACEHOLDERS[key];
+  const resolveSourcePlaceholderText = (
+    source: "age" | "location" | "cta",
+  ) => {
+    if (source === "age") return getSocialTextPlaceholder("age");
+    if (source === "location") return getSocialTextPlaceholder("location");
+    return getSocialTextPlaceholder("cta");
+  };
   const resolveTemplateCallToActionText = ({
     templateStyle,
     callToAction,
@@ -2041,9 +2063,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   }) => {
     if (templateStyle === "Seasonal promo") {
       const seasonalPriceText = String(priceDetail ?? "").trim();
-      return seasonalPriceText || "Price / Offer";
+      return seasonalPriceText || getSocialTextPlaceholder("price");
     }
-    return String(callToAction ?? "").trim();
+    return String(callToAction ?? "").trim() || getSocialTextPlaceholder("cta");
   };
   const isBoldHeadlineAnnouncementTemplate = ({
     templateStyle,
@@ -2084,8 +2106,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     if (templateStyle !== "Enrollment reminder") {
       return { headline, cta };
     }
-    const swappedHeadline = cta || headline || String(startDate ?? "").trim() || "Call to action";
-    const swappedCta = headline || cta || String(productName ?? "").trim() || "Add Headline";
+    const swappedHeadline = cta || getSocialTextPlaceholder("cta");
+    const swappedCta = headline || getSocialTextPlaceholder("headline");
     return {
       headline: swappedHeadline,
       cta: swappedCta,
@@ -2133,8 +2155,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
     const headline = String(headlineText ?? "").trim();
     if (headline) return headline;
-    const product = String(productName ?? "").trim();
-    return product || "Add Headline";
+    return getSocialTextPlaceholder("headline");
   };
   const resolveBoldHeadlineFooterText = ({
     templateStyle,
@@ -2192,21 +2213,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   }) => {
     const headline = String(headlineText ?? "").trim();
     if (headline) return headline;
-
-    const isAnnouncementTemplate = isAnnouncementLikeTemplateStyle(
-      String(templateStyle ?? ""),
-    );
-    if (isAnnouncementTemplate) {
-      const start = normalizeMdyShortDate(startDate);
-      const end = normalizeMdyShortDate(endDate);
-      if (start && end) return `${start} - ${end}`;
-      if (start) return `Starting - ${start}`;
-      return "#tutoring";
+    if (String(templateStyle ?? "").trim() === "Seasonal promo") {
+      return getSocialTextPlaceholder("price");
     }
-
-    const location = String(locationText ?? "").trim();
-    if (location) return location;
-    return "#tutoring";
+    if (String(templateStyle ?? "").trim() === "Enrollment reminder") {
+      return getSocialTextPlaceholder("cta");
+    }
+    return getSocialTextPlaceholder("headline");
   };
   const buildPhotoFooterContactText = ({
     phoneText,
@@ -2218,7 +2231,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const phone = String(phoneText ?? "").trim();
     const email = String(emailText ?? "").trim();
     if (phone && email) return `${phone}${" ".repeat(5)}${email}`;
-    return phone || email || "#tutoring";
+    return phone || email || getSocialTextPlaceholder("phoneEmail");
   };
   const resolvePhotoFooterDateLineText = ({
     startDate,
@@ -2231,7 +2244,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const end = normalizeMdyShortDate(endDate);
     if (start && end) return `${start} - ${end}`;
     if (start) return `Starting - ${start}`;
-    return "Starting - Soon";
+    return getSocialTextPlaceholder("dates");
   };
   const resolvePhotoFooterLocationPriceText = ({
     locationText,
@@ -2242,8 +2255,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   }) => {
     const location = String(locationText ?? "").trim();
     const price = String(priceText ?? "").trim();
-    if (location && price) return `${location}${" ".repeat(5)}${price}`;
-    return location || price || "";
+    const resolvedLocation = location || getSocialTextPlaceholder("location");
+    const resolvedPrice = price || getSocialTextPlaceholder("price");
+    return `${resolvedLocation}${" ".repeat(5)}${resolvedPrice}`;
   };
   const resolvePhotoFooterBottomLineText = ({
     mode,
@@ -2262,7 +2276,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       emailText,
     });
     if (mode === "cta") {
-      return cta || contact;
+      return cta || getSocialTextPlaceholder("cta");
     }
     return contact;
   };
@@ -2277,33 +2291,22 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     const ageText = String(ageRange ?? "").trim();
     const locationText = String(locationDetail ?? "").trim();
     const ctaText = String(callToAction ?? "").trim();
-    const allEmpty = !ageText && !locationText && !ctaText;
-
-    if (!allEmpty) {
-      if (source === "age") return { text: ageText, isLocation: false };
-      if (source === "location") return { text: locationText, isLocation: true };
-      return { text: ctaText, isLocation: false };
-    }
-
-    const cleanFallbackName = String(fallbackName ?? "").trim();
-    if (fallbackMode === "name") {
+    if (source === "age") {
       return {
-        text: cleanFallbackName || "#tutoring",
+        text: ageText || getSocialTextPlaceholder("age"),
         isLocation: false,
       };
     }
-    if (fallbackMode === "hash-name") {
+    if (source === "location") {
       return {
-        text: cleanFallbackName
-          ? `#${cleanFallbackName.replace(/^#+/, "")}`
-          : "#tutoring",
-        isLocation: false,
+        text: locationText || getSocialTextPlaceholder("location"),
+        isLocation: true,
       };
     }
-    if (fallbackMode === "tutoring") {
-      return { text: "#tutoring", isLocation: false };
-    }
-    return { text: "", isLocation: false };
+    return {
+      text: ctaText || getSocialTextPlaceholder("cta"),
+      isLocation: false,
+    };
   };
   const socialAnnouncementFallbackNames = useMemo(
     () =>
@@ -2802,7 +2805,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       const testimonialFrame = { ...successBoxFrame };
       const testimonialText =
         String(socialDraft.extra_notes ?? "").trim() ||
-        "Share your success story here.";
+        getSocialTextPlaceholder("testimonial");
       const companyDisplayName = String(socialCompanyNameText ?? "").trim() || "Company Name";
       const contactText = resolveSuccessStoryContactText({
         phoneText: socialBusinessPhoneText,
@@ -2988,8 +2991,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       });
       const headlineText = String(
         bandRowsSwappedText.headline ||
-          socialSelectedProduct?.product_name ||
-          "Add Headline",
+          getSocialTextPlaceholder("headline"),
       ).trim();
       const startShort = normalizeMdyShort(socialDraft.start_date);
       const endShort = normalizeMdyShort(socialDraft.end_date);
@@ -2999,17 +3001,24 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           ? `${startShort} - ${endShort}`
           : startShort
             ? `Starting ${startShort}`
-            : "";
+            : getSocialTextPlaceholder("dates");
+      const resolvedBand2PriceText =
+        priceText || getSocialTextPlaceholder("price");
       const band2Text = isSeasonalPromoTemplate
         ? dateCore
-        : [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
+        : [dateCore, `${" ".repeat(6)}${resolvedBand2PriceText}`]
             .filter(Boolean)
             .join("");
       const locationText = String(socialDraft.location_detail ?? "").trim();
       const ageText = String(socialDraft.age_range ?? "").trim();
       const ctaText = String(bandRowsSwappedText.cta ?? "").trim();
-      const band3Text = ageText || locationText || "";
-      const band4Text = ctaText || (band3Text === locationText ? "" : locationText) || "";
+      const band3Text =
+        ageText || locationText || getSocialTextPlaceholder("age");
+      const band4Text =
+        ctaText ||
+        (band3Text === locationText
+          ? getSocialTextPlaceholder("cta")
+          : locationText || getSocialTextPlaceholder("location"));
 
       const contactConfig = (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3;
       const swapContacts = Math.random() < 0.5;
@@ -3958,9 +3967,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         });
       }
       if (socialDraft.template_style === "Enrollment reminder") {
-        return swappedText.headline || "Call to action";
+        return swappedText.headline || getSocialTextPlaceholder("cta");
       }
-      return socialDraft.headline || socialSelectedProduct?.product_name || "Your headline";
+      return socialDraft.headline || getSocialTextPlaceholder("headline");
     }
     if (layerId === "start") {
       if (socialDraft.layout_preset === "Schedule list") {
@@ -3968,9 +3977,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           ? `Dates: ${socialDraft.start_date}${
               socialDraft.end_date ? ` - ${socialDraft.end_date}` : ""
             }`
-          : "Dates / schedule";
+          : getSocialTextPlaceholder("dates");
       }
-      return socialDraft.start_date || "Start date";
+      return socialDraft.start_date || getSocialTextPlaceholder("dates");
     }
     if (layerId === "cta") {
       if (
@@ -3991,7 +4000,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         });
       }
       if (socialDraft.template_style === "Enrollment reminder") {
-        return swappedText.cta || "Add Headline";
+        return swappedText.cta || getSocialTextPlaceholder("headline");
       }
       if (socialDraft.layout_preset === "Bold headline") {
         return (
@@ -3999,9 +4008,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             templateStyle: socialDraft.template_style,
             callToAction: socialDraft.call_to_action,
             priceDetail: socialDraft.price_detail,
-          }) ||
-          socialDraft.start_date ||
-          "Call to action"
+          })
         );
       }
       if (socialDraft.layout_preset === "Photo + footer") {
@@ -4010,9 +4017,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             templateStyle: socialDraft.template_style,
             callToAction: socialDraft.call_to_action,
             priceDetail: socialDraft.price_detail,
-          }) ||
-          socialDraft.location_detail ||
-          "Join us"
+          })
         );
       }
       return (
@@ -4020,7 +4025,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           templateStyle: socialDraft.template_style,
           callToAction: socialDraft.call_to_action,
           priceDetail: socialDraft.price_detail,
-        }) || "Call to action"
+        })
       );
     }
     return "";
@@ -4732,19 +4737,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
 
   const socialActivePreviewText = (target) => {
     if (target === "headline") {
-      return (
-        socialDraft.headline || socialSelectedProduct?.product_name || "Your headline"
-      );
+      return socialDraft.headline || getSocialTextPlaceholder("headline");
     }
     if (target === "start") {
-      return socialDraft.start_date || "Start date";
+      return socialDraft.start_date || getSocialTextPlaceholder("dates");
     }
     return (
       resolveTemplateCallToActionText({
         templateStyle: socialDraft.template_style,
         callToAction: socialDraft.call_to_action,
         priceDetail: socialDraft.price_detail,
-      }) || "Call to action"
+      })
     );
   };
 
@@ -5543,7 +5546,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         "#tutoring";
       const testimonialText =
         String(socialDraft.extra_notes ?? "").trim() ||
-        "Share your success story here.";
+        getSocialTextPlaceholder("testimonial");
       const brandAlign = socialSuccessBrandSide === "left" ? "left" : "right";
       const contactAlign = socialSuccessBrandSide === "left" ? "right" : "left";
       const brandColor =
@@ -5663,7 +5666,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         endDateText.length > 0;
       const dateLineText =
         !startDateText && !endDateText
-          ? "Starting\nSoon"
+          ? "Enter\nDates"
           : useRangeFormat
             ? `${startShort} -\n${endShort}`
             : `Starting\n${startShort || "Soon"}`;
@@ -5786,7 +5789,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             : socialRenderTextLayer({
                 keyId: "bold-cta",
                 layerId: "cta",
-                text: socialDraft.call_to_action || socialDraft.start_date || "Call to action",
+                text: resolveTemplateCallToActionText({
+                  templateStyle: socialDraft.template_style,
+                  callToAction: socialDraft.call_to_action,
+                  priceDetail: socialDraft.price_detail,
+                }),
                 fallbackSize: 20,
                 x: 55,
                 y: topY + 260,
@@ -5872,8 +5879,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       });
       const headlineText = String(
         bandRowsSwappedText.headline ||
-          socialSelectedProduct?.product_name ||
-          "Add Headline",
+          getSocialTextPlaceholder("headline"),
       ).trim();
       const startShort = normalizeMdyShort(socialDraft.start_date);
       const endShort = normalizeMdyShort(socialDraft.end_date);
@@ -5883,18 +5889,25 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           ? `${startShort} - ${endShort}`
           : startShort
             ? `Starting ${startShort}`
-            : "";
+            : getSocialTextPlaceholder("dates");
+      const resolvedBand2PriceText =
+        priceText || getSocialTextPlaceholder("price");
       const band2Text = isSeasonalPromoTemplate
         ? dateCore
-        : [dateCore, priceText ? `${" ".repeat(6)}${priceText}` : ""]
+        : [dateCore, `${" ".repeat(6)}${resolvedBand2PriceText}`]
             .filter(Boolean)
             .join("");
 
       const locationText = String(socialDraft.location_detail ?? "").trim();
       const ageText = String(socialDraft.age_range ?? "").trim();
       const ctaText = String(bandRowsSwappedText.cta ?? "").trim();
-      const band3Text = ageText || locationText || "";
-      const band4Text = ctaText || (band3Text === locationText ? "" : locationText) || "";
+      const band3Text =
+        ageText || locationText || getSocialTextPlaceholder("age");
+      const band4Text =
+        ctaText ||
+        (band3Text === locationText
+          ? getSocialTextPlaceholder("cta")
+          : locationText || getSocialTextPlaceholder("location"));
 
       const alignX = socialBandRowsAlign;
       const textShadow = "5px 5px 8px rgba(0,0,0,0.9)";
