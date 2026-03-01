@@ -429,6 +429,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     start: 30,
     cta: 75,
   });
+  const [socialTextColors, setSocialTextColors] = useState<Record<string, string>>({});
   const [socialToolAlignX, setSocialToolAlignX] = useState("center");
   const [socialToolAlignY, setSocialToolAlignY] = useState("center");
   const [socialToolOutlineColor, setSocialToolOutlineColor] =
@@ -560,8 +561,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const socialDragStateRef = useRef(null);
   const socialResizeStateRef = useRef(null);
   const socialShapeDrawStateRef = useRef(null);
+  const socialSuppressTextInsertClickRef = useRef(false);
   const socialShapeCounterRef = useRef(1);
   const socialImageCounterRef = useRef(1);
+  const socialTextCounterRef = useRef(1);
   const socialHoldTimerRef = useRef(null);
   const [socialHistory, setSocialHistory] = useState([]);
   const [socialHistoryIndex, setSocialHistoryIndex] = useState(-1);
@@ -1277,6 +1280,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         layoutPreset: socialDraft.layout_preset,
       });
     const layerFontSize = socialTextFontSizes[target] ?? fallbackSize;
+    const layerColor = String(socialTextColors[target] ?? "").trim();
     const scaledFontSize = scalePreviewValue(layerFontSize, fallbackSize);
     const scaledOutlineWidth = Math.max(
       0,
@@ -1284,7 +1288,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     );
     if (forceAnnouncementHeadlineStyle) {
       return {
-        color: "#ffffff",
+        color: layerColor || "#ffffff",
         fontSize: `${scaledFontSize}px`,
         WebkitTextStroke: "0px transparent",
         textShadow: buildOutsideTextStrokeShadow(
@@ -1297,14 +1301,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
     if (!isSelected && !forceAnnouncementHeadlineStyle) {
       return {
-        color: "#ffffff",
+        color: layerColor || "#ffffff",
         fontSize: `${scaledFontSize}px`,
         lineHeight: 1.1,
         fontFamily: socialFontFamily,
       };
     }
     return {
-      color: socialToolColor,
+      color: layerColor || socialToolColor,
       fontSize: `${scaledFontSize}px`,
       WebkitTextStroke: `${scaledOutlineWidth}px ${socialToolOutlineColor}`,
       textShadow: socialShadowCssScaled,
@@ -1318,6 +1322,21 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialToolFontSize(clamped);
     if (!target) return;
     setSocialTextFontSizes((prev) => ({ ...prev, [target]: clamped }));
+  };
+
+  const applySocialTextColor = (nextColor: string) => {
+    const safeColor = String(nextColor || "#ffffff");
+    setSocialToolColor(safeColor);
+    const targetLayer = isSocialTextLayer(socialSelectedLayer)
+      ? socialSelectedLayer
+      : isSocialTextLayer(socialToolTarget)
+        ? socialToolTarget
+        : "";
+    if (!targetLayer) return;
+    setSocialTextColors((prev) => ({
+      ...prev,
+      [targetLayer]: safeColor,
+    }));
   };
 
   const socialLayerZ = (id) => {
@@ -1372,6 +1391,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialToolColor,
         socialToolFontSize,
         socialTextFontSizes,
+        socialTextColors,
         socialToolAlignX,
         socialToolAlignY,
         socialToolOutlineColor,
@@ -1422,6 +1442,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialToolColor,
       socialToolFontSize,
       socialTextFontSizes,
+      socialTextColors,
       socialToolAlignX,
       socialToolAlignY,
       socialToolOutlineColor,
@@ -1499,6 +1520,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         cta: 75,
       },
     );
+    setSocialTextColors(snap.socialTextColors ?? {});
     setSocialToolAlignX(snap.socialToolAlignX ?? "center");
     setSocialToolAlignY(snap.socialToolAlignY ?? "center");
     setSocialToolOutlineColor(snap.socialToolOutlineColor ?? "#000000");
@@ -1753,6 +1775,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   ];
   const SOCIAL_SHAPE_LAYER_PREFIX = "shape-extra-";
   const SOCIAL_IMAGE_LAYER_PREFIX = "image-extra-";
+  const SOCIAL_TEXT_LAYER_PREFIX = "text-extra-";
   const SOCIAL_HEADER_LAYER_ID = "shape";
   const SOCIAL_BG_LAYER_ID = "bg";
   const SOCIAL_FOOTER_LAYER_ID = "footer";
@@ -2252,6 +2275,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     (layerId === SOCIAL_BRAND_LAYER_ID && socialHasBrandLogo) ||
     (layerId === SOCIAL_BAND_BRAND_LAYER_ID && socialHasBrandLogo) ||
     String(layerId || "").startsWith(SOCIAL_IMAGE_LAYER_PREFIX);
+  const isSocialCustomTextLayer = (layerId) =>
+    String(layerId || "").startsWith(SOCIAL_TEXT_LAYER_PREFIX);
   const isSocialShapeLayer = (layerId) =>
     layerId === SOCIAL_BG_LAYER_ID ||
     layerId === SOCIAL_HEADER_LAYER_ID ||
@@ -2265,6 +2290,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     `${SOCIAL_SHAPE_LAYER_PREFIX}${Date.now()}-${socialShapeCounterRef.current++}`;
   const buildSocialImageLayerId = () =>
     `${SOCIAL_IMAGE_LAYER_PREFIX}${Date.now()}-${socialImageCounterRef.current++}`;
+  const buildSocialTextLayerId = () =>
+    `${SOCIAL_TEXT_LAYER_PREFIX}${Date.now()}-${socialTextCounterRef.current++}`;
   const detectSocialMediaTypeFromUrl = (url) => {
     const lower = String(url || "").toLowerCase();
     if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")) {
@@ -3638,6 +3665,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialPreviewDropActive(false);
     setSocialDraggingLayer("");
     setSocialInlineTextOverrides({});
+    setSocialTextColors({});
     setSocialInlineEditorLayer("");
     setSocialInlineEditorValue("");
     setSocialInlineEditorOriginalValue("");
@@ -3687,6 +3715,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     layerId === SOCIAL_CONTACT_LAYER_ID ||
     layerId === SOCIAL_SUCCESS_TESTIMONIAL_LAYER_ID ||
     layerId === SOCIAL_SUCCESS_CONTACT_LAYER_ID ||
+    isSocialCustomTextLayer(layerId) ||
     SOCIAL_BAND_TEXT_LAYER_IDS.includes(String(layerId || "")) ||
     layerId === SOCIAL_BAND_CONTACT_A_LAYER_ID ||
     layerId === SOCIAL_BAND_CONTACT_B_LAYER_ID ||
@@ -4017,15 +4046,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     };
     const fallbackSize = fallbackByLayer[layerId] ?? socialToolFontSize ?? 48;
     const nextSize = socialTextFontSizes[layerId] ?? fallbackSize;
-    if (
-      layerId === "cta" &&
-      socialTextFontSizes.cta == null &&
-      Number.isFinite(Number(nextSize))
-    ) {
-      setSocialTextFontSizes((prev) => ({ ...prev, cta: Number(nextSize) }));
+    if (socialTextFontSizes[layerId] == null && Number.isFinite(Number(nextSize))) {
+      setSocialTextFontSizes((prev) => ({ ...prev, [layerId]: Number(nextSize) }));
     }
     setSocialToolTarget(layerId);
     setSocialToolFontSize(Number(nextSize) || fallbackSize);
+    const nextColor = String(socialTextColors[layerId] ?? "").trim();
+    if (nextColor) {
+      setSocialToolColor(nextColor);
+    }
   };
 
   const socialDeleteLayer = (layerId) => {
@@ -4053,6 +4082,24 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       return next;
     });
     setSocialLayerFrames((prev) => {
+      const next = { ...prev };
+      delete next[layerId];
+      return next;
+    });
+    setSocialTextFontSizes((prev) => {
+      if (!Object.prototype.hasOwnProperty.call(prev, layerId)) return prev;
+      const next = { ...prev };
+      delete next[layerId];
+      return next;
+    });
+    setSocialTextColors((prev) => {
+      if (!Object.prototype.hasOwnProperty.call(prev, layerId)) return prev;
+      const next = { ...prev };
+      delete next[layerId];
+      return next;
+    });
+    setSocialInlineTextOverrides((prev) => {
+      if (!Object.prototype.hasOwnProperty.call(prev, layerId)) return prev;
       const next = { ...prev };
       delete next[layerId];
       return next;
@@ -4186,6 +4233,49 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     event.preventDefault();
   };
 
+  const addSocialTextLayerAtPoint = (event) => {
+    const previewEl = socialPreviewRef.current;
+    if (!previewEl) return;
+    const rect = previewEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const clickX = clampLayerValue(
+      Math.round(((event.clientX - rect.left) / rect.width) * 1000),
+      0,
+      1000,
+    );
+    const clickY = clampLayerValue(
+      Math.round(((event.clientY - rect.top) / rect.height) * 1000),
+      0,
+      1000,
+    );
+    const defaultWidth = 520;
+    const defaultHeight = 140;
+    const frame = {
+      x: clampLayerValue(clickX, 0, Math.max(0, 1000 - defaultWidth)),
+      y: clampLayerValue(clickY, 0, Math.max(0, 1000 - defaultHeight)),
+      width: defaultWidth,
+      height: defaultHeight,
+    };
+    const newLayerId = buildSocialTextLayerId();
+    const initialText = "Edit text";
+
+    setSocialLayerOrder((prev) => [newLayerId, ...prev]);
+    setSocialLayerVisible((prev) => ({ ...prev, [newLayerId]: true }));
+    setSocialLayerLocked((prev) => ({ ...prev, [newLayerId]: false }));
+    setSocialLayerFrames((prev) => ({ ...prev, [newLayerId]: frame }));
+    setSocialTextFontSizes((prev) => ({
+      ...prev,
+      [newLayerId]: Math.max(8, Math.min(220, Number(socialToolFontSize) || 48)),
+    }));
+    setSocialTextColors((prev) => ({ ...prev, [newLayerId]: socialToolColor || "#ffffff" }));
+    setSocialInlineTextOverrides((prev) => ({ ...prev, [newLayerId]: initialText }));
+    socialSelectLayer(newLayerId);
+    setSocialActiveTool("text");
+    setSocialInlineEditorLayer(newLayerId);
+    setSocialInlineEditorValue(initialText);
+    setSocialInlineEditorOriginalValue(initialText);
+  };
+
   const onSocialPreviewPointerMove = (event) => {
     const resize = socialResizeStateRef.current;
     if (resize && resize.pointerId === event.pointerId) {
@@ -4245,33 +4335,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           [layerId]: { ...current, x, y, width, height },
         };
       });
-      if (isSocialTextLayer(layerId)) {
-        const baseFont = Math.max(
-          8,
-          Number(
-            resize.initialFontSize ??
-              socialTextFontSizes[layerId] ??
-              socialToolFontSize ??
-              24,
-          ) || 24,
-        );
-        const initialWidth = Math.max(1, Number(initialFrame.width) || 1);
-        const initialHeight = Math.max(1, Number(initialFrame.height) || 1);
-        const scaleX = width / initialWidth;
-        const scaleY = height / initialHeight;
-        const usesX = handle.includes("e") || handle.includes("w");
-        const usesY = handle.includes("n") || handle.includes("s");
-        const scale = usesX && usesY ? Math.max(scaleX, scaleY) : usesX ? scaleX : scaleY;
-        const nextFont = clampLayerValue(Math.round(baseFont * scale), 8, 220);
-        setSocialTextFontSizes((prev) => {
-          const current = Number(prev[layerId] ?? 0);
-          if (current === nextFont) return prev;
-          return { ...prev, [layerId]: nextFont };
-        });
-        if (socialSelectedLayer === layerId) {
-          setSocialToolFontSize(nextFont);
-        }
-      }
       event.preventDefault();
       return;
     }
@@ -4359,6 +4422,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       }
       socialResizeStateRef.current = null;
       setSocialDraggingLayer("");
+      socialSuppressTextInsertClickRef.current = socialActiveTool === "text";
       event.preventDefault();
       return;
     }
@@ -4372,6 +4436,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       }
       socialShapeDrawStateRef.current = null;
       setSocialDraggingLayer("");
+      socialSuppressTextInsertClickRef.current = socialActiveTool === "text";
       event.preventDefault();
       return;
     }
@@ -4384,6 +4449,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }
     socialDragStateRef.current = null;
     setSocialDraggingLayer("");
+    socialSuppressTextInsertClickRef.current = socialActiveTool === "text";
   };
 
   const socialRenderSelectionBox = (layerId) => {
@@ -4412,6 +4478,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 onPointerDown={(event) =>
                   beginSocialLayerResize(layerId, handle.key, event)
                 }
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
               />
             ))
           : null}
@@ -4614,6 +4684,17 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       );
     }
 
+    if (isSocialCustomTextLayer(layerId)) {
+      return (
+        <div className="flex h-full w-full items-center justify-center">
+          <div className="w-[84%] overflow-hidden rounded-sm border border-white/40 bg-black/35 p-1">
+            <div className="h-1.5 w-full rounded-sm bg-white/90" />
+            <div className="mt-1 h-1.5 w-3/4 rounded-sm bg-white/70" />
+          </div>
+        </div>
+      );
+    }
+
     return <div className="h-full w-full bg-gray-100" />;
   };
 
@@ -4761,6 +4842,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         : null;
     const resolvedText =
       inlineOverrideText != null ? inlineOverrideText : content ?? String(text || "");
+    const isEditableTextLayer = Boolean(layerId && isSocialTextLayer(layerId));
+    const layerColorOverride =
+      isEditableTextLayer && layerId
+        ? String(socialTextColors[layerId] ?? "").trim()
+        : "";
+    const effectiveColor =
+      layerColorOverride || forceTextColor || textStyle.color || "#ffffff";
+    const shouldUseForcedFontSize =
+      scaledForceFontSize != null &&
+      (!isEditableTextLayer ||
+        !layerId ||
+        socialTextFontSizes[layerId] == null);
     const isInlineEditing = Boolean(
       layerId &&
         socialActiveTool === "text" &&
@@ -4817,8 +4910,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             }}
             style={{
               ...textStyle,
-              ...(forceTextColor ? { color: forceTextColor } : null),
-              ...(scaledForceFontSize != null
+              ...(shouldUseForcedFontSize
                 ? { fontSize: `${scaledForceFontSize}px` }
                 : null),
               ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
@@ -4826,7 +4918,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 ? { WebkitTextStroke: forceTextStroke }
                 : null),
               textAlign,
-              color: forceTextColor || textStyle.color || "#ffffff",
+              color: effectiveColor,
               lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
               whiteSpace: "pre-wrap",
               overflowWrap: "anywhere",
@@ -4835,6 +4927,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
+                  : socialActiveTool === "shape"
+                    ? "crosshair"
                   : layerId && socialActiveTool === "text" && isSocialTextLayer(layerId)
                     ? "text"
                   : "default",
@@ -4845,12 +4939,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               <textarea
                 className="h-full w-full resize-none bg-transparent outline-none"
                 style={{
-                  color: forceTextColor || textStyle.color || "#ffffff",
+                  color: effectiveColor,
                   textAlign,
                   fontWeight,
                   lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
                   fontFamily: textStyle.fontFamily,
-                  ...(scaledForceFontSize != null
+                  ...(shouldUseForcedFontSize
                     ? { fontSize: `${scaledForceFontSize}px` }
                     : null),
                   ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
@@ -4943,6 +5037,18 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         : null;
     const resolvedText =
       inlineOverrideText != null ? inlineOverrideText : content ?? String(text || "");
+    const isEditableTextLayer = Boolean(layerId && isSocialTextLayer(layerId));
+    const layerColorOverride =
+      isEditableTextLayer && layerId
+        ? String(socialTextColors[layerId] ?? "").trim()
+        : "";
+    const effectiveColor =
+      layerColorOverride || forceTextColor || textStyle.color || "#ffffff";
+    const shouldUseForcedFontSize =
+      scaledForceFontSize != null &&
+      (!isEditableTextLayer ||
+        !layerId ||
+        socialTextFontSizes[layerId] == null);
     const isInlineEditing = Boolean(
       layerId &&
         socialActiveTool === "text" &&
@@ -4989,8 +5095,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             }}
             style={{
               ...textStyle,
-              ...(forceTextColor ? { color: forceTextColor } : null),
-              ...(scaledForceFontSize != null
+              ...(shouldUseForcedFontSize
                 ? { fontSize: `${scaledForceFontSize}px` }
                 : null),
               ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
@@ -4999,7 +5104,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                 : null),
               ...(content ? { display: "block", width: "100%" } : null),
               textAlign,
-              color: forceTextColor || textStyle.color || "#ffffff",
+              color: effectiveColor,
               lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
               whiteSpace: "pre-wrap",
               overflowWrap: "anywhere",
@@ -5008,6 +5113,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
+                  : socialActiveTool === "shape"
+                    ? "crosshair"
                   : layerId && socialActiveTool === "text" && isSocialTextLayer(layerId)
                     ? "text"
                   : "default",
@@ -5018,12 +5125,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               <textarea
                 className="h-full w-full resize-none bg-transparent outline-none"
                 style={{
-                  color: forceTextColor || textStyle.color || "#ffffff",
+                  color: effectiveColor,
                   textAlign,
                   fontWeight,
                   lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
                   fontFamily: textStyle.fontFamily,
-                  ...(scaledForceFontSize != null
+                  ...(shouldUseForcedFontSize
                     ? { fontSize: `${scaledForceFontSize}px` }
                     : null),
                   ...(scaledForceShadow ? { textShadow: scaledForceShadow } : null),
@@ -8667,7 +8774,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       <input
                                         type="color"
                                         value={socialToolColor}
-                                        onChange={(e) => setSocialToolColor(e.target.value)}
+                                        onChange={(e) => applySocialTextColor(e.target.value)}
                                         className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
                                         title="Text color"
                                       />
@@ -8797,6 +8904,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       } ${
                                         socialPreviewIsPanning
                                           ? "cursor-grabbing select-none"
+                                          : socialActiveTool === "shape"
+                                            ? "cursor-crosshair"
+                                          : socialActiveTool === "text"
+                                            ? "cursor-text"
                                           : socialPreviewOverflowEnabled
                                             ? "cursor-grab"
                                             : "cursor-default"
@@ -8823,6 +8934,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                           } ${
                                             socialDraggingLayer
                                               ? "cursor-grabbing"
+                                              : socialActiveTool === "text"
+                                                ? "cursor-text"
                                               : socialActiveTool === "shape"
                                                 ? "cursor-crosshair"
                                                 : ""
@@ -8840,25 +8953,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                           onPointerMove={onSocialPreviewPointerMove}
                                           onPointerUp={endSocialLayerDrag}
                                           onPointerCancel={endSocialLayerDrag}
-                                          onClick={() => {
+                                          onClick={(event) => {
                                             if (socialActiveTool === "shape") return;
-                                            if (
-                                              isSocialImageLayer(socialSelectedLayer) ||
-                                              isSocialShapeLayer(socialSelectedLayer)
-                                            ) {
-                                              return;
-                                            }
-                                            const targetLayer = isSocialTextLayer(
-                                              socialSelectedLayer,
-                                            )
-                                              ? socialSelectedLayer
-                                              : "headline";
-                                            socialSelectLayer(targetLayer);
                                             if (socialActiveTool === "text") {
-                                              socialBeginInlineTextEdit(
-                                                targetLayer,
-                                                String(socialDisplayTextForLayer(targetLayer) || ""),
-                                              );
+                                              if (socialSuppressTextInsertClickRef.current) {
+                                                socialSuppressTextInsertClickRef.current = false;
+                                                return;
+                                              }
+                                              addSocialTextLayerAtPoint(event);
                                             }
                                           }}
                                         >
@@ -8949,6 +9051,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                                 !socialLayerLocked[layerId] &&
                                                 socialActiveTool === "pointer"
                                                   ? "move"
+                                                  : socialActiveTool === "shape"
+                                                    ? "crosshair"
+                                                  : socialActiveTool === "text"
+                                                    ? "text"
                                                   : "default",
                                               touchAction: "none",
                                             }}
@@ -8957,6 +9063,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                             }
                                             onClick={(event) => {
                                               event.stopPropagation();
+                                              if (socialActiveTool === "text") {
+                                                if (socialSuppressTextInsertClickRef.current) {
+                                                  socialSuppressTextInsertClickRef.current = false;
+                                                  return;
+                                                }
+                                                addSocialTextLayerAtPoint(event);
+                                                return;
+                                              }
                                               socialSelectLayer(layerId);
                                             }}
                                             onDoubleClick={(event) => {
@@ -9006,6 +9120,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                                 !socialLayerLocked[layerId] &&
                                                 socialActiveTool === "pointer"
                                                   ? "move"
+                                                  : socialActiveTool === "shape"
+                                                    ? "crosshair"
+                                                  : socialActiveTool === "text"
+                                                    ? "text"
                                                   : "default",
                                               touchAction: "none",
                                             }}
@@ -9014,12 +9132,38 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                             }
                                             onClick={(event) => {
                                               event.stopPropagation();
+                                              if (socialActiveTool === "text") {
+                                                if (socialSuppressTextInsertClickRef.current) {
+                                                  socialSuppressTextInsertClickRef.current = false;
+                                                  return;
+                                                }
+                                                addSocialTextLayerAtPoint(event);
+                                                return;
+                                              }
                                               socialSelectLayer(layerId);
                                             }}
                                           />
                                         );
                                       })}
                                     {socialRenderPresetTextLayers()}
+                                    {socialLayerOrder
+                                      .filter((layerId) => isSocialCustomTextLayer(layerId))
+                                      .map((layerId) =>
+                                        socialRenderTextLayer({
+                                          keyId: `custom-text-${layerId}`,
+                                          layerId,
+                                          text:
+                                            socialInlineTextOverrides[layerId] ||
+                                            "Edit text",
+                                          fallbackSize:
+                                            socialTextFontSizes[layerId] ??
+                                            socialToolFontSize ??
+                                            48,
+                                          alignX: socialToolAlignX,
+                                          alignY: socialToolAlignY,
+                                          fontWeight: 700,
+                                        }),
+                                      )}
                                     {socialRenderSelectionBox(socialSelectedLayer)}
                                         </div>
                                       </div>
@@ -9216,6 +9360,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                               {SOCIAL_LAYER_LABELS[layerId] ??
                                                 (isSocialImageLayer(layerId)
                                                   ? "Image"
+                                                  : null) ??
+                                                (isSocialCustomTextLayer(layerId)
+                                                  ? "Text"
                                                   : null) ??
                                                 (isSocialShapeLayer(layerId)
                                                   ? "Shape"
