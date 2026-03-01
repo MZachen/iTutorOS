@@ -430,6 +430,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     cta: 75,
   });
   const [socialTextColors, setSocialTextColors] = useState<Record<string, string>>({});
+  const [socialTextAlignments, setSocialTextAlignments] = useState<
+    Record<string, "left" | "center" | "right">
+  >({});
   const [socialToolAlignX, setSocialToolAlignX] = useState("center");
   const [socialToolAlignY, setSocialToolAlignY] = useState("center");
   const [socialToolOutlineColor, setSocialToolOutlineColor] =
@@ -445,6 +448,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const [socialFontFamily, setSocialFontFamily] = useState("inherit");
   const [socialActiveTool, setSocialActiveTool] = useState("pointer");
   const [socialSelectedLayer, setSocialSelectedLayer] = useState("");
+  const [socialSelectedLayers, setSocialSelectedLayers] = useState<string[]>([]);
   const [socialLayerOrder, setSocialLayerOrder] = useState<string[]>([]);
   const [socialLayerVisible, setSocialLayerVisible] = useState<
     Record<string, boolean>
@@ -562,6 +566,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const socialResizeStateRef = useRef(null);
   const socialShapeDrawStateRef = useRef(null);
   const socialSuppressTextInsertClickRef = useRef(false);
+  const socialSuppressLayerSelectClickRef = useRef(false);
+  const socialSelectedLayerIdsRef = useRef<string[]>([]);
+  const socialLayerLockedRef = useRef<Record<string, boolean>>({});
+  const socialInlineEditorLayerRef = useRef("");
   const socialShapeCounterRef = useRef(1);
   const socialImageCounterRef = useRef(1);
   const socialTextCounterRef = useRef(1);
@@ -836,6 +844,48 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           continue;
         }
 
+        if (announcementBold && layerId === "cta") {
+          const measured = measureWrappedSocialText({
+            text,
+            fontSize,
+            fontWeight,
+            fontFamily:
+              socialFontFamily && socialFontFamily !== "inherit"
+                ? socialFontFamily
+                : "Poppins, sans-serif",
+            maxWidth: Math.max(1, Number(frame.width) || 1000),
+            minWidth: Math.max(1, Number(frame.width) || 1000),
+            paddingX: 14,
+            paddingY: 0,
+            lineHeightMultiplier: 1.1,
+            outlineWidth: socialToolOutlineWidth,
+            tightHeight: true,
+          });
+
+          const width = Math.max(1, Number(frame.width) || 1000);
+          const height = clampLayerValue(measured.height, 16, 980);
+          const x = clampLayerValue(frame.x, 0, Math.max(0, 1000 - width));
+          const bottom = frame.y + frame.height;
+          const y = clampLayerValue(bottom - height, 0, Math.max(0, 1000 - height));
+
+          if (
+            frame.width !== width ||
+            frame.height !== height ||
+            frame.x !== x ||
+            frame.y !== y
+          ) {
+            next[layerId] = {
+              ...frame,
+              x,
+              y,
+              width,
+              height,
+            };
+            changed = true;
+          }
+          continue;
+        }
+
         const measured = measureWrappedSocialText({
           text,
           fontSize,
@@ -918,75 +968,34 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           width: 1000,
           height: clampLayerValue(measured.height, 120, 900),
         };
-        const currentHeadlineFrame = next.headline ?? nextHeadlineFrame;
-        if (
-          currentHeadlineFrame.x !== nextHeadlineFrame.x ||
-          currentHeadlineFrame.y !== nextHeadlineFrame.y ||
-          currentHeadlineFrame.width !== nextHeadlineFrame.width ||
-          currentHeadlineFrame.height !== nextHeadlineFrame.height
-        ) {
-          next.headline = {
-            ...currentHeadlineFrame,
-            ...nextHeadlineFrame,
-          };
+        if (!next.headline) {
+          next.headline = nextHeadlineFrame;
           changed = true;
         }
       }
 
       if (announcementBold && socialLayerVisible[SOCIAL_HEADER_LAYER_ID] && socialLayerVisible.headline) {
         const headlineFrame = next.headline;
-        if (headlineFrame) {
-          const shapeCurrent = next[SOCIAL_HEADER_LAYER_ID] ?? {
+        if (headlineFrame && !next[SOCIAL_HEADER_LAYER_ID]) {
+          next[SOCIAL_HEADER_LAYER_ID] = {
             x: headlineFrame.x,
             y: headlineFrame.y,
             width: headlineFrame.width,
             height: headlineFrame.height,
           };
-          if (
-            shapeCurrent.x !== headlineFrame.x ||
-            shapeCurrent.y !== headlineFrame.y ||
-            shapeCurrent.width !== headlineFrame.width ||
-            shapeCurrent.height !== headlineFrame.height
-          ) {
-            next[SOCIAL_HEADER_LAYER_ID] = {
-              ...shapeCurrent,
-              x: headlineFrame.x,
-              y: headlineFrame.y,
-              width: headlineFrame.width,
-              height: headlineFrame.height,
-            };
-            changed = true;
-          }
+          changed = true;
         }
 
         const nextFooterFrame = resolveAnnouncementFooterFrame();
-        const footerCurrent = next[SOCIAL_FOOTER_LAYER_ID] ?? {
-          ...nextFooterFrame,
-        };
-        if (
-          footerCurrent.x !== nextFooterFrame.x ||
-          footerCurrent.y !== nextFooterFrame.y ||
-          footerCurrent.width !== nextFooterFrame.width ||
-          footerCurrent.height !== nextFooterFrame.height
-        ) {
+        if (!next[SOCIAL_FOOTER_LAYER_ID]) {
           next[SOCIAL_FOOTER_LAYER_ID] = {
-            ...footerCurrent,
-            ...nextFooterFrame,
+          ...nextFooterFrame,
           };
           changed = true;
         }
 
-        const contactCurrent = next[SOCIAL_CONTACT_LAYER_ID] ?? {
-          ...nextFooterFrame,
-        };
-        if (
-          contactCurrent.x !== nextFooterFrame.x ||
-          contactCurrent.y !== nextFooterFrame.y ||
-          contactCurrent.width !== nextFooterFrame.width ||
-          contactCurrent.height !== nextFooterFrame.height
-        ) {
+        if (!next[SOCIAL_CONTACT_LAYER_ID]) {
           next[SOCIAL_CONTACT_LAYER_ID] = {
-            ...contactCurrent,
             ...nextFooterFrame,
           };
           changed = true;
@@ -997,20 +1006,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         const headerBottom =
           (headerFrameForDate?.y ?? 0) + (headerFrameForDate?.height ?? 0);
         const dateBoxY = clampLayerValue(headerBottom + 50, 0, 670);
-        const dateBoxCurrent = next[SOCIAL_DATE_BOX_LAYER_ID] ?? {
-          x: dateBoxX,
-          y: dateBoxY,
-          width: 300,
-          height: 250,
-        };
-        if (
-          dateBoxCurrent.x !== dateBoxX ||
-          dateBoxCurrent.y !== dateBoxY ||
-          dateBoxCurrent.width !== 300 ||
-          dateBoxCurrent.height !== 250
-        ) {
+        if (!next[SOCIAL_DATE_BOX_LAYER_ID]) {
           next[SOCIAL_DATE_BOX_LAYER_ID] = {
-            ...dateBoxCurrent,
             x: dateBoxX,
             y: dateBoxY,
             width: 300,
@@ -1041,36 +1038,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           fontSize: footerInfoFontPt,
           footerFrame: next[SOCIAL_FOOTER_LAYER_ID],
         });
-        const footerInfoCurrent = next.cta ?? {
-          ...footerInfoFrame,
-        };
-        if (
-          footerInfoCurrent.x !== footerInfoFrame.x ||
-          footerInfoCurrent.y !== footerInfoFrame.y ||
-          footerInfoCurrent.width !== footerInfoFrame.width ||
-          footerInfoCurrent.height !== footerInfoFrame.height
-        ) {
+        if (!next.cta) {
           next.cta = {
-            ...footerInfoCurrent,
             ...footerInfoFrame,
           };
           changed = true;
         }
 
-        const dateTextCurrent = next.start ?? {
-          x: dateBoxX,
-          y: dateBoxY,
-          width: 300,
-          height: 250,
-        };
-        if (
-          dateTextCurrent.x !== dateBoxX ||
-          dateTextCurrent.y !== dateBoxY ||
-          dateTextCurrent.width !== 300 ||
-          dateTextCurrent.height !== 250
-        ) {
+        if (!next.start) {
           next.start = {
-            ...dateTextCurrent,
             x: dateBoxX,
             y: dateBoxY,
             width: 300,
@@ -1082,37 +1058,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         if (socialLayerVisible[SOCIAL_BRAND_LAYER_ID]) {
           if (socialHasBrandLogo) {
             const nextBrandLogoFrame = resolveAnnouncementBrandLogoFrame();
-            const brandCurrent = next[SOCIAL_BRAND_LAYER_ID] ?? {
-              ...nextBrandLogoFrame,
-            };
-            if (
-              brandCurrent.x !== nextBrandLogoFrame.x ||
-              brandCurrent.y !== nextBrandLogoFrame.y ||
-              brandCurrent.width !== nextBrandLogoFrame.width ||
-              brandCurrent.height !== nextBrandLogoFrame.height
-            ) {
+            if (!next[SOCIAL_BRAND_LAYER_ID]) {
               next[SOCIAL_BRAND_LAYER_ID] = {
-                ...brandCurrent,
                 ...nextBrandLogoFrame,
               };
               changed = true;
             }
           } else {
             const brandHeight = nextFooterFrame.height;
-            const brandCurrent = next[SOCIAL_BRAND_LAYER_ID] ?? {
-              x: 0,
-              y: nextFooterFrame.y,
-              width: 1000,
-              height: brandHeight,
-            };
-            if (
-              brandCurrent.x !== 0 ||
-              brandCurrent.y !== nextFooterFrame.y ||
-              brandCurrent.width !== 1000 ||
-              brandCurrent.height !== brandHeight
-            ) {
+            if (!next[SOCIAL_BRAND_LAYER_ID]) {
               next[SOCIAL_BRAND_LAYER_ID] = {
-                ...brandCurrent,
                 x: 0,
                 y: nextFooterFrame.y,
                 width: 1000,
@@ -1271,6 +1226,94 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     socialToolShadowSize,
   ]);
 
+  const socialSelectedLayerIds = useMemo(() => {
+    const next = new Set<string>();
+    if (socialSelectedLayer) next.add(socialSelectedLayer);
+    socialSelectedLayers.forEach((layerId) => {
+      if (layerId) next.add(layerId);
+    });
+    return Array.from(next);
+  }, [socialSelectedLayer, socialSelectedLayers]);
+
+  const socialHasMultiSelection = socialSelectedLayerIds.length > 1;
+
+  useEffect(() => {
+    socialSelectedLayerIdsRef.current = socialSelectedLayerIds;
+  }, [socialSelectedLayerIds]);
+
+  useEffect(() => {
+    socialLayerLockedRef.current = socialLayerLocked;
+  }, [socialLayerLocked]);
+
+  useEffect(() => {
+    socialInlineEditorLayerRef.current = socialInlineEditorLayer;
+  }, [socialInlineEditorLayer]);
+
+  const resolveSocialTextAlignX = (layerId, fallbackAlignX) => {
+    if (!layerId || !isSocialTextLayer(layerId)) return fallbackAlignX;
+    return socialTextAlignments[layerId] ?? fallbackAlignX;
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const selectedLayerIds = socialSelectedLayerIdsRef.current;
+      if (!selectedLayerIds.length) return;
+      if (socialInlineEditorLayerRef.current) return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (activeEl) {
+        const tagName = activeEl.tagName;
+        if (
+          tagName === "INPUT" ||
+          tagName === "TEXTAREA" ||
+          tagName === "SELECT" ||
+          activeEl.isContentEditable
+        ) {
+          return;
+        }
+      }
+
+      let deltaX = 0;
+      let deltaY = 0;
+      if (event.key === "ArrowLeft") deltaX = -1;
+      else if (event.key === "ArrowRight") deltaX = 1;
+      else if (event.key === "ArrowUp") deltaY = -1;
+      else if (event.key === "ArrowDown") deltaY = 1;
+      else return;
+
+      setSocialLayerFrames((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        selectedLayerIds.forEach((layerId) => {
+          if (socialLayerLockedRef.current[layerId]) return;
+          const frame = prev[layerId];
+          if (!frame) return;
+          const nextX = clampLayerValue(
+            frame.x + deltaX,
+            0,
+            Math.max(0, 1000 - frame.width),
+          );
+          const nextY = clampLayerValue(
+            frame.y + deltaY,
+            0,
+            Math.max(0, 1000 - frame.height),
+          );
+          if (nextX === frame.x && nextY === frame.y) return;
+          changed = true;
+          next[layerId] = { ...frame, x: nextX, y: nextY };
+        });
+        if (!changed) return prev;
+        return next;
+      });
+
+      event.preventDefault();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const previewTextStyle = (target, fallbackSize) => {
     const isSelected = socialToolTarget === target;
     const forceAnnouncementHeadlineStyle =
@@ -1339,6 +1382,133 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     }));
   };
 
+  const applySocialTextAlignment = (nextAlignX: "left" | "center" | "right") => {
+    setSocialToolAlignX(nextAlignX);
+    const targetLayer = isSocialTextLayer(socialSelectedLayer)
+      ? socialSelectedLayer
+      : isSocialTextLayer(socialToolTarget)
+        ? socialToolTarget
+        : "";
+    if (!targetLayer) return;
+    setSocialTextAlignments((prev) => ({
+      ...prev,
+      [targetLayer]: nextAlignX,
+    }));
+  };
+
+  const alignSocialSelectedObjects = (
+    mode: "left" | "center" | "right" | "top" | "middle" | "bottom",
+  ) => {
+    if (!socialHasMultiSelection) return;
+    const selectedIds = socialSelectedLayerIds.filter((layerId) => socialLayerFrames[layerId]);
+    if (selectedIds.length < 2) return;
+    const frames = selectedIds
+      .map((layerId) => ({ layerId, frame: socialLayerFrames[layerId] }))
+      .filter((entry) => entry.frame);
+    if (frames.length < 2) return;
+
+    const minX = Math.min(...frames.map((entry) => entry.frame.x));
+    const minY = Math.min(...frames.map((entry) => entry.frame.y));
+    const maxRight = Math.max(
+      ...frames.map((entry) => entry.frame.x + entry.frame.width),
+    );
+    const maxBottom = Math.max(
+      ...frames.map((entry) => entry.frame.y + entry.frame.height),
+    );
+    const centerX = (minX + maxRight) / 2;
+    const centerY = (minY + maxBottom) / 2;
+
+    setSocialLayerFrames((prev) => {
+      const next = { ...prev };
+      frames.forEach(({ layerId, frame }) => {
+        if (socialLayerLocked[layerId]) return;
+        let nextX = frame.x;
+        let nextY = frame.y;
+        if (mode === "left") nextX = minX;
+        if (mode === "center") nextX = Math.round(centerX - frame.width / 2);
+        if (mode === "right") nextX = Math.round(maxRight - frame.width);
+        if (mode === "top") nextY = minY;
+        if (mode === "middle") nextY = Math.round(centerY - frame.height / 2);
+        if (mode === "bottom") nextY = Math.round(maxBottom - frame.height);
+        next[layerId] = {
+          ...frame,
+          x: clampLayerValue(nextX, 0, Math.max(0, 1000 - frame.width)),
+          y: clampLayerValue(nextY, 0, Math.max(0, 1000 - frame.height)),
+        };
+      });
+      return next;
+    });
+  };
+
+  const renderSocialObjectAlignIcon = (
+    mode: "left" | "center" | "right" | "top" | "middle" | "bottom",
+  ) => {
+    const guideStroke = "currentColor";
+    const guideOpacity = 0.32;
+    const blockFill = "currentColor";
+    const commonRectProps = {
+      width: 6,
+      height: 14,
+      rx: 1.5,
+      fill: blockFill,
+    };
+
+    if (mode === "left") {
+      return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <line x1="5" y1="4" x2="5" y2="20" stroke={guideStroke} strokeWidth="1.75" />
+          <rect x="7" y="5" {...commonRectProps} />
+          <rect x="15" y="7" width="3" height="10" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+        </svg>
+      );
+    }
+    if (mode === "center") {
+      return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <line x1="12" y1="4" x2="12" y2="20" stroke={guideStroke} strokeWidth="1.75" />
+          <rect x="9" y="5" {...commonRectProps} />
+          <rect x="5" y="7" width="3" height="10" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+          <rect x="16" y="7" width="3" height="10" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+        </svg>
+      );
+    }
+    if (mode === "right") {
+      return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <line x1="19" y1="4" x2="19" y2="20" stroke={guideStroke} strokeWidth="1.75" />
+          <rect x="11" y="5" {...commonRectProps} />
+          <rect x="6" y="7" width="3" height="10" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+        </svg>
+      );
+    }
+    if (mode === "top") {
+      return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <line x1="4" y1="5" x2="20" y2="5" stroke={guideStroke} strokeWidth="1.75" />
+          <rect x="5" y="7" width="14" height="6" rx="1.5" fill={blockFill} />
+          <rect x="7" y="16" width="10" height="3" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+        </svg>
+      );
+    }
+    if (mode === "middle") {
+      return (
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <line x1="4" y1="12" x2="20" y2="12" stroke={guideStroke} strokeWidth="1.75" />
+          <rect x="5" y="9" width="14" height="6" rx="1.5" fill={blockFill} />
+          <rect x="7" y="5" width="10" height="3" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+          <rect x="7" y="16" width="10" height="3" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+        </svg>
+      );
+    }
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+        <line x1="4" y1="19" x2="20" y2="19" stroke={guideStroke} strokeWidth="1.75" />
+        <rect x="5" y="11" width="14" height="6" rx="1.5" fill={blockFill} />
+        <rect x="7" y="5" width="10" height="3" rx="1.2" fill={blockFill} opacity={guideOpacity} />
+      </svg>
+    );
+  };
+
   const socialLayerZ = (id) => {
     const index = socialLayerOrder.indexOf(id);
     if (index < 0) return 10;
@@ -1392,6 +1562,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialToolFontSize,
         socialTextFontSizes,
         socialTextColors,
+        socialTextAlignments,
         socialToolAlignX,
         socialToolAlignY,
         socialToolOutlineColor,
@@ -1408,6 +1579,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialLayerLocked,
         socialLayerFrames,
         socialSelectedLayer,
+        socialSelectedLayers,
         socialShapeKind,
         socialShapeColor,
         socialShapeOpacity,
@@ -1443,6 +1615,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialToolFontSize,
       socialTextFontSizes,
       socialTextColors,
+      socialTextAlignments,
       socialToolAlignX,
       socialToolAlignY,
       socialToolOutlineColor,
@@ -1459,6 +1632,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       socialLayerLocked,
       socialLayerFrames,
       socialSelectedLayer,
+      socialSelectedLayers,
       socialShapeKind,
       socialShapeColor,
       socialShapeOpacity,
@@ -1521,6 +1695,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       },
     );
     setSocialTextColors(snap.socialTextColors ?? {});
+    setSocialTextAlignments(snap.socialTextAlignments ?? {});
     setSocialToolAlignX(snap.socialToolAlignX ?? "center");
     setSocialToolAlignY(snap.socialToolAlignY ?? "center");
     setSocialToolOutlineColor(snap.socialToolOutlineColor ?? "#000000");
@@ -1555,6 +1730,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       snap.socialLayerFrames ?? buildDefaultLayerFrames(socialDraft.layout_preset),
     );
     setSocialSelectedLayer(snap.socialSelectedLayer ?? "headline");
+    setSocialSelectedLayers(snap.socialSelectedLayers ?? []);
     setSocialShapeKind(snap.socialShapeKind ?? "rect");
     setSocialShapeColor(snap.socialShapeColor ?? "#3aa6d9");
     setSocialShapeOpacity(snap.socialShapeOpacity ?? 60);
@@ -3660,12 +3836,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialShapeStyles({});
     setSocialImageLayers({});
     setSocialSelectedLayer("");
+    setSocialSelectedLayers([]);
     setSocialSelectedImageId("");
     setSocialPreviewOverrideUrl("");
     setSocialPreviewDropActive(false);
     setSocialDraggingLayer("");
     setSocialInlineTextOverrides({});
     setSocialTextColors({});
+    setSocialTextAlignments({});
     setSocialInlineEditorLayer("");
     setSocialInlineEditorValue("");
     setSocialInlineEditorOriginalValue("");
@@ -4023,8 +4201,33 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     };
   };
 
-  const socialSelectLayer = (layerId) => {
-    setSocialSelectedLayer(layerId);
+  const socialSelectLayer = (
+    layerId,
+    options: { additive?: boolean } = {},
+  ) => {
+    const additive = Boolean(options.additive);
+    if (additive) {
+      const baseSelection = Array.from(
+        new Set([
+          ...socialSelectedLayers,
+          ...(socialSelectedLayer ? [socialSelectedLayer] : []),
+        ]),
+      );
+      const alreadySelected = baseSelection.includes(layerId);
+      const nextSelection = alreadySelected
+        ? baseSelection.filter((id) => id !== layerId)
+        : [...baseSelection, layerId];
+      const nextPrimary = alreadySelected
+        ? nextSelection[nextSelection.length - 1] ?? ""
+        : layerId;
+      setSocialSelectedLayers(nextSelection);
+      setSocialSelectedLayer(nextPrimary);
+      if (!nextPrimary || !isSocialTextLayer(nextPrimary)) return;
+      layerId = nextPrimary;
+    } else {
+      setSocialSelectedLayer(layerId);
+      setSocialSelectedLayers(layerId ? [layerId] : []);
+    }
     if (!isSocialTextLayer(layerId)) return;
     const announcementCtaDefault =
       isBoldHeadlineAnnouncementTemplate({
@@ -4065,6 +4268,8 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     if (nextColor) {
       setSocialToolColor(nextColor);
     }
+    const nextAlignX = resolveSocialTextAlignX(layerId, socialToolAlignX);
+    setSocialToolAlignX(nextAlignX);
   };
 
   const socialDeleteLayer = (layerId) => {
@@ -4079,6 +4284,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       if (socialSelectedLayer === layerId) {
         setSocialSelectedLayer(next[0] ?? "headline");
       }
+      setSocialSelectedLayers((selectedPrev) =>
+        selectedPrev.filter((id) => id !== layerId),
+      );
       return next;
     });
     setSocialLayerVisible((prev) => {
@@ -4103,6 +4311,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
       return next;
     });
     setSocialTextColors((prev) => {
+      if (!Object.prototype.hasOwnProperty.call(prev, layerId)) return prev;
+      const next = { ...prev };
+      delete next[layerId];
+      return next;
+    });
+    setSocialTextAlignments((prev) => {
       if (!Object.prototype.hasOwnProperty.call(prev, layerId)) return prev;
       const next = { ...prev };
       delete next[layerId];
@@ -4134,6 +4348,13 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     if (socialLayerLocked[layerId]) return;
     if (socialActiveTool !== "pointer") return;
     if (event.button !== 0) return;
+    if (event.ctrlKey || event.metaKey) {
+      socialSuppressLayerSelectClickRef.current = true;
+      socialSelectLayer(layerId, { additive: true });
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const previewEl = socialPreviewRef.current;
     if (!previewEl) return;
     const frame = socialLayerFrames[layerId];
@@ -4470,7 +4691,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   };
 
   const socialRenderSelectionBox = (layerId) => {
-    if (socialSelectedLayer !== layerId) return null;
+    if (!socialSelectedLayerIds.includes(layerId)) return null;
     if (!socialLayerVisible[layerId]) return null;
     const frame = socialLayerFrames[layerId];
     if (!frame) return null;
@@ -4536,6 +4757,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const socialCurrentShapeKind = isSocialShapeLayer(socialSelectedLayer)
     ? getSocialShapeStyleMeta(socialSelectedLayer).kind ?? socialShapeKind
     : socialShapeKind;
+  const socialCurrentTextAlignX = resolveSocialTextAlignX(
+    isSocialTextLayer(socialSelectedLayer)
+      ? socialSelectedLayer
+      : isSocialTextLayer(socialToolTarget)
+        ? socialToolTarget
+        : "",
+    socialToolAlignX,
+  );
 
   const socialLayerThumbnail = (layerId) => {
     if (isSocialImageLayer(layerId)) {
@@ -4838,8 +5067,19 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           lineHeight: 1.1,
           fontFamily: socialFontFamily,
         };
+    const resolvedAlignX = resolveSocialTextAlignX(layerId, alignX);
     const textAlign =
-      alignX === "left" ? "left" : alignX === "right" ? "right" : "center";
+      resolvedAlignX === "left"
+        ? "left"
+        : resolvedAlignX === "right"
+          ? "right"
+          : "center";
+    const alignItems =
+      resolvedAlignX === "left"
+        ? "flex-start"
+        : resolvedAlignX === "right"
+          ? "flex-end"
+          : "center";
     const justifyContent =
       alignY === "top" ? "flex-start" : alignY === "bottom" ? "flex-end" : "center";
     const scaledPaddingLeft = scalePreviewValue(paddingLeft, 0);
@@ -4884,7 +5124,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         style={{
           ...socialFrameToStyle(frame),
           zIndex: layerId ? socialLayerZ(layerId) : 18,
-          pointerEvents: "auto",
+          pointerEvents: "none",
         }}
       >
         {backgroundFill ? (
@@ -4903,20 +5143,31 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             display: "flex",
             justifyContent,
             flexDirection: "column",
+            alignItems,
             boxSizing: "border-box",
             paddingLeft: `${Math.max(0, scaledPaddingLeft)}px`,
             paddingRight: `${Math.max(0, scaledPaddingRight)}px`,
             paddingTop: `${Math.max(0, scaledPaddingTop)}px`,
             paddingBottom: `${Math.max(0, scaledPaddingBottom)}px`,
+            pointerEvents: "none",
           }}
         >
           <div
             onClick={(event) => {
               event.stopPropagation();
+              if (socialSuppressLayerSelectClickRef.current) {
+                socialSuppressLayerSelectClickRef.current = false;
+                return;
+              }
               if (onClick) onClick();
               else if (layerId) {
-                socialSelectLayer(layerId);
-                if (socialActiveTool === "text" && isSocialTextLayer(layerId)) {
+                const additive = event.ctrlKey || event.metaKey;
+                socialSelectLayer(layerId, { additive });
+                if (
+                  !additive &&
+                  socialActiveTool === "text" &&
+                  isSocialTextLayer(layerId)
+                ) {
                   socialBeginInlineTextEdit(layerId, String(text || ""));
                 }
               }
@@ -4940,7 +5191,11 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               whiteSpace: "pre-wrap",
               overflowWrap: "anywhere",
               wordBreak: "break-word",
+              display: isInlineEditing ? "block" : "inline-block",
+              width: isInlineEditing ? "100%" : "fit-content",
+              maxWidth: "100%",
               fontWeight,
+              pointerEvents: "auto",
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
@@ -5034,8 +5289,19 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           lineHeight: 1.1,
           fontFamily: socialFontFamily,
         };
+    const resolvedAlignX = resolveSocialTextAlignX(layerId, alignX);
     const textAlign =
-      alignX === "left" ? "left" : alignX === "right" ? "right" : "center";
+      resolvedAlignX === "left"
+        ? "left"
+        : resolvedAlignX === "right"
+          ? "right"
+          : "center";
+    const alignItems =
+      resolvedAlignX === "left"
+        ? "flex-start"
+        : resolvedAlignX === "right"
+          ? "flex-end"
+          : "center";
     const justifyContent =
       alignY === "top" ? "flex-start" : alignY === "bottom" ? "flex-end" : "center";
     const scaledPaddingLeft = scalePreviewValue(paddingLeft, 0);
@@ -5079,7 +5345,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         style={{
           ...socialFrameToStyle(frame),
           zIndex: layerId ? socialLayerZ(layerId) : 18,
-          pointerEvents: "auto",
+          pointerEvents: "none",
         }}
       >
         <div
@@ -5088,20 +5354,31 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
             display: "flex",
             justifyContent,
             flexDirection: "column",
+            alignItems,
             boxSizing: "border-box",
             paddingLeft: `${Math.max(0, scaledPaddingLeft)}px`,
             paddingRight: `${Math.max(0, scaledPaddingRight)}px`,
             paddingTop: `${Math.max(0, scaledPaddingTop)}px`,
             paddingBottom: `${Math.max(0, scaledPaddingBottom)}px`,
+            pointerEvents: "none",
           }}
         >
           <div
             onClick={(event) => {
               event.stopPropagation();
+              if (socialSuppressLayerSelectClickRef.current) {
+                socialSuppressLayerSelectClickRef.current = false;
+                return;
+              }
               if (onClick) onClick();
               else if (layerId) {
-                socialSelectLayer(layerId);
-                if (socialActiveTool === "text" && isSocialTextLayer(layerId)) {
+                const additive = event.ctrlKey || event.metaKey;
+                socialSelectLayer(layerId, { additive });
+                if (
+                  !additive &&
+                  socialActiveTool === "text" &&
+                  isSocialTextLayer(layerId)
+                ) {
                   socialBeginInlineTextEdit(layerId, String(text || ""));
                 }
               }
@@ -5119,7 +5396,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               ...(forceTextStroke != null
                 ? { WebkitTextStroke: forceTextStroke }
                 : null),
-              ...(content ? { display: "block", width: "100%" } : null),
+              display: isInlineEditing ? "block" : "inline-block",
+              width: isInlineEditing ? "100%" : "fit-content",
+              maxWidth: "100%",
               textAlign,
               color: effectiveColor,
               lineHeight: forceLineHeight ?? textStyle.lineHeight ?? 1.1,
@@ -5127,6 +5406,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               overflowWrap: "anywhere",
               wordBreak: "break-word",
               fontWeight,
+              pointerEvents: "auto",
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
@@ -8712,43 +8992,109 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                       type="button"
                                       title="Align left"
                                       className={`${SOCIAL_TOOLBAR_BTN_TOP} ${
-                                        socialToolAlignX === "left" ? SOCIAL_TOOLBAR_BTN_SELECTED : ""
+                                        socialCurrentTextAlignX === "left"
+                                          ? SOCIAL_TOOLBAR_BTN_SELECTED
+                                          : ""
                                       }`}
-                                      onClick={() => setSocialToolAlignX("left")}
+                                      onClick={() => applySocialTextAlignment("left")}
                                     >
                                       <HugeiconsIcon
                                         icon={AlignLeftIcon}
                                         size={SOCIAL_TOOLBAR_ICON_SIZE}
-                                        color={socialIconColor(socialToolAlignX === "left")}
+                                        color={socialIconColor(
+                                          socialCurrentTextAlignX === "left",
+                                        )}
                                       />
                                     </button>
                                     <button
                                       type="button"
                                       title="Align center"
                                       className={`${SOCIAL_TOOLBAR_BTN_TOP} ${
-                                        socialToolAlignX === "center" ? SOCIAL_TOOLBAR_BTN_SELECTED : ""
+                                        socialCurrentTextAlignX === "center"
+                                          ? SOCIAL_TOOLBAR_BTN_SELECTED
+                                          : ""
                                       }`}
-                                      onClick={() => setSocialToolAlignX("center")}
+                                      onClick={() => applySocialTextAlignment("center")}
                                     >
                                       <HugeiconsIcon
                                         icon={AlignHorizontalCenterIcon}
                                         size={SOCIAL_TOOLBAR_ICON_SIZE}
-                                        color={socialIconColor(socialToolAlignX === "center")}
+                                        color={socialIconColor(
+                                          socialCurrentTextAlignX === "center",
+                                        )}
                                       />
                                     </button>
                                     <button
                                       type="button"
                                       title="Align right"
                                       className={`${SOCIAL_TOOLBAR_BTN_TOP} ${
-                                        socialToolAlignX === "right" ? SOCIAL_TOOLBAR_BTN_SELECTED : ""
+                                        socialCurrentTextAlignX === "right"
+                                          ? SOCIAL_TOOLBAR_BTN_SELECTED
+                                          : ""
                                       }`}
-                                      onClick={() => setSocialToolAlignX("right")}
+                                      onClick={() => applySocialTextAlignment("right")}
                                     >
                                       <HugeiconsIcon
                                         icon={AlignRightIcon}
                                         size={SOCIAL_TOOLBAR_ICON_SIZE}
-                                        color={socialIconColor(socialToolAlignX === "right")}
+                                        color={socialIconColor(
+                                          socialCurrentTextAlignX === "right",
+                                        )}
                                       />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Align selected objects left"
+                                      className={`${SOCIAL_TOOLBAR_BTN_TOP} disabled:cursor-not-allowed disabled:opacity-40`}
+                                      onClick={() => alignSocialSelectedObjects("left")}
+                                      disabled={!socialHasMultiSelection}
+                                    >
+                                      {renderSocialObjectAlignIcon("left")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Align selected objects center"
+                                      className={`${SOCIAL_TOOLBAR_BTN_TOP} disabled:cursor-not-allowed disabled:opacity-40`}
+                                      onClick={() => alignSocialSelectedObjects("center")}
+                                      disabled={!socialHasMultiSelection}
+                                    >
+                                      {renderSocialObjectAlignIcon("center")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Align selected objects right"
+                                      className={`${SOCIAL_TOOLBAR_BTN_TOP} disabled:cursor-not-allowed disabled:opacity-40`}
+                                      onClick={() => alignSocialSelectedObjects("right")}
+                                      disabled={!socialHasMultiSelection}
+                                    >
+                                      {renderSocialObjectAlignIcon("right")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Align selected objects top"
+                                      className={`${SOCIAL_TOOLBAR_BTN_TOP} disabled:cursor-not-allowed disabled:opacity-40`}
+                                      onClick={() => alignSocialSelectedObjects("top")}
+                                      disabled={!socialHasMultiSelection}
+                                    >
+                                      {renderSocialObjectAlignIcon("top")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Align selected objects middle"
+                                      className={`${SOCIAL_TOOLBAR_BTN_TOP} disabled:cursor-not-allowed disabled:opacity-40`}
+                                      onClick={() => alignSocialSelectedObjects("middle")}
+                                      disabled={!socialHasMultiSelection}
+                                    >
+                                      {renderSocialObjectAlignIcon("middle")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Align selected objects bottom"
+                                      className={`${SOCIAL_TOOLBAR_BTN_TOP} disabled:cursor-not-allowed disabled:opacity-40`}
+                                      onClick={() => alignSocialSelectedObjects("bottom")}
+                                      disabled={!socialHasMultiSelection}
+                                    >
+                                      {renderSocialObjectAlignIcon("bottom")}
                                     </button>
                                     <button
                                       type="button"
@@ -8903,7 +9249,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                     ) : null}
                                   </div>
                                 </div>
-                                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_200px]">
+                                <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_232px]">
                                   <div className="min-w-0">
                                     <div
                                       ref={socialPreviewViewportRef}
@@ -9050,7 +9396,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                           <div
                                             key={layerId}
                                             className={`absolute overflow-hidden ${
-                                              socialSelectedLayer === layerId
+                                              socialSelectedLayerIds.includes(layerId)
                                                 ? "ring-2 ring-[#ff9df9]"
                                                 : ""
                                             }`}
@@ -9073,6 +9419,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                             }
                                             onClick={(event) => {
                                               event.stopPropagation();
+                                              if (socialSuppressLayerSelectClickRef.current) {
+                                                socialSuppressLayerSelectClickRef.current = false;
+                                                return;
+                                              }
                                               if (socialActiveTool === "text") {
                                                 if (socialSuppressTextInsertClickRef.current) {
                                                   socialSuppressTextInsertClickRef.current = false;
@@ -9081,7 +9431,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                                 addSocialTextLayerAtPoint(event);
                                                 return;
                                               }
-                                              socialSelectLayer(layerId);
+                                              socialSelectLayer(layerId, {
+                                                additive:
+                                                  event.ctrlKey || event.metaKey,
+                                              });
                                             }}
                                             onDoubleClick={(event) => {
                                               event.stopPropagation();
@@ -9119,7 +9472,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                           <div
                                             key={layerId}
                                             className={`absolute ${
-                                              socialSelectedLayer === layerId
+                                              socialSelectedLayerIds.includes(layerId)
                                                 ? "ring-2 ring-[#ff9df9]"
                                                 : ""
                                             }`}
@@ -9142,6 +9495,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                             }
                                             onClick={(event) => {
                                               event.stopPropagation();
+                                              if (socialSuppressLayerSelectClickRef.current) {
+                                                socialSuppressLayerSelectClickRef.current = false;
+                                                return;
+                                              }
                                               if (socialActiveTool === "text") {
                                                 if (socialSuppressTextInsertClickRef.current) {
                                                   socialSuppressTextInsertClickRef.current = false;
@@ -9150,7 +9507,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                                 addSocialTextLayerAtPoint(event);
                                                 return;
                                               }
-                                              socialSelectLayer(layerId);
+                                              socialSelectLayer(layerId, {
+                                                additive:
+                                                  event.ctrlKey || event.metaKey,
+                                              });
                                             }}
                                           />
                                         );
@@ -9174,7 +9534,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                           fontWeight: 700,
                                         }),
                                       )}
-                                    {socialRenderSelectionBox(socialSelectedLayer)}
+                                    {socialSelectedLayerIds.map((layerId) =>
+                                      socialRenderSelectionBox(layerId),
+                                    )}
                                         </div>
                                       </div>
                                     </div>
@@ -9351,11 +9713,16 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                           <div
                                             key={layerId}
                                             className={`grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2 rounded-md px-1 py-1 ${
-                                              socialSelectedLayer === layerId
+                                              socialSelectedLayerIds.includes(layerId)
                                                 ? "bg-[#dbeafe]"
                                                 : ""
                                             }`}
-                                            onClick={() => socialSelectLayer(layerId)}
+                                            onClick={(event) =>
+                                              socialSelectLayer(layerId, {
+                                                additive:
+                                                  event.ctrlKey || event.metaKey,
+                                              })
+                                            }
                                             onDoubleClick={() => {
                                               if (!isSocialImageLayer(layerId)) return;
                                               socialSelectLayer(layerId);
