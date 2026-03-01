@@ -1383,17 +1383,20 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   };
 
   const applySocialTextAlignment = (nextAlignX: "left" | "center" | "right") => {
-    setSocialToolAlignX(nextAlignX);
     const targetLayer = isSocialTextLayer(socialSelectedLayer)
       ? socialSelectedLayer
       : isSocialTextLayer(socialToolTarget)
         ? socialToolTarget
         : "";
-    if (!targetLayer) return;
+    if (!targetLayer) {
+      setSocialToolAlignX(nextAlignX);
+      return;
+    }
     setSocialTextAlignments((prev) => ({
       ...prev,
       [targetLayer]: nextAlignX,
     }));
+    setSocialToolTarget(targetLayer);
   };
 
   const alignSocialSelectedObjects = (
