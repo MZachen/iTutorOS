@@ -3684,16 +3684,26 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     nextLayoutPreset,
     nextAspectRatio = socialDraft.aspect_ratio,
   ) => {
-    const isPresetChange = nextLayoutPreset !== socialDraft.layout_preset;
     setSocialDraft((prev) => ({
       ...prev,
       layout_preset: nextLayoutPreset,
       ...(nextAspectRatio ? { aspect_ratio: nextAspectRatio } : null),
     }));
-    if (isPresetChange) {
-      clearSocialCanvasState();
-      setStatus(`${nextLayoutPreset} selected. Canvas cleared.`);
-    }
+    clearSocialCanvasState();
+    setStatus(
+      `${nextLayoutPreset || "Layout preset"} selected. Canvas cleared.`,
+    );
+  };
+
+  const applySocialTemplateStyle = (nextTemplateStyle) => {
+    setSocialDraft((prev) => ({
+      ...prev,
+      template_style: nextTemplateStyle,
+    }));
+    clearSocialCanvasState();
+    setStatus(
+      `${nextTemplateStyle || "Template style"} selected. Canvas cleared.`,
+    );
   };
 
   const applySocialShapeColor = (color) => {
@@ -4178,7 +4188,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
   const onSocialPreviewPointerDown = (event) => {
     if (event.button !== 0) return;
     if (socialActiveTool !== "shape") return;
-    if (isSocialShapeLayer(socialSelectedLayer)) return;
     const previewEl = socialPreviewRef.current;
     if (!previewEl) return;
     const rect = previewEl.getBoundingClientRect();
@@ -4258,6 +4267,14 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     };
     const newLayerId = buildSocialTextLayerId();
     const initialText = "Edit text";
+    const defaultFontSize = 48;
+
+    // New text layers should start from a clean text style baseline.
+    setSocialToolFontSize(defaultFontSize);
+    setSocialToolOutlineWidth(0);
+    setSocialToolShadowOpacity(0);
+    setSocialToolShadowSize(0);
+    setSocialToolShadowDistance(0);
 
     setSocialLayerOrder((prev) => [newLayerId, ...prev]);
     setSocialLayerVisible((prev) => ({ ...prev, [newLayerId]: true }));
@@ -4265,7 +4282,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     setSocialLayerFrames((prev) => ({ ...prev, [newLayerId]: frame }));
     setSocialTextFontSizes((prev) => ({
       ...prev,
-      [newLayerId]: Math.max(8, Math.min(220, Number(socialToolFontSize) || 48)),
+      [newLayerId]: defaultFontSize,
     }));
     setSocialTextColors((prev) => ({ ...prev, [newLayerId]: socialToolColor || "#ffffff" }));
     setSocialInlineTextOverrides((prev) => ({ ...prev, [newLayerId]: initialText }));
@@ -8531,17 +8548,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                     <select
                                       className="h-10 rounded-xl border border-gray-200 bg-white px-3"
                                       value={socialDraft.template_style}
-                                      onChange={(e) => {
-                                        const nextTemplateStyle = e.target.value;
-                                        setSocialDraft((prev) => ({
-                                          ...prev,
-                                          template_style: nextTemplateStyle,
-                                        }));
-                                        if (nextTemplateStyle === "Success story") {
-                                          clearSocialCanvasState();
-                                          setStatus("Success story selected. Canvas cleared.");
-                                        }
-                                      }}
+                                      onChange={(e) =>
+                                        applySocialTemplateStyle(e.target.value)
+                                      }
                                     >
                                       <option value="">Select a template style</option>
                                       {SOCIAL_TEMPLATE_STYLES.map((style) => (
@@ -8554,8 +8563,9 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                   <div className="grid gap-2">
                                     <Label>Layout preset</Label>
                                     <select
-                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3"
+                                      className="h-10 rounded-xl border border-gray-200 bg-white px-3 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                                       value={socialDraft.layout_preset}
+                                      disabled={socialDraft.template_style === "Success story"}
                                       onChange={(e) =>
                                         applySocialLayoutPreset(
                                           e.target.value,
