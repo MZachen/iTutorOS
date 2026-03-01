@@ -156,6 +156,7 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
     normalizeKey,
     normalizePlanKey,
     onSave,
+    openProductsTab,
     openBillingPortal,
     openChildUnarchivePrompt,
     openPasswordPrompt,
@@ -395,6 +396,24 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
     WebDesign01Icon
   } = ctx;
 
+  function openCompanyContentStudio() {
+    openProductsTab("COMPANY");
+  }
+
+  function renderCompanyCopyValue(value: string | null | undefined) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+    return (
+      <button
+        type="button"
+        onClick={openCompanyContentStudio}
+        className="text-left font-medium text-purple-700 underline underline-offset-2 hover:text-purple-800"
+      >
+        Not Set
+      </button>
+    );
+  }
+
   return (
     <>
               {!loading && activeTab === "WEBSITE" ? (
@@ -459,7 +478,7 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
                           Company description
                         </div>
                         <div className="mt-1 text-sm text-gray-700">
-                          {org?.company_description_text?.trim() || "Not set"}
+                          {renderCompanyCopyValue(org?.company_description_text)}
                         </div>
                       </div>
                       <div>
@@ -467,7 +486,7 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
                           Mission statement
                         </div>
                         <div className="mt-1 text-sm text-gray-700">
-                          {org?.mission_text?.trim() || "Not set"}
+                          {renderCompanyCopyValue(org?.mission_text)}
                         </div>
                       </div>
                       <div>
@@ -475,7 +494,7 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
                           Teaching style
                         </div>
                         <div className="mt-1 text-sm text-gray-700">
-                          {org?.tutoring_style_text?.trim() || "Not set"}
+                          {renderCompanyCopyValue(org?.tutoring_style_text)}
                         </div>
                       </div>
                       <div>
@@ -483,9 +502,9 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
                           About us
                         </div>
                         <div className="mt-1 text-sm text-gray-700">
-                          {org?.about_us_text?.trim() ||
-                            org?.about_text?.trim() ||
-                            "Not set"}
+                          {renderCompanyCopyValue(
+                            org?.about_us_text || org?.about_text,
+                          )}
                         </div>
                       </div>
                     </div>

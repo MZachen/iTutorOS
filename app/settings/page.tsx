@@ -979,6 +979,7 @@ function SettingsPageContent() {
     useState<MarketingTab>("IMAGE_LIBRARY");
   const [marketingSection, setMarketingSection] =
     useState<MarketingSection>("POST_BUILDER");
+  const marketingTabOverrideRef = useRef<MarketingTab | null>(null);
   const [productDraft, setProductDraft] = useState<ProductDraft>({
     ...EMPTY_PRODUCT_DRAFT,
   });
@@ -1711,12 +1712,19 @@ function SettingsPageContent() {
 
   useEffect(() => {
     if (activeTab === "PRODUCTS") {
-      setMarketingTab("IMAGE_LIBRARY");
+      const override = marketingTabOverrideRef.current;
+      marketingTabOverrideRef.current = null;
+      setMarketingTab(override ?? "IMAGE_LIBRARY");
     }
     if (activeTab === "MARKETING") {
       setMarketingSection("POST_BUILDER");
     }
   }, [activeTab]);
+
+  function openProductsTab(nextMarketingTab: MarketingTab = "IMAGE_LIBRARY") {
+    marketingTabOverrideRef.current = nextMarketingTab;
+    void switchTab("PRODUCTS");
+  }
 
   const socialBuilderHasContent = useMemo(() => {
     const hasTextField = [
@@ -2800,6 +2808,9 @@ function SettingsPageContent() {
     }
     if (activeTab === "CONNECTIONS") {
       setConnections({});
+    }
+    if (activeTab === "MARKETING") {
+      clearSocialBuilder();
     }
     if (activeTab === "TUTORS") {
       setTutorDrafts(tutorDraftsInitialRef.current);
@@ -5568,6 +5579,7 @@ function SettingsPageContent() {
     normalizeKey,
     normalizePlanKey,
     onSave,
+    openProductsTab,
     openBillingPortal,
     openChildUnarchivePrompt,
     openPasswordPrompt,
@@ -5853,7 +5865,8 @@ function SettingsPageContent() {
                           />
                           <span>{t.label}</span>
                         </span>
-                        {dirtyTabs[t.key] ? (
+                        {dirtyTabs[t.key] &&
+                        (t.key !== "MARKETING" || activeTab === "MARKETING") ? (
                           <span className="text-xs text-purple-700">
                             (unsaved)
                           </span>

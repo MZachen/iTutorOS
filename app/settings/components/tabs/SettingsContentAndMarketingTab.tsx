@@ -6409,6 +6409,129 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
     return null;
   };
 
+  const runCompanyFieldAiAssist = async ({
+    aiKey,
+    fieldKey,
+    prompt,
+  }: {
+    aiKey: string;
+    fieldKey: string;
+    prompt: string;
+  }) => {
+    const previous = String(
+      aiRewrites[aiKey]?.previous ?? companyDraft[fieldKey] ?? "",
+    );
+    setAiLoading(aiKey, true);
+    try {
+      const next = await rewriteWithAi(prompt, previous);
+      setCompanyDraft((prev) => ({
+        ...prev,
+        [fieldKey]: next,
+      }));
+      setAiRewrite(aiKey, previous, next);
+    } finally {
+      setAiLoading(aiKey, false);
+    }
+  };
+
+  const renderCompanyAiAssistTrigger = ({
+    aiKey,
+    fieldKey,
+    prompt,
+  }: {
+    aiKey: string;
+    fieldKey: string;
+    prompt: string;
+  }) => {
+    const isLoading = Boolean(aiRewriteLoading[aiKey]);
+    return (
+      <button
+        type="button"
+        className={[
+          "text-xs font-semibold",
+          isLoading ? "cursor-default text-gray-400" : "cursor-pointer text-[#0b1f5f]",
+        ].join(" ")}
+        disabled={isLoading}
+        onClick={async () => {
+          if (isLoading) return;
+          await runCompanyFieldAiAssist({ aiKey, fieldKey, prompt });
+        }}
+      >
+        {isLoading ? "Thinking..." : "AI Assist"}
+      </button>
+    );
+  };
+
+  const renderCompanyAiAssistActions = ({
+    aiKey,
+    fieldKey,
+    prompt,
+  }: {
+    aiKey: string;
+    fieldKey: string;
+    prompt: string;
+  }) => {
+    const pending = aiRewrites[aiKey];
+    if (!pending) return null;
+    const isLoading = Boolean(aiRewriteLoading[aiKey]);
+    return (
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <button
+          type="button"
+          className={[
+            "flex items-center gap-1 font-semibold",
+            isLoading
+              ? "cursor-default text-gray-400"
+              : "text-[#0b1f5f] hover:text-[#081742]",
+          ].join(" ")}
+          disabled={isLoading}
+          onClick={async () => {
+            if (isLoading) return;
+            await runCompanyFieldAiAssist({ aiKey, fieldKey, prompt });
+          }}
+        >
+          <HugeiconsIcon
+            icon={RedoIcon}
+            size={14}
+            className={isLoading ? "text-gray-400" : "text-[#0b1f5f]"}
+          />
+          Regenerate
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1 font-semibold text-green-600 hover:text-green-700"
+          onClick={() => clearAiRewrite(aiKey)}
+        >
+          <HugeiconsIcon
+            icon={CheckmarkCircle01Icon}
+            size={14}
+            className="text-green-600"
+          />
+          Accept
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1 font-semibold text-red-600 hover:text-red-700"
+          onClick={() => {
+            const previous = aiRewrites[aiKey]?.previous ?? "";
+            setCompanyDraft((prev) => ({
+              ...prev,
+              [fieldKey]: previous,
+            }));
+            clearAiRewrite(aiKey);
+          }}
+        >
+          <HugeiconsIcon
+            icon={Cancel01Icon}
+            size={14}
+            className="text-red-600"
+          />
+          Discard
+        </button>
+      </div>
+    );
+  };
+
   return (
     <>
                 {(activeTab === "PRODUCTS" || activeTab === "MARKETING") && (
@@ -8191,7 +8314,15 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                               </div>
                             </div>
                             <div className="grid gap-2">
-                              <Label>Company description</Label>
+                              <div className="flex items-center justify-between gap-3">
+                                <Label>Company description</Label>
+                                {renderCompanyAiAssistTrigger({
+                                  aiKey: "company:description",
+                                  fieldKey: "company_description_text",
+                                  prompt:
+                                    "Write a polished company description for a tutoring business. Focus on who the business serves and the value it provides.",
+                                })}
+                              </div>
                               <Textarea
                                 rows={4}
                                 value={companyDraft.company_description_text}
@@ -8203,9 +8334,23 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                 }
                                 placeholder="Describe your tutoring business and who you serve."
                               />
+                              {renderCompanyAiAssistActions({
+                                aiKey: "company:description",
+                                fieldKey: "company_description_text",
+                                prompt:
+                                  "Write a polished company description for a tutoring business. Focus on who the business serves and the value it provides.",
+                              })}
                             </div>
                             <div className="grid gap-2">
-                              <Label>Mission statement</Label>
+                              <div className="flex items-center justify-between gap-3">
+                                <Label>Mission statement</Label>
+                                {renderCompanyAiAssistTrigger({
+                                  aiKey: "company:mission",
+                                  fieldKey: "mission_text",
+                                  prompt:
+                                    "Write a concise mission statement for a tutoring business. Emphasize educational impact, student growth, and family trust.",
+                                })}
+                              </div>
                               <Textarea
                                 rows={3}
                                 value={companyDraft.mission_text}
@@ -8217,9 +8362,23 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                 }
                                 placeholder="Share your mission and educational purpose."
                               />
+                              {renderCompanyAiAssistActions({
+                                aiKey: "company:mission",
+                                fieldKey: "mission_text",
+                                prompt:
+                                  "Write a concise mission statement for a tutoring business. Emphasize educational impact, student growth, and family trust.",
+                              })}
                             </div>
                             <div className="grid gap-2">
-                              <Label>Teaching style</Label>
+                              <div className="flex items-center justify-between gap-3">
+                                <Label>Teaching style</Label>
+                                {renderCompanyAiAssistTrigger({
+                                  aiKey: "company:style",
+                                  fieldKey: "tutoring_style_text",
+                                  prompt:
+                                    "Describe the teaching style of a tutoring business. Focus on instructional approach, personalization, and student engagement.",
+                                })}
+                              </div>
                               <Textarea
                                 rows={3}
                                 value={companyDraft.tutoring_style_text}
@@ -8231,9 +8390,23 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                 }
                                 placeholder="Explain your instructional approach."
                               />
+                              {renderCompanyAiAssistActions({
+                                aiKey: "company:style",
+                                fieldKey: "tutoring_style_text",
+                                prompt:
+                                  "Describe the teaching style of a tutoring business. Focus on instructional approach, personalization, and student engagement.",
+                              })}
                             </div>
                             <div className="grid gap-2">
-                              <Label>About us</Label>
+                              <div className="flex items-center justify-between gap-3">
+                                <Label>About us</Label>
+                                {renderCompanyAiAssistTrigger({
+                                  aiKey: "company:about",
+                                  fieldKey: "about_us_text",
+                                  prompt:
+                                    "Write an about us section for a tutoring business. Cover team background, values, and why families choose this business.",
+                                })}
+                              </div>
                               <Textarea
                                 rows={4}
                                 value={companyDraft.about_us_text}
@@ -8245,6 +8418,12 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                                 }
                                 placeholder="Team background, values, and why families choose you."
                               />
+                              {renderCompanyAiAssistActions({
+                                aiKey: "company:about",
+                                fieldKey: "about_us_text",
+                                prompt:
+                                  "Write an about us section for a tutoring business. Cover team background, values, and why families choose this business.",
+                              })}
                             </div>
                           </div>
                         </div>
