@@ -105,6 +105,8 @@ type Org = {
   about_us_text?: string | null;
   slogan_text?: string | null;
   headline_text?: string | null;
+  website_slug?: string | null;
+  website_slug_updated_at?: string | null;
   about_text?: string | null;
   mission_text?: string | null;
   tutoring_style_text?: string | null;
@@ -998,6 +1000,7 @@ function SettingsPageContent() {
   const socialPresetRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const socialPresetCarouselRef = useRef<HTMLDivElement | null>(null);
   const [companyDraft, setCompanyDraft] = useState({
+    slogan_text: "",
     company_description_text: "",
     mission_text: "",
     tutoring_style_text: "",
@@ -1105,6 +1108,7 @@ function SettingsPageContent() {
     const activeLogo =
       org.images?.find((img) => !img.archived_at)?.image_url ?? "";
     setCompanyDraft({
+      slogan_text: org.slogan_text ?? "",
       company_description_text: org.company_description_text ?? "",
       mission_text: org.mission_text ?? "",
       tutoring_style_text: org.tutoring_style_text ?? "",
@@ -1399,6 +1403,7 @@ function SettingsPageContent() {
     const activeLogo =
       org.images?.find((img) => !img.archived_at)?.image_url ?? "";
     const baseline = {
+      slogan_text: org.slogan_text ?? "",
       company_description_text: org.company_description_text ?? "",
       mission_text: org.mission_text ?? "",
       tutoring_style_text: org.tutoring_style_text ?? "",
@@ -2829,6 +2834,7 @@ function SettingsPageContent() {
         const activeLogo =
           org.images?.find((img) => !img.archived_at)?.image_url ?? "";
         setCompanyDraft({
+          slogan_text: org.slogan_text ?? "",
           company_description_text: org.company_description_text ?? "",
           mission_text: org.mission_text ?? "",
           tutoring_style_text: org.tutoring_style_text ?? "",
@@ -5106,6 +5112,7 @@ function SettingsPageContent() {
         "content-type": "application/json",
       },
       body: JSON.stringify({
+        slogan_text: companyDraft.slogan_text,
         company_description_text: companyDraft.company_description_text,
         mission_text: companyDraft.mission_text,
         tutoring_style_text: companyDraft.tutoring_style_text,

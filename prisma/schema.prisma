@@ -137,6 +137,7 @@ model Organization {
   palette_color_5        String?
   layout_key             String?
   website_slug           String?
+  website_slug_updated_at DateTime?
   headline_text          String?
   about_text             String?
   mission_text           String?

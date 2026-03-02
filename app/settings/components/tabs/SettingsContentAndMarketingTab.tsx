@@ -8315,6 +8315,34 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
                             </div>
                             <div className="grid gap-2">
                               <div className="flex items-center justify-between gap-3">
+                                <Label>Slogan</Label>
+                                {renderCompanyAiAssistTrigger({
+                                  aiKey: "company:slogan",
+                                  fieldKey: "slogan_text",
+                                  prompt:
+                                    "Write a concise, memorable slogan for a tutoring business. Keep it short, clear, and marketing-ready.",
+                                })}
+                              </div>
+                              <Textarea
+                                rows={2}
+                                value={companyDraft.slogan_text}
+                                onChange={(e) =>
+                                  setCompanyDraft((prev) => ({
+                                    ...prev,
+                                    slogan_text: e.target.value,
+                                  }))
+                                }
+                                placeholder="Add a short slogan for your tutoring business."
+                              />
+                              {renderCompanyAiAssistActions({
+                                aiKey: "company:slogan",
+                                fieldKey: "slogan_text",
+                                prompt:
+                                  "Write a concise, memorable slogan for a tutoring business. Keep it short, clear, and marketing-ready.",
+                              })}
+                            </div>
+                            <div className="grid gap-2">
+                              <div className="flex items-center justify-between gap-3">
                                 <Label>Company description</Label>
                                 {renderCompanyAiAssistTrigger({
                                   aiKey: "company:description",

@@ -7,6 +7,17 @@ import { DEFAULT_DATE_FORMAT, normalizeDateFormat, DATE_FORMAT_OPTIONS } from "@
 
 export const runtime = "nodejs";
 
+const WEBSITE_SLUG_REGEX = /^[a-z0-9-]{3,40}$/;
+
+function normalizeWebsiteSlug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
 export async function POST(req: Request) {
   return handleRoute(async () => {
     let body: any;
@@ -134,10 +145,11 @@ export async function GET(req: Request) {
             business_city: true,
             business_state: true,
             business_zip: true,
-            date_format: true,
-            created_at: true,
-            updated_at: true,
-            archived_at: true,
+          date_format: true,
+          website_slug: true,
+          created_at: true,
+          updated_at: true,
+          archived_at: true,
             created_by_user_id: true,
             updated_by_user_id: true,
           },
@@ -163,6 +175,7 @@ export async function PATCH(req: Request) {
 
     const data: Record<string, any> = {};
     let company_logo_url: string | null | undefined = undefined;
+    let nextWebsiteSlug: string | undefined;
 
     if ("business_name" in body) {
       const business_name = typeof body.business_name === "string" ? body.business_name.trim() : "";
@@ -266,11 +279,69 @@ export async function PATCH(req: Request) {
           : null;
     }
 
-    if (Object.keys(data).length === 0 && company_logo_url === undefined) {
+    if ("website_slug" in body) {
+      const rawWebsiteSlug =
+        typeof body.website_slug === "string" ? body.website_slug.trim() : "";
+      const website_slug = normalizeWebsiteSlug(rawWebsiteSlug);
+      if (!website_slug) badRequest("website_slug is required");
+      if (!WEBSITE_SLUG_REGEX.test(website_slug)) {
+        badRequest(
+          "website_slug must be 3-40 characters using lowercase letters, numbers, and hyphens",
+        );
+      }
+      nextWebsiteSlug = website_slug;
+    }
+
+    if (
+      Object.keys(data).length === 0 &&
+      company_logo_url === undefined &&
+      nextWebsiteSlug === undefined
+    ) {
       badRequest("No fields to update");
     }
 
     const org = await prisma.$transaction(async (tx) => {
+      if (nextWebsiteSlug !== undefined) {
+        const currentOrg = await tx.organization.findUnique({
+          where: { id: auth.organization_id },
+          select: {
+            website_slug: true,
+            website_slug_updated_at: true,
+          },
+        });
+        if (!currentOrg) badRequest("Organization not found");
+
+        const currentSlug = normalizeWebsiteSlug(currentOrg.website_slug ?? "");
+        const slugChanged = nextWebsiteSlug !== currentSlug;
+        if (slugChanged && currentOrg.website_slug_updated_at) {
+          const earliestNextChange = new Date(
+            currentOrg.website_slug_updated_at.getTime() + 60 * 24 * 60 * 60 * 1000,
+          );
+          if (earliestNextChange > new Date()) {
+            badRequest("Website slug can only be changed every 60 days");
+          }
+        }
+
+        if (slugChanged) {
+          const existingSlugOwner = await tx.organization.findFirst({
+            where: {
+              id: { not: auth.organization_id },
+              archived_at: null,
+              website_slug: {
+                equals: nextWebsiteSlug,
+                mode: "insensitive",
+              },
+            },
+            select: { id: true },
+          });
+          if (existingSlugOwner) {
+            badRequest("Website slug is already taken");
+          }
+          data.website_slug = nextWebsiteSlug;
+          data.website_slug_updated_at = new Date();
+        }
+      }
+
       await tx.organization.update({
         where: { id: auth.organization_id },
         data: {
