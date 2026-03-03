@@ -244,7 +244,8 @@ const EMPTY_CONTENT_FLAGS: WebsiteContentFlags = {
 
 const STORE_PATH = path.join(process.cwd(), ".cache", "website-configs.json");
 
-export function normalizeWebsitePageName(value: string) {
+export function normalizeWebsitePageName(value: unknown) {
+  if (typeof value !== "string") return "";
   return value
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, "-")

@@ -5,7 +5,7 @@ export type SettingsWebsiteTabProps = {
   ctx: Record<string, any>;
 };
 
-type WebsitePage = "WEBSITE_DESIGNER" | "SETTINGS_INFO";
+type WebsitePage = "WEBSITE_DESIGNER" | "SETTINGS_INFO" | "WEBSITE_PREVIEW";
 
 const WEBSITE_SLUG_REGEX = /^[a-z0-9-]{3,40}$/;
 const WEBSITE_SLUG_COOLDOWN_DAYS = 60;
@@ -20,6 +20,16 @@ const WEBSITE_PALETTE_OPTIONS = [
   { key: "PALETTE_8", colors: ["#3b0764", "#a21caf", "#f5d0fe", "#fdf4ff", "#fb7185"] },
   { key: "PALETTE_9", colors: ["#111827", "#4b5563", "#d1d5db", "#f9fafb", "#22c55e"] },
   { key: "PALETTE_10", colors: ["#431407", "#ea580c", "#fdba74", "#fff7ed", "#2563eb"] },
+];
+const WEBSITE_DESIGNER_STORAGE_KEY_PREFIX = "itutoros:website-designer:";
+const WEBSITE_DESIGNER_SECTION_ORDER = [
+  "home",
+  "about",
+  "services",
+  "subjects",
+  "topics",
+  "products",
+  "contact",
 ];
 
 function normalizeWebsiteSlug(value: string) {
@@ -47,6 +57,7 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
     token,
     topicsBySubject,
     useEffect,
+    useMemo,
     useRef,
     useState,
   } = ctx;
@@ -78,7 +89,20 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
     "#f8fafc",
     "#f59e0b",
   ]);
+  const [websiteDesignerSections, setWebsiteDesignerSections] = useState<any[]>([]);
+  const [websiteDesignerSelectedSectionId, setWebsiteDesignerSelectedSectionId] =
+    useState("");
+  const [websiteDesignerSelectedItemId, setWebsiteDesignerSelectedItemId] =
+    useState("");
+  const [websiteDesignerDragState, setWebsiteDesignerDragState] =
+    useState<any>(null);
+  const [websiteDesignerMedia, setWebsiteDesignerMedia] = useState<any[]>([]);
+  const [websiteDesignerMediaLoading, setWebsiteDesignerMediaLoading] =
+    useState(false);
+  const [websitePublishing, setWebsitePublishing] = useState(false);
   const openContentSourcePopupRef = useRef<HTMLDivElement | null>(null);
+  const websiteDesignerStorageOrgRef = useRef("");
+  const websiteDesignerIdCounterRef = useRef(1);
 
   const savedSlug = String(org?.website_slug ?? "").trim();
   const normalizedDraft = normalizeWebsiteSlug(websiteSlugDraft);
@@ -94,6 +118,25 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
   const fullWebsiteUrl = effectiveSlug
     ? `${websiteBaseUrl}/${effectiveSlug}`
     : `${websiteBaseUrl}/your-slug`;
+  const websiteDesignerStorageKey = org?.id
+    ? `${WEBSITE_DESIGNER_STORAGE_KEY_PREFIX}${org.id}`
+    : "";
+  const activePaletteColors =
+    websitePaletteChoice === "CUSTOM"
+      ? customWebsitePalette
+      : WEBSITE_PALETTE_OPTIONS.find((palette) => palette.key === websitePaletteChoice)
+          ?.colors ?? WEBSITE_PALETTE_OPTIONS[0].colors;
+  const companyLogoUrl = String(
+    org?.images?.find((img) => !img.archived_at)?.image_url ?? "",
+  ).trim();
+  const websiteDesignerSelectedSection =
+    websiteDesignerSections.find(
+      (section) => section.id === websiteDesignerSelectedSectionId,
+    ) ?? null;
+  const websiteDesignerSelectedItem =
+    websiteDesignerSelectedSection?.items?.find(
+      (item) => item.id === websiteDesignerSelectedItemId,
+    ) ?? null;
 
   const slugUpdatedAt = org?.website_slug_updated_at
     ? new Date(org.website_slug_updated_at)
@@ -231,8 +274,370 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
     return () => window.removeEventListener("mousedown", handlePointerDown);
   }, [openContentSourcePopup]);
 
+  useEffect(() => {
+    if (!token || activeTab !== "WEBSITE") return;
+    let cancelled = false;
+    (async () => {
+      setWebsiteDesignerMediaLoading(true);
+      try {
+        const res = await fetch("/catalog-media?scope=global", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const payload = await res.json().catch(() => []);
+        if (cancelled) return;
+        if (!res.ok) {
+          setStatus(
+            payload?.message || "Unable to load website designer image library.",
+          );
+          return;
+        }
+        setWebsiteDesignerMedia(Array.isArray(payload) ? payload : []);
+      } catch {
+        if (!cancelled) {
+          setStatus("Unable to load website designer image library.");
+        }
+      } finally {
+        if (!cancelled) {
+          setWebsiteDesignerMediaLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, setStatus, token]);
+
+  useEffect(() => {
+    if (!websiteDesignerStorageKey) return;
+    if (websiteDesignerStorageOrgRef.current === websiteDesignerStorageKey) return;
+    websiteDesignerStorageOrgRef.current = websiteDesignerStorageKey;
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem(websiteDesignerStorageKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      setWebsiteLayoutMode(
+        parsed?.websiteLayoutMode === "MENU_STYLE" ? "MENU_STYLE" : "SINGLE_PAGE",
+      );
+      if (
+        typeof parsed?.websitePaletteChoice === "string" &&
+        (parsed.websitePaletteChoice === "CUSTOM" ||
+          WEBSITE_PALETTE_OPTIONS.some(
+            (palette) => palette.key === parsed.websitePaletteChoice,
+          ))
+      ) {
+        setWebsitePaletteChoice(parsed.websitePaletteChoice);
+      }
+      if (
+        Array.isArray(parsed?.customWebsitePalette) &&
+        parsed.customWebsitePalette.length === 5
+      ) {
+        setCustomWebsitePalette(
+          parsed.customWebsitePalette.map((color: any, index: number) =>
+            typeof color === "string"
+              ? color
+              : WEBSITE_PALETTE_OPTIONS[0].colors[index] ?? "#ffffff",
+          ),
+        );
+      }
+      if (Array.isArray(parsed?.websiteDesignerSections)) {
+        setWebsiteDesignerSections(parsed.websiteDesignerSections);
+        setWebsiteDesignerSelectedSectionId(
+          parsed.websiteDesignerSections[0]?.id ?? "",
+        );
+        setWebsiteDesignerSelectedItemId(
+          parsed.websiteDesignerSections[0]?.items?.[0]?.id ?? "",
+        );
+      }
+    } catch {
+      window.localStorage.removeItem(websiteDesignerStorageKey);
+    }
+  }, [websiteDesignerStorageKey]);
+
+  useEffect(() => {
+    if (!websiteDesignerStorageKey || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      websiteDesignerStorageKey,
+      JSON.stringify({
+        websiteLayoutMode,
+        websitePaletteChoice,
+        customWebsitePalette,
+        websiteDesignerSections,
+      }),
+    );
+  }, [
+    customWebsitePalette,
+    websiteDesignerSections,
+    websiteDesignerStorageKey,
+    websiteLayoutMode,
+    websitePaletteChoice,
+  ]);
+
   function openCompanyContentStudio() {
     openProductsTab("COMPANY");
+  }
+
+  function nextWebsiteDesignerId(prefix: string) {
+    const next = websiteDesignerIdCounterRef.current;
+    websiteDesignerIdCounterRef.current += 1;
+    return `${prefix}-${next}`;
+  }
+
+  function makeWebsiteDesignerSlogan() {
+    const businessName = String(org?.business_name || "Your tutoring business").trim();
+    const options = [
+      `${businessName}: Personalized support that moves students forward.`,
+      `Confidence, consistency, and growth with ${businessName}.`,
+      `Learning that meets each student where they are.`,
+      `Clear plans, stronger skills, better results.`,
+    ];
+    return options[Math.floor(Math.random() * options.length)];
+  }
+
+  function buildWebsiteDesignerSections() {
+    const businessName =
+      String(org?.business_name || "Your Business").trim() || "Your Business";
+    const sloganText =
+      String(org?.slogan_text || "").trim() || makeWebsiteDesignerSlogan();
+    const aboutText = [
+      String(org?.company_description_text || "").trim(),
+      String(org?.mission_text || "").trim(),
+      String(org?.tutoring_style_text || "").trim(),
+      String(org?.about_us_text || org?.about_text || "").trim(),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    const serviceList = marketingServices
+      .map((service) => String(service?.display_name || service?.service_code || "").trim())
+      .filter(Boolean);
+    const subjectList = activeSubjects
+      .map((subject) => String(subject?.subject_name || "").trim())
+      .filter(Boolean);
+    const topicList = activeTopics
+      .map((topic) => String(topic?.topic_name || "").trim())
+      .filter(Boolean);
+    const productList = products
+      .map((product) => String(product?.product_name || "").trim())
+      .filter(Boolean);
+    const addressLine = [
+      String(org?.business_address_1 || "").trim(),
+      String(org?.business_city || "").trim(),
+      String(org?.business_state || "").trim(),
+      String(org?.business_zip || "").trim(),
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const homeItems: any[] = [];
+    const brandVariant = companyLogoUrl ? Math.floor(Math.random() * 3) : 1;
+
+    if (brandVariant === 0 && companyLogoUrl) {
+      homeItems.push({
+        id: nextWebsiteDesignerId("image"),
+        kind: "image",
+        label: "Logo",
+        imageUrl: companyLogoUrl,
+        align: "left",
+        widthClass: "max-w-[220px]",
+      });
+    } else if (brandVariant === 1) {
+      homeItems.push({
+        id: nextWebsiteDesignerId("text"),
+        kind: "text",
+        label: "Company name",
+        text: businessName,
+        fontSize: 56,
+        textColor: activePaletteColors[1] || "#2d0a7d",
+        backgroundColor: "transparent",
+        align: "left",
+        bold: true,
+      });
+    } else {
+      homeItems.push({
+        id: nextWebsiteDesignerId("image"),
+        kind: "image",
+        label: "Logo",
+        imageUrl: companyLogoUrl,
+        align: "left",
+        widthClass: "max-w-[160px]",
+      });
+      homeItems.push({
+        id: nextWebsiteDesignerId("text"),
+        kind: "text",
+        label: "Company name",
+        text: businessName,
+        fontSize: 36,
+        textColor: activePaletteColors[1] || "#2d0a7d",
+        backgroundColor: "transparent",
+        align: "left",
+        bold: true,
+      });
+    }
+
+    homeItems.push({
+      id: nextWebsiteDesignerId("text"),
+      kind: "text",
+      label: "Slogan",
+      text: sloganText,
+      fontSize: 24,
+      textColor: activePaletteColors[4] || "#1f2937",
+      backgroundColor: "transparent",
+      align: "left",
+      bold: false,
+    });
+
+    const makeTitleItem = (label: string) => ({
+      id: nextWebsiteDesignerId("text"),
+      kind: "text",
+      label: "Section title",
+      text: label,
+      fontSize: 34,
+      textColor: activePaletteColors[1] || "#2d0a7d",
+      backgroundColor: "transparent",
+      align: "left",
+      bold: true,
+    });
+
+    const makeTextItem = (label: string, text: string) => ({
+      id: nextWebsiteDesignerId("text"),
+      kind: "text",
+      label,
+      text,
+      fontSize: 18,
+      textColor: activePaletteColors[4] || "#1f2937",
+      backgroundColor: "transparent",
+      align: "left",
+      bold: false,
+    });
+
+    const makeListItem = (label: string, entries: string[]) => ({
+      id: nextWebsiteDesignerId("list"),
+      kind: "list",
+      label,
+      entries,
+      fontSize: 18,
+      textColor: activePaletteColors[4] || "#1f2937",
+      backgroundColor: "transparent",
+      align: "left",
+      bold: false,
+    });
+
+    setWebsiteDesignerSections([
+      {
+        id: "home",
+        label: "Home",
+        hideTitle: true,
+        backgroundColor: activePaletteColors[3] || "#ffffff",
+        items: homeItems,
+      },
+      {
+        id: "about",
+        label: "About",
+        backgroundColor: activePaletteColors[2] || "#f8fafc",
+        items: [
+          makeTitleItem("About"),
+          makeTextItem(
+            "About copy",
+            aboutText || "Add your company story, mission, and teaching style.",
+          ),
+        ],
+      },
+      {
+        id: "services",
+        label: "Services",
+        backgroundColor: activePaletteColors[3] || "#ffffff",
+        items: [
+          makeTitleItem("Services"),
+          makeListItem(
+            "Service list",
+            serviceList.length > 0
+              ? serviceList
+              : ["Add services in Content Studio and Settings."],
+          ),
+        ],
+      },
+      {
+        id: "subjects",
+        label: "Subjects",
+        backgroundColor: activePaletteColors[2] || "#f8fafc",
+        items: [
+          makeTitleItem("Subjects"),
+          makeListItem(
+            "Subject list",
+            subjectList.length > 0
+              ? subjectList
+              : ["Add subjects in Content Studio and Settings."],
+          ),
+        ],
+      },
+      {
+        id: "topics",
+        label: "Topics",
+        backgroundColor: activePaletteColors[3] || "#ffffff",
+        items: [
+          makeTitleItem("Topics"),
+          makeListItem(
+            "Topic list",
+            topicList.length > 0
+              ? topicList
+              : ["Add topics in Content Studio and Settings."],
+          ),
+        ],
+      },
+      {
+        id: "products",
+        label: "Products",
+        backgroundColor: activePaletteColors[2] || "#f8fafc",
+        items: [
+          makeTitleItem("Products"),
+          makeListItem(
+            "Product list",
+            productList.length > 0 ? productList : ["Add products in Content Studio."],
+          ),
+        ],
+      },
+      {
+        id: "contact",
+        label: "Contact",
+        backgroundColor: activePaletteColors[3] || "#ffffff",
+        items: [
+          makeTitleItem("Contact"),
+          {
+            id: nextWebsiteDesignerId("social"),
+            kind: "social",
+            label: "Social links",
+            entries: ["Facebook", "Instagram", "TikTok"],
+            fontSize: 16,
+            textColor: activePaletteColors[4] || "#1f2937",
+            backgroundColor: "transparent",
+            align: "left",
+            bold: true,
+          },
+          {
+            id: nextWebsiteDesignerId("map"),
+            kind: "map",
+            label: "Map",
+            text: addressLine || "Add your business address in Business Info.",
+            fontSize: 16,
+            textColor: activePaletteColors[4] || "#1f2937",
+            backgroundColor: "#ffffff",
+            align: "left",
+            bold: false,
+          },
+          makeTextItem(
+            "Contact details",
+            [String(org?.business_phone || "").trim(), String(org?.business_email || "").trim()]
+              .filter(Boolean)
+              .join("\n") || "Add a phone number or email in Business Info.",
+          ),
+        ],
+      },
+    ]);
+    setWebsiteDesignerSelectedSectionId("home");
+    setWebsiteDesignerSelectedItemId(homeItems[0]?.id ?? "");
+    setStatus("Website layout generated.");
   }
 
   function renderCompanyCopyValue(value: string | null | undefined) {
@@ -247,6 +652,190 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
         Not Set
       </button>
     );
+  }
+
+  function updateWebsiteDesignerItem(
+    sectionId: string,
+    itemId: string,
+    updater: any,
+  ) {
+    setWebsiteDesignerSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== sectionId) return section;
+        return {
+          ...section,
+          items: section.items.map((item: any) => {
+            if (item.id !== itemId) return item;
+            const patch =
+              typeof updater === "function" ? updater(item) : updater;
+            return {
+              ...item,
+              ...patch,
+            };
+          }),
+        };
+      }),
+    );
+  }
+
+  function addWebsiteDesignerItem(kind: string) {
+    const targetSectionId = websiteDesignerSelectedSectionId || "home";
+    const defaultImageUrl =
+      String(websiteDesignerMedia[0]?.media_url || "").trim() || companyLogoUrl;
+    const nextItem =
+      kind === "image"
+        ? {
+            id: nextWebsiteDesignerId("image"),
+            kind: "image",
+            label: "Image",
+            imageUrl: defaultImageUrl,
+            align: "left",
+            widthClass: "max-w-full",
+          }
+        : kind === "list"
+          ? {
+              id: nextWebsiteDesignerId("list"),
+              kind: "list",
+              label: "Bulleted list",
+              entries: ["New bullet"],
+              fontSize: 18,
+              textColor: activePaletteColors[4] || "#1f2937",
+              backgroundColor: "transparent",
+              align: "left",
+              bold: false,
+            }
+          : kind === "social"
+            ? {
+                id: nextWebsiteDesignerId("social"),
+                kind: "social",
+                label: "Social links",
+                entries: ["Facebook", "Instagram", "LinkedIn"],
+                fontSize: 16,
+                textColor: activePaletteColors[4] || "#1f2937",
+                backgroundColor: "transparent",
+                align: "left",
+                bold: true,
+              }
+            : kind === "map"
+              ? {
+                  id: nextWebsiteDesignerId("map"),
+                  kind: "map",
+                  label: "Map",
+                  text:
+                    [
+                      String(org?.business_address_1 || "").trim(),
+                      String(org?.business_city || "").trim(),
+                      String(org?.business_state || "").trim(),
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "Add address details for your map.",
+                  fontSize: 16,
+                  textColor: activePaletteColors[4] || "#1f2937",
+                  backgroundColor: "#ffffff",
+                  align: "left",
+                  bold: false,
+                }
+              : kind === "button"
+                ? {
+                    id: nextWebsiteDesignerId("button"),
+                    kind: "button",
+                    label: "Button",
+                    text: "Get Started",
+                    fontSize: 18,
+                    textColor: "#ffffff",
+                    backgroundColor: activePaletteColors[0] || "#0b1f5f",
+                    align: "center",
+                    bold: true,
+                  }
+                : {
+                    id: nextWebsiteDesignerId("text"),
+                    kind: "text",
+                    label: "Text",
+                    text: "New text",
+                    fontSize: 20,
+                    textColor: activePaletteColors[4] || "#1f2937",
+                    backgroundColor: "transparent",
+                    align: "left",
+                    bold: false,
+                  };
+
+    setWebsiteDesignerSections((prev) =>
+      prev.map((section) =>
+        section.id === targetSectionId
+          ? {
+              ...section,
+              items: [...section.items, nextItem],
+            }
+          : section,
+      ),
+    );
+    setWebsiteDesignerSelectedSectionId(targetSectionId);
+    setWebsiteDesignerSelectedItemId(nextItem.id);
+  }
+
+  function handleWebsiteDesignerSectionDrop(targetSectionId: string) {
+    if (!websiteDesignerDragState || websiteDesignerDragState.type !== "section") {
+      return;
+    }
+    const sourceSectionId = websiteDesignerDragState.sectionId;
+    if (!sourceSectionId || sourceSectionId === "home" || sourceSectionId === targetSectionId) {
+      setWebsiteDesignerDragState(null);
+      return;
+    }
+    setWebsiteDesignerSections((prev) => {
+      const homeSection = prev.find((section) => section.id === "home");
+      const movable = prev.filter((section) => section.id !== "home");
+      const sourceIndex = movable.findIndex((section) => section.id === sourceSectionId);
+      const targetIndex = movable.findIndex((section) => section.id === targetSectionId);
+      if (sourceIndex === -1 || targetIndex === -1) return prev;
+      const nextMovable = [...movable];
+      const [moved] = nextMovable.splice(sourceIndex, 1);
+      nextMovable.splice(targetIndex, 0, moved);
+      return homeSection ? [homeSection, ...nextMovable] : nextMovable;
+    });
+    setWebsiteDesignerDragState(null);
+  }
+
+  function handleWebsiteDesignerItemDrop(
+    targetSectionId: string,
+    targetItemId?: string,
+  ) {
+    if (!websiteDesignerDragState || websiteDesignerDragState.type !== "item") {
+      return;
+    }
+    const { sectionId: sourceSectionId, itemId: sourceItemId } =
+      websiteDesignerDragState;
+    if (!sourceSectionId || !sourceItemId) {
+      setWebsiteDesignerDragState(null);
+      return;
+    }
+    setWebsiteDesignerSections((prev) => {
+      const next = prev.map((section) => ({
+        ...section,
+        items: [...section.items],
+      }));
+      const sourceSection = next.find((section) => section.id === sourceSectionId);
+      const targetSection = next.find((section) => section.id === targetSectionId);
+      if (!sourceSection || !targetSection) return prev;
+      const sourceIndex = sourceSection.items.findIndex(
+        (item: any) => item.id === sourceItemId,
+      );
+      if (sourceIndex === -1) return prev;
+      const [moved] = sourceSection.items.splice(sourceIndex, 1);
+      if (!moved) return prev;
+      const targetIndex = targetItemId
+        ? targetSection.items.findIndex((item: any) => item.id === targetItemId)
+        : -1;
+      if (targetIndex === -1) {
+        targetSection.items.push(moved);
+      } else {
+        targetSection.items.splice(targetIndex, 0, moved);
+      }
+      return next;
+    });
+    setWebsiteDesignerSelectedSectionId(targetSectionId);
+    setWebsiteDesignerSelectedItemId(sourceItemId);
+    setWebsiteDesignerDragState(null);
   }
 
   function renderContentSourceTile(
@@ -300,6 +889,570 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
         ) : null}
       </div>
     );
+  }
+
+  function renderWebsiteDesignerItem(section: any, item: any) {
+    const isSelected =
+      section.id === websiteDesignerSelectedSectionId &&
+      item.id === websiteDesignerSelectedItemId;
+    const alignClass =
+      item.align === "center"
+        ? "items-center text-center"
+        : item.align === "right"
+          ? "items-end text-right"
+          : "items-start text-left";
+    const wrapperClass = [
+      "relative flex flex-col gap-3 rounded-xl border p-4 transition",
+      isSelected
+        ? "border-fuchsia-500 shadow-[0_0_0_2px_rgba(217,70,239,0.15)]"
+        : "border-gray-200",
+    ].join(" ");
+    const wrapperStyle = {
+      backgroundColor:
+        item.kind === "image" && item.backgroundColor === "transparent"
+          ? "#ffffff"
+          : item.backgroundColor || "transparent",
+    } as any;
+
+    const handle = (
+      <button
+        type="button"
+        draggable
+        onDragStart={() =>
+          setWebsiteDesignerDragState({
+            type: "item",
+            sectionId: section.id,
+            itemId: item.id,
+          })
+        }
+        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-xs text-gray-500"
+        title="Drag object"
+      >
+        :::
+      </button>
+    );
+
+    const content = (() => {
+      if (item.kind === "image") {
+        return (
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-2">
+            {item.imageUrl ? (
+              <img
+                src={item.imageUrl}
+                alt={item.label}
+                className={`h-auto w-full object-contain ${item.widthClass || ""}`}
+              />
+            ) : (
+              <div className="flex min-h-[120px] items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-400">
+                No image selected
+              </div>
+            )}
+          </div>
+        );
+      }
+      if (item.kind === "list") {
+        return (
+          <ul
+            className={`list-disc space-y-1 pl-5 ${alignClass}`}
+            style={{
+              fontSize: `${item.fontSize || 18}px`,
+              color: item.textColor || "#1f2937",
+              fontWeight: item.bold ? 700 : 500,
+            }}
+          >
+            {(item.entries || []).map((entry: string, index: number) => (
+              <li key={`${item.id}-entry-${index}`}>{entry}</li>
+            ))}
+          </ul>
+        );
+      }
+      if (item.kind === "social") {
+        return (
+          <div className={`flex flex-wrap gap-2 ${alignClass}`}>
+            {(item.entries || []).map((entry: string, index: number) => (
+              <span
+                key={`${item.id}-social-${index}`}
+                className="rounded-full border border-gray-200 bg-white px-3 py-1"
+                style={{
+                  fontSize: `${item.fontSize || 16}px`,
+                  color: item.textColor || "#1f2937",
+                  fontWeight: item.bold ? 700 : 500,
+                }}
+              >
+                {entry}
+              </span>
+            ))}
+          </div>
+        );
+      }
+      if (item.kind === "map") {
+        return (
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Map
+            </div>
+            <div
+              className="mt-2"
+              style={{
+                fontSize: `${item.fontSize || 16}px`,
+                color: item.textColor || "#1f2937",
+                fontWeight: item.bold ? 700 : 500,
+              }}
+            >
+              {item.text}
+            </div>
+          </div>
+        );
+      }
+      if (item.kind === "button") {
+        return (
+          <span
+            className="inline-flex rounded-full px-4 py-2"
+            style={{
+              fontSize: `${item.fontSize || 18}px`,
+              color: item.textColor || "#ffffff",
+              backgroundColor: item.backgroundColor || "#0b1f5f",
+              fontWeight: item.bold ? 700 : 500,
+            }}
+          >
+            {item.text}
+          </span>
+        );
+      }
+      return (
+        <div
+          style={{
+            fontSize: `${item.fontSize || 20}px`,
+            color: item.textColor || "#1f2937",
+            fontWeight: item.bold ? 700 : 500,
+            lineHeight: 1.35,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {item.text}
+        </div>
+      );
+    })();
+
+    return (
+      <div
+        key={item.id}
+        role="button"
+        tabIndex={0}
+        className={`${wrapperClass} text-left`}
+        style={wrapperStyle}
+        onClick={() => {
+          setWebsiteDesignerSelectedSectionId(section.id);
+          setWebsiteDesignerSelectedItemId(item.id);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setWebsiteDesignerSelectedSectionId(section.id);
+            setWebsiteDesignerSelectedItemId(item.id);
+          }
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={() => handleWebsiteDesignerItemDrop(section.id, item.id)}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {item.label}
+          </div>
+          {handle}
+        </div>
+        <div className={`flex flex-col gap-2 ${alignClass}`}>{content}</div>
+      </div>
+    );
+  }
+
+  function renderWebsiteDesignerToolbar() {
+    const selectedItem = websiteDesignerSelectedItem;
+    const isTextLike = selectedItem && selectedItem.kind !== "image";
+
+    return (
+      <div className="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div>
+          <div className="text-sm font-semibold text-[#0b1f5f]">Insert</div>
+          <div className="mt-3 grid gap-2">
+            {[
+              { kind: "text", label: "Add text" },
+              { kind: "list", label: "Add bulleted list" },
+              { kind: "image", label: "Add image" },
+              { kind: "social", label: "Add social links" },
+              { kind: "map", label: "Add map" },
+              { kind: "button", label: "Add button" },
+            ].map((tool) => (
+              <button
+                key={tool.kind}
+                type="button"
+                onClick={() => addWebsiteDesignerItem(tool.kind)}
+                className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                {tool.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 pt-4">
+          <div className="text-sm font-semibold text-[#0b1f5f]">
+            {selectedItem ? `${selectedItem.label} settings` : "Object settings"}
+          </div>
+          {!selectedItem ? (
+            <div className="mt-3 text-sm text-gray-500">
+              Select an object in the canvas to edit it.
+            </div>
+          ) : selectedItem.kind === "image" ? (
+            <div className="mt-3 grid gap-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Replace image
+              </div>
+              {websiteDesignerMediaLoading ? (
+                <div className="text-sm text-gray-500">Loading images...</div>
+              ) : websiteDesignerMedia.length > 0 ? (
+                <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto pr-1">
+                  {websiteDesignerMedia.map((media) => (
+                    <button
+                      key={media.id}
+                      type="button"
+                      onClick={() =>
+                        updateWebsiteDesignerItem(
+                          websiteDesignerSelectedSectionId,
+                          websiteDesignerSelectedItemId,
+                          { imageUrl: media.media_url },
+                        )
+                      }
+                      className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-1 hover:border-fuchsia-400"
+                    >
+                      <img
+                        src={media.media_url}
+                        alt={media.caption_text || "Website library image"}
+                        className="aspect-square h-auto w-full object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  Upload images in Content Studio first.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-3">
+              <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Content
+                <textarea
+                  rows={selectedItem.kind === "list" ? 5 : 4}
+                  value={
+                    selectedItem.kind === "list" || selectedItem.kind === "social"
+                      ? (selectedItem.entries || []).join("\n")
+                      : selectedItem.text || ""
+                  }
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateWebsiteDesignerItem(
+                      websiteDesignerSelectedSectionId,
+                      websiteDesignerSelectedItemId,
+                      selectedItem.kind === "list" || selectedItem.kind === "social"
+                        ? {
+                            entries: value
+                              .split(/\r?\n/)
+                              .map((entry) => entry.trim())
+                              .filter(Boolean),
+                          }
+                        : { text: value },
+                    );
+                  }}
+                  className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-fuchsia-500"
+                />
+              </label>
+              {isTextLike ? (
+                <>
+                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Font size
+                    <input
+                      type="number"
+                      min={12}
+                      max={160}
+                      value={selectedItem.fontSize || 20}
+                      onChange={(event) =>
+                        updateWebsiteDesignerItem(
+                          websiteDesignerSelectedSectionId,
+                          websiteDesignerSelectedItemId,
+                          {
+                            fontSize: Math.max(
+                              12,
+                              Math.min(160, Number(event.target.value) || 20),
+                            ),
+                          },
+                        )
+                      }
+                      className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 outline-none focus:border-fuchsia-500"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Text color
+                      <input
+                        type="color"
+                        value={selectedItem.textColor || "#1f2937"}
+                        onChange={(event) =>
+                          updateWebsiteDesignerItem(
+                            websiteDesignerSelectedSectionId,
+                            websiteDesignerSelectedItemId,
+                            { textColor: event.target.value },
+                          )
+                        }
+                        className="h-10 w-full cursor-pointer rounded-xl border border-gray-200 bg-white p-1"
+                      />
+                    </label>
+                    <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Background
+                      <input
+                        type="color"
+                        value={
+                          selectedItem.backgroundColor === "transparent"
+                            ? "#ffffff"
+                            : selectedItem.backgroundColor || "#ffffff"
+                        }
+                        onChange={(event) =>
+                          updateWebsiteDesignerItem(
+                            websiteDesignerSelectedSectionId,
+                            websiteDesignerSelectedItemId,
+                            { backgroundColor: event.target.value },
+                          )
+                        }
+                        className="h-10 w-full cursor-pointer rounded-xl border border-gray-200 bg-white p-1"
+                      />
+                    </label>
+                  </div>
+                  <div className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Alignment
+                    <div className="flex gap-2">
+                      {[
+                        { key: "left", label: "Left" },
+                        { key: "center", label: "Center" },
+                        { key: "right", label: "Right" },
+                      ].map((alignOption) => (
+                        <button
+                          key={alignOption.key}
+                          type="button"
+                          onClick={() =>
+                            updateWebsiteDesignerItem(
+                              websiteDesignerSelectedSectionId,
+                              websiteDesignerSelectedItemId,
+                              { align: alignOption.key },
+                            )
+                          }
+                          className={[
+                            "rounded-xl px-3 py-2 text-sm font-medium",
+                            selectedItem.align === alignOption.key
+                              ? "bg-[#2d0a7d] text-white"
+                              : "border border-gray-200 bg-gray-50 text-gray-700",
+                          ].join(" ")}
+                        >
+                          {alignOption.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderWebsitePreviewItem(item: any) {
+    const alignClass =
+      item.align === "center"
+        ? "items-center text-center"
+        : item.align === "right"
+          ? "items-end text-right"
+          : "items-start text-left";
+
+    if (item.kind === "image") {
+      return (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white/70 p-2">
+          {item.imageUrl ? (
+            <img
+              src={item.imageUrl}
+              alt={item.label || "Website image"}
+              className={`h-auto w-full object-contain ${item.widthClass || ""}`}
+            />
+          ) : (
+            <div className="flex min-h-[100px] items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-400">
+              No image selected
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (item.kind === "list") {
+      return (
+        <ul
+          className={`list-disc space-y-1 pl-5 ${alignClass}`}
+          style={{
+            fontSize: `${item.fontSize || 18}px`,
+            color: item.textColor || "#1f2937",
+            fontWeight: item.bold ? 700 : 500,
+          }}
+        >
+          {(item.entries || []).map((entry: string, index: number) => (
+            <li key={`${item.id}-preview-entry-${index}`}>{entry}</li>
+          ))}
+        </ul>
+      );
+    }
+
+    if (item.kind === "social") {
+      return (
+        <div className={`flex flex-wrap gap-2 ${alignClass}`}>
+          {(item.entries || []).map((entry: string, index: number) => (
+            <span
+              key={`${item.id}-preview-social-${index}`}
+              className="rounded-full border border-white/60 bg-white/70 px-3 py-1"
+              style={{
+                fontSize: `${item.fontSize || 16}px`,
+                color: item.textColor || "#1f2937",
+                fontWeight: item.bold ? 700 : 500,
+              }}
+            >
+              {entry}
+            </span>
+          ))}
+        </div>
+      );
+    }
+
+    if (item.kind === "map") {
+      return (
+        <div className="rounded-xl border border-gray-200 bg-white/80 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Map
+          </div>
+          <div
+            className="mt-2"
+            style={{
+              fontSize: `${item.fontSize || 16}px`,
+              color: item.textColor || "#1f2937",
+              fontWeight: item.bold ? 700 : 500,
+            }}
+          >
+            {item.text}
+          </div>
+        </div>
+      );
+    }
+
+    if (item.kind === "button") {
+      return (
+        <span
+          className="inline-flex rounded-full px-5 py-2"
+          style={{
+            fontSize: `${item.fontSize || 18}px`,
+            color: item.textColor || "#ffffff",
+            backgroundColor: item.backgroundColor || "#0b1f5f",
+            fontWeight: item.bold ? 700 : 500,
+          }}
+        >
+          {item.text}
+        </span>
+      );
+    }
+
+    return (
+      <div
+        className={alignClass}
+        style={{
+          fontSize: `${item.fontSize || 20}px`,
+          color: item.textColor || "#1f2937",
+          fontWeight: item.bold ? 700 : 500,
+          lineHeight: 1.35,
+          whiteSpace: "pre-wrap",
+          backgroundColor:
+            item.backgroundColor && item.backgroundColor !== "transparent"
+              ? item.backgroundColor
+              : "transparent",
+        }}
+      >
+        {item.text}
+      </div>
+    );
+  }
+
+  async function publishWebsite() {
+    if (!token) return;
+    if (!savedSlug || websiteSlugEditing) {
+      window.alert("Set and accept a website slug before publishing.");
+      return;
+    }
+
+    setStatus(null);
+    setWebsitePublishing(true);
+    try {
+      const layout =
+        websiteLayoutMode === "MENU_STYLE" ? "MENU_BASED" : "ONE_PAGE";
+      const [configRes, orgRes] = await Promise.all([
+        fetch("/api/website-config", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            config: {
+              page_name: savedSlug,
+              layout,
+            },
+          }),
+        }),
+        fetch("/organizations", {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            layout_key:
+              websiteLayoutMode === "MENU_STYLE"
+                ? "menu-style:live"
+                : "single-page:live",
+          }),
+        }),
+      ]);
+
+      const configPayload = await configRes.json().catch(() => null);
+      const orgPayload = await orgRes.json().catch(() => null);
+
+      if (!configRes.ok) {
+        setStatus(
+          configPayload?.message ||
+            `Website publish failed (${configRes.status}).`,
+        );
+        return;
+      }
+      if (!orgRes.ok) {
+        setStatus(
+          orgPayload?.message || `Website publish failed (${orgRes.status}).`,
+        );
+        return;
+      }
+
+      if (orgPayload) {
+        setOrg(orgPayload);
+      }
+      setStatus("Website published.");
+    } catch {
+      setStatus("Unable to publish website.");
+    } finally {
+      setWebsitePublishing(false);
+    }
   }
 
   async function copyWebsiteUrl() {
@@ -361,6 +1514,10 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
               key: "SETTINGS_INFO" as WebsitePage,
               label: "Settings and Info",
             },
+            {
+              key: "WEBSITE_PREVIEW" as WebsitePage,
+              label: "Website Preview",
+            },
           ].map((page) => (
             <button
               key={page.key}
@@ -380,15 +1537,256 @@ export default function SettingsWebsiteTab({ ctx }: SettingsWebsiteTabProps) {
       </div>
 
       {websitePage === "WEBSITE_DESIGNER" ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="text-base font-semibold text-[#0b1f5f]">
-            Website Designer
+        <div className="grid gap-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-base font-semibold text-[#0b1f5f]">
+                  Website Designer
+                </div>
+                <div className="mt-2 max-w-4xl text-sm text-gray-600">
+                  Build your website as draggable sections. Generate a layout,
+                  then edit the content directly. Switching between Single Page
+                  and Menu Style keeps the same content and changes only the
+                  layout.
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  <span className="rounded-full bg-gray-100 px-3 py-1">
+                    {websiteLayoutMode === "MENU_STYLE"
+                      ? "Menu style"
+                      : "Single page"}
+                  </span>
+                  <span className="rounded-full bg-gray-100 px-3 py-1">
+                    {websiteDesignerSections.length} sections
+                  </span>
+                  <span className="rounded-full bg-gray-100 px-3 py-1">
+                    Drag sections and objects to reorder
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={buildWebsiteDesignerSections}
+                className="rounded-xl bg-[#2d0a7d] px-5 py-3 text-sm font-semibold text-white hover:bg-[#240863]"
+              >
+                Generate Website
+              </button>
+            </div>
           </div>
-          <div className="mt-2 text-sm text-gray-600">
-            Website builder and layout tools will live here.
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              {websiteDesignerSections.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-500">
+                  Click Generate Website to create an editable website layout.
+                </div>
+              ) : (
+                <div className="grid gap-5">
+                  {websiteLayoutMode === "MENU_STYLE" ? (
+                    <div className="sticky top-0 z-10 rounded-2xl border border-gray-200 bg-white/95 p-4 backdrop-blur">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {websiteDesignerSections.map((section) => (
+                          <button
+                            key={`menu-${section.id}`}
+                            type="button"
+                            onClick={() => {
+                              setWebsiteDesignerSelectedSectionId(section.id);
+                              setWebsiteDesignerSelectedItemId(
+                                section.items?.[0]?.id ?? "",
+                              );
+                              if (typeof document !== "undefined") {
+                                document
+                                  .getElementById(`website-designer-${section.id}`)
+                                  ?.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "start",
+                                  });
+                              }
+                            }}
+                            className={[
+                              "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+                              websiteDesignerSelectedSectionId === section.id
+                                ? "bg-[#2d0a7d] text-white"
+                                : "bg-gray-100 text-gray-700 hover:bg-gray-200",
+                            ].join(" ")}
+                          >
+                            {section.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-5">
+                    {websiteDesignerSections.map((section) => {
+                      const isSectionSelected =
+                        section.id === websiteDesignerSelectedSectionId;
+                      return (
+                        <section
+                          key={section.id}
+                          id={`website-designer-${section.id}`}
+                          className={[
+                            "rounded-3xl border p-5 shadow-sm transition-colors",
+                            isSectionSelected
+                              ? "border-fuchsia-400"
+                              : "border-gray-200",
+                          ].join(" ")}
+                          style={{
+                            backgroundColor:
+                              section.backgroundColor || activePaletteColors[3],
+                          }}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => handleWebsiteDesignerSectionDrop(section.id)}
+                        >
+                          <div className="mb-4 flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              draggable={section.id !== "home"}
+                              onDragStart={() =>
+                                section.id !== "home" &&
+                                setWebsiteDesignerDragState({
+                                  type: "section",
+                                  sectionId: section.id,
+                                })
+                              }
+                              onClick={() => {
+                                setWebsiteDesignerSelectedSectionId(section.id);
+                                setWebsiteDesignerSelectedItemId(
+                                  section.items?.[0]?.id ?? "",
+                                );
+                              }}
+                              className={[
+                                "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-wide",
+                                section.id === "home"
+                                  ? "cursor-default border-gray-200 bg-white text-gray-400"
+                                  : "cursor-grab border-gray-200 bg-white text-gray-600",
+                              ].join(" ")}
+                              title={
+                                section.id === "home"
+                                  ? "Top section stays first"
+                                  : "Drag section"
+                              }
+                            >
+                              <span aria-hidden="true">:::</span>
+                              <span>
+                                {section.id === "home"
+                                  ? "Top section fixed"
+                                  : "Drag section"}
+                              </span>
+                            </button>
+                            {!section.hideTitle ? (
+                              <div className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                                {section.label}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div
+                            className="grid gap-4"
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={() => handleWebsiteDesignerItemDrop(section.id)}
+                          >
+                            {section.items.map((item: any) =>
+                              renderWebsiteDesignerItem(section, item),
+                            )}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {renderWebsiteDesignerToolbar()}
           </div>
-          <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-sm text-gray-500">
-            Coming soon...
+        </div>
+      ) : websitePage === "WEBSITE_PREVIEW" ? (
+        <div className="grid gap-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-base font-semibold text-[#0b1f5f]">
+                  Website Preview
+                </div>
+                <div className="mt-2 text-sm text-gray-600">
+                  Preview the current website build before publishing it live.
+                </div>
+                <div className="mt-3 text-sm text-gray-700">
+                  Public URL:{" "}
+                  <span className="font-mono text-gray-600">
+                    {fullWebsiteUrl}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={publishWebsite}
+                disabled={websitePublishing}
+                className="rounded-xl bg-[#2d0a7d] px-5 py-3 text-sm font-semibold text-white hover:bg-[#240863] disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {websitePublishing ? "Publishing..." : "Publish"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+            {websiteDesignerSections.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-500">
+                Generate a website in Website Designer first to preview it here.
+              </div>
+            ) : (
+              <div
+                className="rounded-3xl border border-gray-200 p-5"
+                style={{
+                  background:
+                    websiteLayoutMode === "MENU_STYLE"
+                      ? "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)"
+                      : "#ffffff",
+                }}
+              >
+                {websiteLayoutMode === "MENU_STYLE" ? (
+                  <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {websiteDesignerSections.map((section) => (
+                        <span
+                          key={`preview-menu-${section.id}`}
+                          className="rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700"
+                        >
+                          {section.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-5">
+                  {websiteDesignerSections.map((section) => (
+                    <section
+                      key={`preview-${section.id}`}
+                      className="rounded-3xl border border-gray-200 p-5 shadow-sm"
+                      style={{
+                        backgroundColor:
+                          section.backgroundColor || activePaletteColors[3],
+                      }}
+                    >
+                      {!section.hideTitle ? (
+                        <div className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                          {section.label}
+                        </div>
+                      ) : null}
+                      <div className="grid gap-4">
+                        {(section.items || []).map((item: any) => (
+                          <div key={`preview-item-${item.id}`}>
+                            {renderWebsitePreviewItem(item)}
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (

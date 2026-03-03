@@ -11,10 +11,19 @@ import {
 } from "@/lib/website-config-store";
 
 type PublicWebsitePageProps = {
-  params: {
-    slug: string;
-  };
+  params:
+    | {
+        slug: string;
+      }
+    | Promise<{
+        slug: string;
+      }>;
 };
+
+async function resolveSlugParam(params: PublicWebsitePageProps["params"]) {
+  const resolved = await params;
+  return typeof resolved?.slug === "string" ? resolved.slug : "";
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -266,7 +275,7 @@ function renderWebsiteTextBlock(value: string, className: string) {
 }
 
 export default async function PublicWebsitePage({ params }: PublicWebsitePageProps) {
-  const slug = normalizeWebsitePageName(params.slug);
+  const slug = normalizeWebsitePageName(await resolveSlugParam(params));
   if (!slug || slug.length < 3) notFound();
 
   const organization = await prisma.organization.findFirst({

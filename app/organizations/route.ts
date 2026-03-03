@@ -8,6 +8,16 @@ import { DEFAULT_DATE_FORMAT, normalizeDateFormat, DATE_FORMAT_OPTIONS } from "@
 export const runtime = "nodejs";
 
 const WEBSITE_SLUG_REGEX = /^[a-z0-9-]{3,40}$/;
+const ORGANIZATION_MODEL_FIELDS = new Set(
+  (
+    (Prisma as any).dmmf?.datamodel?.models?.find(
+      (model: any) => model.name === "Organization",
+    )?.fields ?? []
+  ).map((field: any) => field.name),
+);
+const HAS_WEBSITE_SLUG_UPDATED_AT = ORGANIZATION_MODEL_FIELDS.has(
+  "website_slug_updated_at",
+);
 
 function normalizeWebsiteSlug(value: string) {
   return value
@@ -292,6 +302,13 @@ export async function PATCH(req: Request) {
       nextWebsiteSlug = website_slug;
     }
 
+    if ("layout_key" in body) {
+      const layout_key =
+        typeof body.layout_key === "string" ? body.layout_key.trim() : "";
+      if (!layout_key) badRequest("layout_key is required");
+      data.layout_key = layout_key;
+    }
+
     if (
       Object.keys(data).length === 0 &&
       company_logo_url === undefined &&
@@ -302,20 +319,48 @@ export async function PATCH(req: Request) {
 
     const org = await prisma.$transaction(async (tx) => {
       if (nextWebsiteSlug !== undefined) {
-        const currentOrg = await tx.organization.findUnique({
-          where: { id: auth.organization_id },
-          select: {
+        let currentOrg: { website_slug: string | null; website_slug_updated_at?: Date | null } | null = null;
+        try {
+          const currentOrgSelect: Record<string, true> = {
             website_slug: true,
-            website_slug_updated_at: true,
-          },
-        });
+          };
+          if (HAS_WEBSITE_SLUG_UPDATED_AT) {
+            currentOrgSelect.website_slug_updated_at = true;
+          }
+          currentOrg = (await tx.organization.findUnique({
+            where: { id: auth.organization_id },
+            select: currentOrgSelect,
+          })) as typeof currentOrg;
+        } catch (err) {
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === "P2022"
+          ) {
+            currentOrg = (await tx.organization.findUnique({
+              where: { id: auth.organization_id },
+              select: {
+                website_slug: true,
+              },
+            })) as typeof currentOrg;
+          } else {
+            throw err;
+          }
+        }
         if (!currentOrg) badRequest("Organization not found");
+        const currentOrgRecord = currentOrg as {
+          website_slug: string | null;
+          website_slug_updated_at?: Date | null;
+        };
 
-        const currentSlug = normalizeWebsiteSlug(currentOrg.website_slug ?? "");
+        const currentSlug = normalizeWebsiteSlug(currentOrgRecord.website_slug ?? "");
         const slugChanged = nextWebsiteSlug !== currentSlug;
-        if (slugChanged && currentOrg.website_slug_updated_at) {
+        if (
+          slugChanged &&
+          HAS_WEBSITE_SLUG_UPDATED_AT &&
+          currentOrgRecord.website_slug_updated_at
+        ) {
           const earliestNextChange = new Date(
-            currentOrg.website_slug_updated_at.getTime() + 60 * 24 * 60 * 60 * 1000,
+            currentOrgRecord.website_slug_updated_at.getTime() + 60 * 24 * 60 * 60 * 1000,
           );
           if (earliestNextChange > new Date()) {
             badRequest("Website slug can only be changed every 60 days");
@@ -338,17 +383,37 @@ export async function PATCH(req: Request) {
             badRequest("Website slug is already taken");
           }
           data.website_slug = nextWebsiteSlug;
-          data.website_slug_updated_at = new Date();
+          if (HAS_WEBSITE_SLUG_UPDATED_AT) {
+            data.website_slug_updated_at = new Date();
+          }
         }
       }
 
-      await tx.organization.update({
-        where: { id: auth.organization_id },
-        data: {
-          ...data,
-          updated_by_user_id: auth.userId,
-        },
-      });
+      const updateData: Record<string, any> = {
+        ...data,
+        updated_by_user_id: auth.userId,
+      };
+      try {
+        await tx.organization.update({
+          where: { id: auth.organization_id },
+          data: updateData,
+        });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2022" &&
+          "website_slug_updated_at" in updateData
+        ) {
+          const retryData = { ...updateData };
+          delete retryData.website_slug_updated_at;
+          await tx.organization.update({
+            where: { id: auth.organization_id },
+            data: retryData,
+          });
+        } else {
+          throw err;
+        }
+      }
 
       if (company_logo_url !== undefined) {
         const activeLogos = await tx.image.findMany({

@@ -5122,6 +5122,31 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialActiveTool === "text" &&
         socialInlineEditorLayer === layerId,
     );
+    const handleTextLayerClick = (event) => {
+      event.stopPropagation();
+      if (socialSuppressLayerSelectClickRef.current) {
+        socialSuppressLayerSelectClickRef.current = false;
+        return;
+      }
+      if (onClick) {
+        onClick();
+        return;
+      }
+      if (!layerId) return;
+      const additive = event.ctrlKey || event.metaKey;
+      socialSelectLayer(layerId, { additive });
+      if (
+        !additive &&
+        socialActiveTool === "text" &&
+        isSocialTextLayer(layerId)
+      ) {
+        socialBeginInlineTextEdit(layerId, String(text || ""));
+      }
+    };
+    const handleTextLayerPointerDown = (event) => {
+      if (!layerId || socialActiveTool === "text") return;
+      beginSocialLayerDrag(layerId, event);
+    };
 
     return (
       <div
@@ -5130,8 +5155,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         style={{
           ...socialFrameToStyle(frame),
           zIndex: layerId ? socialLayerZ(layerId) : 18,
-          pointerEvents: "none",
+          pointerEvents: layerId ? "auto" : "none",
         }}
+        onClick={handleTextLayerClick}
+        onPointerDown={handleTextLayerPointerDown}
       >
         {backgroundFill ? (
           <div
@@ -5159,29 +5186,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           }}
         >
           <div
-            onClick={(event) => {
-              event.stopPropagation();
-              if (socialSuppressLayerSelectClickRef.current) {
-                socialSuppressLayerSelectClickRef.current = false;
-                return;
-              }
-              if (onClick) onClick();
-              else if (layerId) {
-                const additive = event.ctrlKey || event.metaKey;
-                socialSelectLayer(layerId, { additive });
-                if (
-                  !additive &&
-                  socialActiveTool === "text" &&
-                  isSocialTextLayer(layerId)
-                ) {
-                  socialBeginInlineTextEdit(layerId, String(text || ""));
-                }
-              }
-            }}
-            onPointerDown={(event) => {
-              if (!layerId || socialActiveTool === "text") return;
-              beginSocialLayerDrag(layerId, event);
-            }}
             style={{
               ...textStyle,
               ...(shouldUseForcedFontSize
@@ -5201,7 +5205,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               width: isInlineEditing ? "100%" : "fit-content",
               maxWidth: "100%",
               fontWeight,
-              pointerEvents: "auto",
+              pointerEvents: isInlineEditing ? "auto" : "none",
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
@@ -5343,6 +5347,31 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         socialActiveTool === "text" &&
         socialInlineEditorLayer === layerId,
     );
+    const handleTextLayerClick = (event) => {
+      event.stopPropagation();
+      if (socialSuppressLayerSelectClickRef.current) {
+        socialSuppressLayerSelectClickRef.current = false;
+        return;
+      }
+      if (onClick) {
+        onClick();
+        return;
+      }
+      if (!layerId) return;
+      const additive = event.ctrlKey || event.metaKey;
+      socialSelectLayer(layerId, { additive });
+      if (
+        !additive &&
+        socialActiveTool === "text" &&
+        isSocialTextLayer(layerId)
+      ) {
+        socialBeginInlineTextEdit(layerId, String(text || ""));
+      }
+    };
+    const handleTextLayerPointerDown = (event) => {
+      if (!layerId || socialActiveTool === "text") return;
+      beginSocialLayerDrag(layerId, event);
+    };
 
     return (
       <div
@@ -5351,8 +5380,10 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
         style={{
           ...socialFrameToStyle(frame),
           zIndex: layerId ? socialLayerZ(layerId) : 18,
-          pointerEvents: "none",
+          pointerEvents: layerId ? "auto" : "none",
         }}
+        onClick={handleTextLayerClick}
+        onPointerDown={handleTextLayerPointerDown}
       >
         <div
           className="h-full w-full"
@@ -5370,29 +5401,6 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
           }}
         >
           <div
-            onClick={(event) => {
-              event.stopPropagation();
-              if (socialSuppressLayerSelectClickRef.current) {
-                socialSuppressLayerSelectClickRef.current = false;
-                return;
-              }
-              if (onClick) onClick();
-              else if (layerId) {
-                const additive = event.ctrlKey || event.metaKey;
-                socialSelectLayer(layerId, { additive });
-                if (
-                  !additive &&
-                  socialActiveTool === "text" &&
-                  isSocialTextLayer(layerId)
-                ) {
-                  socialBeginInlineTextEdit(layerId, String(text || ""));
-                }
-              }
-            }}
-            onPointerDown={(event) => {
-              if (!layerId || socialActiveTool === "text") return;
-              beginSocialLayerDrag(layerId, event);
-            }}
             style={{
               ...textStyle,
               ...(shouldUseForcedFontSize
@@ -5412,7 +5420,7 @@ export default function SettingsContentAndMarketingTab({ ctx }: SettingsContentA
               overflowWrap: "anywhere",
               wordBreak: "break-word",
               fontWeight,
-              pointerEvents: "auto",
+              pointerEvents: isInlineEditing ? "auto" : "none",
               cursor:
                 layerId && !socialLayerLocked[layerId] && socialActiveTool === "pointer"
                   ? "move"
